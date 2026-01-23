@@ -75,6 +75,7 @@ int main(void) {
 
     print_header(username, nodename, is_a_tty);
     print_information("OS", distro_name, is_a_tty);
+    print_information("Kernel", machine_info.release, is_a_tty);
 
     return 0;
 }
