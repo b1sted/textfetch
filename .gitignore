@@ -1,0 +1,29 @@
+# --- Object files and dependencies ---
+*.o
+*.d
+*.obj
+
+# --- Executable files (standard extensions) ---
+*.out
+*.exe
+*.so
+*.a
+
+# --- Directories with build results ---
+bin/
+build/
+obj/
+
+# --- Local editor settings ---
+.vscode/
+.idea/
+
+# --- Temporary editor files (Vim, Nano, Gedit) ---
+*.swp
+*~
+*.bak
+
+# --- Debugging and system files ---
+.gdb_history
+core
+.DS_Store
