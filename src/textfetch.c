@@ -22,7 +22,7 @@
  * @param nodename System hostname.
  * @param is_a_tty Flag indicating if stdout is a terminal.
  */
-void print_header(char *username, char *nodename, const bool is_a_tty);
+void print_header(const char *username, const char *nodename, const bool is_a_tty);
 
 /**
  * Prints a labeled system property formatted nicely.
@@ -32,7 +32,7 @@ void print_header(char *username, char *nodename, const bool is_a_tty);
  * @param information The property value.
  * @param is_a_tty Flag to enable/disable ANSI colors.
  */
-void print_information(char *label, char *information, const bool is_a_tty);
+void print_information(const char *label, const char *information, const bool is_a_tty);
 
 /**
  * Attempts to retrieve the distribution name from standard release files.
@@ -42,7 +42,7 @@ void print_information(char *label, char *information, const bool is_a_tty);
  * @param dest_len Size of the destination buffer.
  * @return 0 on success (name found), -1 if files cannot be read.
  */
-int get_distro_name(char *dest_buffer, size_t dest_len);
+int get_distro_name(char *dest_buffer, const size_t dest_len);
 
 /**
  * Formats the uptime duration into a human-readable string.
@@ -103,7 +103,7 @@ int main(void) {
     return 0;
 }
 
-void print_header(char *username, char *nodename, const bool is_a_tty) {
+void print_header(const char *username, const char *nodename, const bool is_a_tty) {
     int print_len = strlen(username) + strlen(nodename) + 1;
 
     if (is_a_tty) {
@@ -116,7 +116,7 @@ void print_header(char *username, char *nodename, const bool is_a_tty) {
     printf("\n");
 }
 
-void print_information(char *label, char *information, const bool is_a_tty) {
+void print_information(const char *label, const char *information, const bool is_a_tty) {
     if (is_a_tty) {
         printf(ANSI_BOLD "%s: " ANSI_RESET, label);
     } else {
@@ -126,7 +126,7 @@ void print_information(char *label, char *information, const bool is_a_tty) {
     printf("%s\n", information);
 }
 
-int get_distro_name(char *dest_buffer, size_t dest_len) {
+int get_distro_name(char *dest_buffer, const size_t dest_len) {
     FILE *release_file = fopen("/etc/os-release", "r");
 
     if (!release_file) {
