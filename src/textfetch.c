@@ -77,16 +77,11 @@ int main(void) {
         perror("uname");
         return 1;
     }
-
-    struct passwd *user_info = getpwuid(geteuid());
-
-    if (!user_info) {
-        perror("getpwuid");
-        return 1;
-    }
     
-    char *nodename = machine_info.nodename;
-    char *username = user_info->pw_name;
+    const char *nodename = machine_info.nodename;
+    const char *username = getenv("USER");
+
+    if (!username) username = "unknown";
 
     const bool is_a_tty = isatty(STDOUT_FILENO);
 
@@ -94,7 +89,7 @@ int main(void) {
 
     if (get_distro_name(distro_name, BUFFER_SIZE) != 0) {
         fprintf(stderr, "Failed to read os-release\n");
-        return 1;
+        snprintf(distro_name, sizeof(distro_name), "%s", machine_info.sysname);
     }
 
     int size_distro_name = sizeof(distro_name);
@@ -119,9 +114,7 @@ int main(void) {
 
     char *locale = setlocale(LC_ALL, "");
 
-    if (!locale) {
-        locale = "-";
-    }
+    if (!locale) locale = "-";
 
     print_header(username, nodename, is_a_tty);
     print_information("OS", distro_name, is_a_tty);
@@ -281,7 +274,7 @@ int get_parent_shell_name(pid_t ppid, char *dest_buffer, const size_t dest_len) 
                 dest_buffer[len - 1] = '\0';
             }
         } else {
-            dest_buffer[0] = '\0';
+            snprintf(dest_buffer, dest_len, "%s", buffer);
         }
 
         fclose(stream);
