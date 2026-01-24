@@ -6,6 +6,7 @@
 #include <pwd.h>
 #include <unistd.h>
 
+#include <sys/sysinfo.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
 
@@ -43,6 +44,16 @@ void print_information(char *label, char *information, const bool is_a_tty);
  */
 int get_distro_name(char *dest_buffer, size_t dest_len);
 
+/**
+ * Formats the uptime duration into a human-readable string.
+ * Output format: "D days, HH:MM:SS" (e.g. "2 days, 10:05:01").
+ *
+ * @param uptime The time in seconds since system boot.
+ * @param dest_buffer Buffer to store the resulting string.
+ * @param dest_len Size of the destination buffer to prevent overflow.
+ */
+void format_uptime(long uptime, char *dest_buffer, const size_t dest_len);
+
 int main(void) {
     struct utsname machine_info;
 
@@ -73,9 +84,21 @@ int main(void) {
     int size_distro_name = sizeof(distro_name);
     snprintf(distro_name + strlen(distro_name), size_distro_name - strlen(distro_name), " %s", machine_info.machine);
 
+    struct sysinfo system_info;
+
+    if (sysinfo(&system_info) != 0) {
+        perror("sysinfo");
+        return 1;
+    }
+
+    char uptime_str[BUFFER_SIZE] = {0};
+
+    format_uptime(system_info.uptime, uptime_str, BUFFER_SIZE);
+
     print_header(username, nodename, is_a_tty);
     print_information("OS", distro_name, is_a_tty);
     print_information("Kernel", machine_info.release, is_a_tty);
+    print_information("Uptime", uptime_str, is_a_tty);
 
     return 0;
 }
@@ -150,4 +173,19 @@ int get_distro_name(char *dest_buffer, size_t dest_len) {
     fclose(release_file);
 
     return 0;
+}
+
+void format_uptime(long uptime, char *dest_buffer, const size_t dest_len) {
+    long days = uptime / 86400;
+    uptime %= 86400;
+    long hours = uptime / 3600;
+    uptime %= 3600;
+    long minutes = uptime / 60;
+    long seconds = uptime % 60;
+
+    if (days != 0) {
+        snprintf(dest_buffer, dest_len, "%ld days, %02ld:%02ld:%02ld", days, hours, minutes, seconds);
+    } else {
+        snprintf(dest_buffer, dest_len, "%02ld:%02ld:%02ld", hours, minutes, seconds);
+    }
 }
