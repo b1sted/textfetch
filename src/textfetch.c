@@ -92,13 +92,16 @@ int main(void) {
     }
 
     char uptime_str[BUFFER_SIZE] = {0};
-
     format_uptime(system_info.uptime, uptime_str, BUFFER_SIZE);
+
+    char procs_str[BUFFER_SIZE] = {0};
+    snprintf(procs_str, sizeof(procs_str), "%u", system_info.procs);
 
     print_header(username, nodename, is_a_tty);
     print_information("OS", distro_name, is_a_tty);
     print_information("Kernel", machine_info.release, is_a_tty);
     print_information("Uptime", uptime_str, is_a_tty);
+    print_information("Processes", procs_str, is_a_tty);
 
     return 0;
 }
