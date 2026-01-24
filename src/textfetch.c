@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <locale.h>
 #include <pwd.h>
 #include <unistd.h>
 
@@ -116,12 +117,19 @@ int main(void) {
     char shell_name[BUFFER_SIZE] = {0};
     if (get_parent_shell_name(parent_pid, shell_name, BUFFER_SIZE) != 0) return 1;
 
+    char *locale = setlocale(LC_ALL, "");
+
+    if (!locale) {
+        locale = "-";
+    }
+
     print_header(username, nodename, is_a_tty);
     print_information("OS", distro_name, is_a_tty);
     print_information("Kernel", machine_info.release, is_a_tty);
     print_information("Uptime", uptime_str, is_a_tty);
     print_information("Processes", procs_str, is_a_tty);
     print_information("Shell", shell_name, is_a_tty);
+    print_information("Locale", locale, is_a_tty);
     return 0;
 }
 
