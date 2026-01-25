@@ -117,14 +117,15 @@ void get_cpu_current_frequency(uint32_t *out_ghz, uint32_t *out_fractional);
 void get_cpu_information(char *out_buffer, size_t buf_size);
 
 /**
- * Retrieves current system RAM usage statistics from /proc/meminfo.
- * Parses total and available memory to calculate used RAM, converts 
- * values from kB to MB, and formats the result as "Used / Total".
+ * Retrieves current system RAM and Swap usage statistics from /proc/meminfo.
+ * Parses total and available/free memory to calculate used resources, converts 
+ * values from kB to MiB, and formats the results as "Used / Total".
  *
- * @param out_buffer Destination buffer to write the formatted string.
- * @param buf_size Size of the destination buffer to prevent overflow.
+ * @param ram_out_buffer Destination buffer to write the formatted RAM string.
+ * @param swap_out_buffer Destination buffer to write the formatted Swap string.
+ * @param buf_size Size of the destination buffers to prevent overflow.
  */
-void get_ram_information(char *out_buffer, size_t buf_size);
+void get_memory_information(char *ram_out_buffer, char *swap_out_buffer, size_t buf_size);
 
 int main(void) {
     struct utsname machine_info;
@@ -175,7 +176,8 @@ int main(void) {
     get_cpu_information(cpu_information, sizeof(cpu_information));
 
     char ram_information[BUFFER_SIZE] = {0};
-    get_ram_information(ram_information, sizeof(ram_information));
+    char swap_information[BUFFER_SIZE] = {0};
+    get_memory_information(ram_information, swap_information, sizeof(ram_information));
 
     print_header(username, nodename, is_a_tty);
     print_information("OS", distro_name, is_a_tty);
@@ -186,6 +188,7 @@ int main(void) {
     print_information("Locale", locale, is_a_tty);
     print_information("CPU", cpu_information, is_a_tty);
     print_information("RAM", ram_information, is_a_tty);
+    print_information("Swap", swap_information, is_a_tty);
 
     return 0;
 }
@@ -451,18 +454,24 @@ void get_cpu_information(char *out_buffer, size_t buf_size) {
              cpu_model_name, phy_core_count, frequency_ghz, freq_fractional);
 }
 
-void get_ram_information(char *out_buffer, size_t buf_size) {
+void get_memory_information(char *ram_out_buffer, char *swap_out_buffer, size_t buf_size) {
     FILE *memory_file = fopen("/proc/meminfo", "r");
 
     if (!memory_file) {
         perror("failed to open meminfo");
-        snprintf(out_buffer, buf_size, "- MiB / - MiB");
+        snprintf(ram_out_buffer, buf_size, "- MiB / - MiB");
+        snprintf(swap_out_buffer, buf_size, "- MiB / - MiB");
         return ;
     }
+
+    snprintf(ram_out_buffer, buf_size, "- MiB / - MiB");
+    snprintf(swap_out_buffer, buf_size, "0 MiB / 0 MiB");
 
     char file_line[BUFFER_SIZE];
     uint64_t ram_size = 0;
     uint64_t ram_available = 0;
+    uint64_t swap_size = 0;
+    uint64_t swap_free = 0;
 
     while (fgets(file_line, sizeof(file_line), memory_file)) {
         char *delimeter_ptr = strstr(file_line, ": ");
@@ -471,31 +480,25 @@ void get_ram_information(char *out_buffer, size_t buf_size) {
         *delimeter_ptr = 0;
         char *key = file_line;
         char *value = delimeter_ptr + 1;
-
-        value[strcspn(value, "\n")] = 0;
         char *endptr;
 
-        if (strcmp(key, "MemTotal") == 0) {
-            ram_size = strtoull(value, &endptr, 10);
-        }
-
-        if (strcmp(key, "MemAvailable") == 0) {
-            ram_available = strtoull(value, &endptr, 10);
-            break;
-        }
+        if (strcmp(key, "MemTotal") == 0)     ram_size = strtoull(value, &endptr, 10);
+        if (strcmp(key, "MemAvailable") == 0) ram_available = strtoull(value, &endptr, 10);
+        if (strcmp(key, "SwapTotal") == 0)    swap_size = strtoull(value, &endptr, 10);
+        if (strcmp(key, "SwapFree") == 0)     swap_free = strtoull(value, &endptr, 10);
     }
 
     fclose(memory_file);
 
-    if (ram_available == 0 || ram_size == 0) {
-        snprintf(out_buffer, buf_size, "- MiB / %lu MiB", ram_size / 1024);
-        return ;
+    if (ram_size > 0) {
+        uint64_t used_ram = ram_size - ram_available;
+        snprintf(ram_out_buffer, buf_size, "%lu MiB / %lu MiB", 
+                 used_ram / 1024, ram_size / 1024);
     }
 
-    uint64_t used_ram = ram_size - ram_available;
-    
-    used_ram /= 1024;
-    ram_size /= 1024;
-
-    snprintf(out_buffer, buf_size, "%lu MiB / %lu MiB", used_ram, ram_size);
+    if (swap_size > 0) {
+        uint64_t used_swap = swap_size - swap_free;
+        snprintf(swap_out_buffer, buf_size, "%lu MiB / %lu MiB", 
+                 used_swap / 1024, swap_size / 1024);
+    }
 }
