@@ -408,13 +408,14 @@ void get_cpu_current_frequency(uint32_t *out_ghz, uint32_t *out_fractional) {
 
     fclose(frequency_file);
 
-    if (frequency_khz != 0) {
-        *out_ghz = frequency_khz / 1000000;
-        *out_fractional = (frequency_khz % 100000) / 100;
-    } else {
+    if (frequency_khz == 0) {
         *out_ghz = 0;
         *out_fractional = 0;
+        return ;
     }
+
+    *out_ghz = frequency_khz / 1000000;
+    *out_fractional = (frequency_khz % 1000000) / 1000;
 }
 
 void get_cpu_information(char *out_buffer, size_t buf_size) {
