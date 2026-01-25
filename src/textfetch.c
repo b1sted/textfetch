@@ -8,6 +8,7 @@
 
 #include <cpuid.h>
 #include <ctype.h>
+#include <dirent.h>
 #include <locale.h>
 #include <pwd.h>
 #include <unistd.h>
@@ -127,6 +128,44 @@ void get_cpu_information(char *out_buffer, size_t buf_size);
  */
 void get_memory_information(char *ram_out_buffer, char *swap_out_buffer, size_t buf_size);
 
+/**
+ * Scans the /sys/class/power_supply/ directory to locate the first device identified as a "Battery".
+ *
+ * Iterates through directory entries and inspects the "type" file within each subdirectory.
+ * If a battery is found, its directory name (e.g., "BAT0") is written to the output buffer.
+ * If no battery is detected, writes "No Battery".
+ *
+ * @param out_buffer Destination buffer to write the detected battery directory name.
+ * @param buf_size Size of the destination buffer to prevent overflow.
+ */
+void find_battery_node(char *out_buffer, size_t buf_size);
+
+/**
+ * Safely reads a single-line string from a specified sysfs attribute file.
+ *
+ * Opens the file, reads its content, and removes the trailing newline character.
+ * Uses a zero-initialized internal buffer to prevent reading garbage memory if the file 
+ * is empty or unreadable. Writes a hyphen ("-") to the output if the file cannot be opened.
+ *
+ * @param filepath Full path to the sysfs attribute file (e.g., ".../capacity").
+ * @param out_buffer Destination buffer to write the cleaned attribute value.
+ * @param buf_size Size of the destination buffer.
+ */
+void read_battery_attr(const char *filepath, char *out_buffer, size_t buf_size);
+
+/**
+ * Aggregates and formats detailed battery information including model, capacity, and status.
+ *
+ * First attempts to locate a battery node. If found, it constructs paths to specific 
+ * attributes (model_name, capacity, status) and formats them into two separate strings:
+ * one for the label (e.g., "Battery (Model)") and one for data (e.g., "80% (Discharging)").
+ *
+ * @param label_out_buffer Buffer to write the descriptive label string.
+ * @param information_out_buffer Buffer to write the capacity and charging status.
+ * @param buf_size Size of both destination buffers.
+ */
+void get_battery_information(char *label_out_buffer, char *information_out_buffer, size_t buf_size);
+
 int main(void) {
     struct utsname machine_info;
 
@@ -179,6 +218,10 @@ int main(void) {
     char swap_information[BUFFER_SIZE] = {0};
     get_memory_information(ram_information, swap_information, sizeof(ram_information));
 
+    char battery_label[BUFFER_SIZE] = {0};
+    char battery_information[BUFFER_SIZE] = {0};
+    get_battery_information(battery_label, battery_information, BUFFER_SIZE);
+
     print_header(username, nodename, is_a_tty);
     print_information("OS", distro_name, is_a_tty);
     print_information("Kernel", machine_info.release, is_a_tty);
@@ -189,6 +232,7 @@ int main(void) {
     print_information("CPU", cpu_information, is_a_tty);
     print_information("RAM", ram_information, is_a_tty);
     print_information("Swap", swap_information, is_a_tty);
+    if (strlen(battery_label) != 0) print_information(battery_label, battery_information, is_a_tty);
 
     return 0;
 }
@@ -501,4 +545,94 @@ void get_memory_information(char *ram_out_buffer, char *swap_out_buffer, size_t 
         snprintf(swap_out_buffer, buf_size, "%lu MiB / %lu MiB", 
                  used_swap / 1024, swap_size / 1024);
     }
+}
+
+void find_battery_node(char *out_buffer, size_t buf_size) {
+    struct dirent *entry;
+    const char *power_directory = "/sys/class/power_supply/";
+
+    DIR *dir = opendir(power_directory);
+    if (dir == NULL) {
+        snprintf(out_buffer, buf_size, "No Battery");
+        return;
+    }
+
+    bool battery_found = false;
+    char found_name[256] = {0}; 
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue; 
+
+        char type_path[BUFFER_SIZE];
+        snprintf(type_path, sizeof(type_path), "%s%s/type", power_directory, entry->d_name);
+
+        FILE *type_file = fopen(type_path, "r");
+        if (!type_file) continue;
+
+        char type_buffer[BUFFER_SIZE] = {0};
+        bool is_bat = false;
+
+        if (fgets(type_buffer, sizeof(type_buffer), type_file) != NULL) {
+            if (strstr(type_buffer, "Battery")) is_bat = true;
+        }
+
+        fclose(type_file);
+
+        if (is_bat) {
+            snprintf(found_name, sizeof(found_name), "%s", entry->d_name);
+            battery_found = true;
+            break;
+        }
+    }
+    closedir(dir);
+
+    if (!battery_found) {
+        snprintf(out_buffer, buf_size, "No Battery");
+    } else {
+        snprintf(out_buffer, buf_size, "%s", found_name);
+    }
+}
+
+void read_battery_attr(const char *filepath, char *out_buffer, size_t buf_size) {
+    char attr_buffer[BUFFER_SIZE] = {0};
+	FILE *sysfs_fp = fopen(filepath, "r");
+    if (!sysfs_fp) {
+        perror("fail to open sysfs battery file");
+        snprintf(out_buffer, buf_size, "-");
+        return ;
+    }
+
+    fgets(attr_buffer, sizeof(attr_buffer), sysfs_fp);
+
+    fclose(sysfs_fp);	
+
+    size_t len = strlen(attr_buffer);
+    if (len > 0 && attr_buffer[len - 1] == '\n') attr_buffer[len - 1] = '\0';
+
+    snprintf(out_buffer, buf_size, "%s", attr_buffer);
+}
+
+void get_battery_information(char *label_out_buffer, char *information_out_buffer, size_t buf_size) {
+	const char *power_directory = "/sys/class/power_supply/";
+    char battery_directory[BUFFER_SIZE];
+
+    find_battery_node(battery_directory, BUFFER_SIZE);
+
+    if (strcmp(battery_directory, "No Battery") == 0) return ;
+
+	char sysfs_attr_path[BUFFER_SIZE + 128];
+	char sysfs_attr_buffer[BUFFER_SIZE];
+
+	snprintf(sysfs_attr_path, sizeof(sysfs_attr_path), "%s%s/model_name", power_directory, battery_directory);
+    read_battery_attr(sysfs_attr_path, sysfs_attr_buffer, BUFFER_SIZE);
+    snprintf(label_out_buffer, buf_size, "Battery (%s)", sysfs_attr_buffer);
+
+	snprintf(sysfs_attr_path, sizeof(sysfs_attr_path), "%s%s/capacity", power_directory, battery_directory);
+    read_battery_attr(sysfs_attr_path, sysfs_attr_buffer, BUFFER_SIZE);
+    snprintf(information_out_buffer, buf_size, "%s%% ", sysfs_attr_buffer);
+
+	snprintf(sysfs_attr_path, sizeof(sysfs_attr_path), "%s%s/status", power_directory, battery_directory);
+    read_battery_attr(sysfs_attr_path, sysfs_attr_buffer, BUFFER_SIZE);
+    snprintf(information_out_buffer + strlen(information_out_buffer), buf_size - strlen(information_out_buffer), 
+             "(%s)", sysfs_attr_buffer);
 }
