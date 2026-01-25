@@ -1,12 +1,12 @@
 CC ?= gcc
-CFLAGS += -Wall -Wextra -g -std=c99
+CFLAGS += -Wall -Wextra -g -std=c99 -Iinclude
 
 .PHONY: all clean
 
 all: bin/textfetch
 
-bin/textfetch: src/textfetch.c | bin
-	$(CC) $(CFLAGS) src/textfetch.c -o bin/textfetch
+bin/textfetch: src/textfetch.c src/bitset.c include/bitset.h | bin
+	$(CC) $(CFLAGS) src/textfetch.c src/bitset.c -o bin/textfetch
 
 bin:
 	mkdir -p bin

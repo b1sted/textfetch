@@ -2,21 +2,27 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include <cpuid.h>
+#include <ctype.h>
 #include <locale.h>
 #include <pwd.h>
 #include <unistd.h>
 
+#include <sys/stat.h>
 #include <sys/sysinfo.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
 #include <sys/wait.h>
 
-#define BUFFER_SIZE 512
+#include "bitset.h"
+
 #define ANSI_BOLD   "\x1b[1m"
 #define ANSI_RESET  "\x1b[0m"
+#define BUFFER_SIZE 512
 
 /**
  * Renders the user@hostname header with an underline separator.
@@ -70,6 +76,45 @@ void format_uptime(long uptime, char *dest_buffer, const size_t dest_len);
  */
 int get_parent_shell_name(pid_t ppid, char *dest_buffer, const size_t dest_len);
 
+/**
+ * Retrieves the CPU brand string using CPUID instructions.
+ * Queries extended CPUID functions to construct the raw model name 
+ * and removes any trailing whitespace from the result.
+ *
+ * @param out_model_buf Destination buffer to store the model name string.
+ * @return 0 on success, -1 if CPUID is not supported or fails.
+ */
+int get_cpu_model_name(char *out_model_buf);
+
+/**
+ * Calculates the number of unique physical CPU cores.
+ * Iterates through the system topology via sysfs (cpuN/topology/core_id)
+ * to distinguish between physical cores and logical threads.
+ *
+ * @param out_physical_count Pointer to store the calculated number of physical cores.
+ */
+void get_cpu_cores_number(uint32_t *out_physical_count);
+
+/**
+ * Retrieves the current CPU frequency from sysfs.
+ * Reads the scaling_cur_freq file (in KHz) and converts it into 
+ * separate GHz integer and fractional parts for formatted output.
+ *
+ * @param out_ghz Pointer to store the integer part (Gigahertz).
+ * @param out_fractional Pointer to store the fractional part (3 decimal places).
+ */
+void get_cpu_current_frequency(uint32_t *out_ghz, uint32_t *out_fractional);
+
+/**
+ * Aggregates all CPU information into a single formatted string.
+ * Combines model name, physical core count, and current frequency
+ * into a human-readable format.
+ *
+ * @param out_buffer Destination buffer to write the formatted string.
+ * @param buf_size Size of the destination buffer to prevent overflow.
+ */
+void get_cpu_information(char *out_buffer, size_t buf_size);
+
 int main(void) {
     struct utsname machine_info;
 
@@ -113,8 +158,10 @@ int main(void) {
     if (get_parent_shell_name(parent_pid, shell_name, BUFFER_SIZE) != 0) return 1;
 
     char *locale = setlocale(LC_ALL, "");
-
     if (!locale) locale = "-";
+
+    char cpu_information[BUFFER_SIZE] = {0};
+    get_cpu_information(cpu_information, sizeof(cpu_information));
 
     print_header(username, nodename, is_a_tty);
     print_information("OS", distro_name, is_a_tty);
@@ -123,6 +170,8 @@ int main(void) {
     print_information("Processes", procs_str, is_a_tty);
     print_information("Shell", shell_name, is_a_tty);
     print_information("Locale", locale, is_a_tty);
+    print_information("CPU", cpu_information, is_a_tty);
+
     return 0;
 }
 
@@ -282,4 +331,106 @@ int get_parent_shell_name(pid_t ppid, char *dest_buffer, const size_t dest_len) 
     }
 
     return 0;
+}
+
+int get_cpu_model_name(char *out_model_buf) {
+    unsigned int cpuid_regs[4];
+    char *write_cursor = out_model_buf;
+
+    for (unsigned int leaf_id = 0x80000002; leaf_id <= 0x80000004; leaf_id++) {
+        if (__get_cpuid(leaf_id, &cpuid_regs[0], &cpuid_regs[1], &cpuid_regs[2], &cpuid_regs[3]) == 0) {
+            return -1;
+        }
+
+        memcpy(write_cursor, cpuid_regs, sizeof(cpuid_regs));
+        write_cursor += sizeof(cpuid_regs);
+    }
+
+    *write_cursor = '\0';
+
+    size_t len = strlen(out_model_buf);
+
+    while (len > 0 && isspace((unsigned char)out_model_buf[len - 1])) {
+        len--;
+        out_model_buf[len] = '\0';
+    }
+
+    return 0;
+}
+
+void get_cpu_cores_number(uint32_t *out_physical_count) {
+    uint32_t unique_cores[SET_SIZE] = {0};
+    int max_logical_cpus = sysconf(_SC_NPROCESSORS_CONF);
+
+    struct stat sb;
+    char sysfs_path_buf[BUFFER_SIZE] = "/sys/devices/system/cpu/";
+    char *path_cursor = sysfs_path_buf + strlen(sysfs_path_buf);
+    ssize_t buffer_capacity = BUFFER_SIZE - strlen(sysfs_path_buf);
+
+    for (int i = 0; i < max_logical_cpus; i++) {
+        snprintf(path_cursor, buffer_capacity, "cpu%d/", i);
+
+        if (stat(sysfs_path_buf, &sb) != 0 || !S_ISDIR(sb.st_mode)) break;
+
+        char core_path[BUFFER_SIZE + 32];
+        snprintf(core_path, sizeof(core_path), "%stopology/core_id", sysfs_path_buf);
+
+        int core_id = -1;
+        FILE *core_file = fopen(core_path, "r");
+
+        if (!core_file) {
+            perror("fail to open cpu core id file");
+            break;
+        }
+
+        if (fscanf(core_file, "%d", &core_id) != 1) printf("Ошибка чтения числа");
+
+        fclose(core_file);
+        
+        if (!set_contains(unique_cores, core_id)) set_add(unique_cores, core_id);
+    }
+
+    *out_physical_count = count_set_bits(unique_cores, SET_SIZE);
+}
+
+void get_cpu_current_frequency(uint32_t *out_ghz, uint32_t *out_fractional) {
+    FILE *frequency_file = fopen("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq", "r");
+
+    if (!frequency_file) {
+        perror("failed to open scaling_cur_freq");
+        return ;
+    } 
+
+    uint32_t frequency_khz = 0;
+    if (fscanf(frequency_file, "%u", &frequency_khz) == -1) {
+        printf("Ошибка чтения числа");
+    }
+
+    fclose(frequency_file);
+
+    if (frequency_khz != 0) {
+        *out_ghz = frequency_khz / 1000000;
+        *out_fractional = (frequency_khz % 100000) / 100;
+    } else {
+        *out_ghz = 0;
+        *out_fractional = 0;
+    }
+}
+
+void get_cpu_information(char *out_buffer, size_t buf_size) {
+    uint32_t phy_core_count = 0;
+    uint32_t frequency_ghz = 0;
+    uint32_t freq_fractional = 0;
+    char cpu_model_name[BUFFER_SIZE] = {0};
+
+    if (get_cpu_model_name(cpu_model_name) != 0) {
+        snprintf(cpu_model_name, BUFFER_SIZE, "%s", "unkwown");
+    }
+
+    get_cpu_cores_number(&phy_core_count);
+    
+    get_cpu_current_frequency(&frequency_ghz, &freq_fractional);
+ 
+    snprintf(out_buffer, buf_size, "%s (%u) @ %u.%03u GHz", 
+             cpu_model_name, phy_core_count, frequency_ghz, freq_fractional);
 }
