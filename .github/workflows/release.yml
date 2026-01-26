@@ -1,0 +1,29 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Compile
+        run: make all
+
+      - name: Rename binary
+        run: mv bin/textfetch bin/textfetch-linux-amd64
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bin/textfetch-linux-amd64
+          generate_release_notes: true
