@@ -194,6 +194,39 @@ void scan_mounted_volumes();
  */
 void print_volume_usage(const char *mount_point, const struct statvfs *fs_stats, const struct mntent *mount_entry);
 
+/**
+ * Reads a hexadecimal value from a specified sysfs file attribute.
+ *
+ * Opens the file at the given path, reads the first line, and converts the 
+ * hexadecimal string (e.g., "0x10de") into a 16-bit unsigned integer.
+ *
+ * @param filepath The absolute path to the sysfs attribute file (e.g., ".../vendor").
+ * @return The parsed 16-bit ID, or 0 if the file cannot be read, parsed, or the value exceeds 0xFFFF.
+ */
+uint16_t read_sysfs_hex(const char *filepath);
+
+/**
+ * Retrieves and prints human-readable information about a GPU card.
+ *
+ * Reads the 'vendor' and 'device' IDs from the card's sysfs directory.
+ * Translates known Vendor IDs (Nvidia, AMD, Intel) into string names.
+ * Formats the output as "Vendor DeviceID" (e.g., "Nvidia 0x1C03") and 
+ * passes it to the generic print_information handler.
+ *
+ * @param card_path The full path to the specific card's directory (e.g., "/sys/class/drm/card0").
+ */
+void process_gpu_entry(const char *card_path);
+
+/**
+ * Scans the DRM subsystem directory (/sys/class/drm/) to find available GPU cards.
+ *
+ * Iterates through directory entries looking for folders matching the "cardN" pattern,
+ * where N is a digit (e.g., "card0", "card1"). Subdirectories not matching this 
+ * pattern or containing non-numeric suffixes are skipped.
+ * For each valid card found, it triggers the information printing function.
+ */
+void scan_drm_cards();
+
 bool is_a_tty; 
 
 int main(void) {
@@ -260,6 +293,7 @@ int main(void) {
     print_information("Shell", shell_name);
     print_information("Locale", locale);
     print_information("CPU", cpu_information);
+    scan_drm_cards();
     print_information("RAM", ram_information);
     print_information("Swap", swap_information);
     scan_mounted_volumes();
@@ -625,7 +659,7 @@ void find_battery_node(char *out_buffer, size_t buf_size) {
 }
 
 void read_battery_attr(const char *filepath, char *out_buffer, size_t buf_size) {
-    char attr_buffer[BUFFER_SIZE] = {0};
+    char content_buf[BUFFER_SIZE] = {0};
 	FILE *sysfs_fp = fopen(filepath, "r");
     if (!sysfs_fp) {
         perror("fail to open sysfs battery file");
@@ -633,14 +667,14 @@ void read_battery_attr(const char *filepath, char *out_buffer, size_t buf_size) 
         return ;
     }
 
-    fgets(attr_buffer, sizeof(attr_buffer), sysfs_fp);
+    fgets(content_buf, sizeof(content_buf), sysfs_fp);
 
     fclose(sysfs_fp);	
 
-    size_t len = strlen(attr_buffer);
-    if (len > 0 && attr_buffer[len - 1] == '\n') attr_buffer[len - 1] = '\0';
+    size_t len = strlen(content_buf);
+    if (len > 0 && content_buf[len - 1] == '\n') content_buf[len - 1] = '\0';
 
-    snprintf(out_buffer, buf_size, "%s", attr_buffer);
+    snprintf(out_buffer, buf_size, "%s", content_buf);
 }
 
 void get_battery_information(char *label_out_buffer, char *information_out_buffer, size_t buf_size) {
@@ -732,4 +766,93 @@ void print_volume_usage(const char *mount_point, const struct statvfs *fs_stats,
              used_gb, total_gb, mount_entry->mnt_type);
 
     print_information(label, usage_info);
+}
+
+uint16_t read_sysfs_hex(const char *filepath) {
+    char content_buf[BUFFER_SIZE] = {0};
+    char *endptr;
+
+	FILE *sysfs_fp = fopen(filepath, "r");
+    if (!sysfs_fp) {
+        perror("fail to open sysfs battery file");
+        return 0;
+    }
+
+    fgets(content_buf, BUFFER_SIZE, sysfs_fp);
+
+    fclose(sysfs_fp);	
+
+    unsigned long val = strtoul(content_buf, &endptr, 16);
+
+    if (content_buf == endptr || val > 0xFFFF) return 0;
+
+    return (uint16_t)val;
+}
+
+void process_gpu_entry(const char *card_path) {
+    char sysfs_attr_path[BUFFER_SIZE] = "";
+    char output_buf[BUFFER_SIZE] = "";
+
+    snprintf(sysfs_attr_path, BUFFER_SIZE, "%s/device/vendor", card_path);
+    uint16_t vendor_id = read_sysfs_hex(sysfs_attr_path);
+
+    snprintf(sysfs_attr_path, BUFFER_SIZE, "%s/device/device", card_path);
+    uint16_t device_id = read_sysfs_hex(sysfs_attr_path);
+
+    const char *vendor_name = "Unknown";
+    char hex_vendor[16];
+
+    switch (vendor_id) {
+        case 0x1002: vendor_name = "AMD"; break;
+        case 0x10de: vendor_name = "Nvidia"; break;
+        case 0x8086: vendor_name = "Intel"; break;
+        default:
+            snprintf(hex_vendor, sizeof(hex_vendor), "0x%04X", vendor_id);
+            vendor_name = hex_vendor;
+            break;
+    }
+
+    snprintf(output_buf, BUFFER_SIZE, "%s 0x%04X", vendor_name, device_id);
+
+    print_information("GPU", output_buf);
+}
+
+void scan_drm_cards() {
+    struct dirent *dir_entry;
+    const char *gpu_directory = "/sys/class/drm/";
+    const char *prefix = "card";
+    size_t prefix_len = 4;
+
+    DIR *dir_handle = opendir(gpu_directory);
+    if (!dir_handle) {
+        fprintf(stderr, "Warning: direct failed for %s\n", gpu_directory);
+        return ;
+    }
+
+    char card_path[BUFFER_SIZE] = "";
+    while ((dir_entry = readdir(dir_handle)) != NULL) {
+        if (strncmp(dir_entry->d_name, prefix, prefix_len) != 0) continue;
+
+        const char *suffix = dir_entry->d_name + prefix_len;
+
+        if (*suffix == '\0') continue;
+
+        const char *cursor = suffix;
+        int valid_name = 1;
+        while (*cursor) {
+            if (!isdigit(*cursor)) {
+                valid_name = 0;
+                break;
+            }
+
+            cursor++;
+        }
+
+        if (!valid_name) continue;
+
+        snprintf(card_path, BUFFER_SIZE, "%s%s", gpu_directory, dir_entry->d_name);
+        process_gpu_entry(card_path);
+    }
+
+    closedir(dir_handle);
 }
