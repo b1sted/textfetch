@@ -690,6 +690,8 @@ void scan_mounted_volumes() {
             strcmp(mnt_entry->mnt_dir, "/boot/efi") == 0 ||
             strncmp(mnt_entry->mnt_dir, "/var", 4) == 0) continue;
 
+        if (strncmp(mnt_entry->mnt_dir, "/.", 2) == 0) continue;
+
         if (strcmp(mnt_entry->mnt_dir, "/") == 0) {
             snprintf(root_dev_source, BUFFER_SIZE, "%s", mnt_entry->mnt_fsname);
         }
