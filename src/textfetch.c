@@ -21,10 +21,10 @@
 
 #include "bitset.h"
 
-#define ANSI_BOLD             "\x1b[1m"
-#define ANSI_RESET            "\x1b[0m"
-#define BUFFER_SIZE           512
-#define BYTES_TO_MIB_DIVISOR  1048576ULL
+#define ANSI_BOLD            "\x1b[1m"
+#define ANSI_RESET           "\x1b[0m"
+#define BUFFER_SIZE          512
+#define BYTES_TO_MIB_DIVISOR 1048576ULL
 
 /**
  * Renders the user@hostname header with an underline separator.
@@ -32,9 +32,8 @@
  *
  * @param username Current user's login name.
  * @param nodename System hostname.
- * @param is_a_tty Flag indicating if stdout is a terminal.
  */
-void print_header(const char *username, const char *nodename, const bool is_a_tty);
+void print_header(const char *username, const char *nodename);
 
 /**
  * Prints a labeled system property formatted nicely.
@@ -42,9 +41,8 @@ void print_header(const char *username, const char *nodename, const bool is_a_tt
  *
  * @param label The property name (e.g., "OS", "Kernel").
  * @param information The property value.
- * @param is_a_tty Flag to enable/disable ANSI colors.
  */
-void print_information(const char *label, const char *information, const bool is_a_tty);
+void print_information(const char *label, const char *information);
 
 /**
  * Attempts to retrieve the distribution name from standard release files.
@@ -166,6 +164,8 @@ void read_battery_attr(const char *filepath, char *out_buffer, size_t buf_size);
  */
 void get_battery_information(char *label_out_buffer, char *information_out_buffer, size_t buf_size);
 
+bool is_a_tty; 
+
 int main(void) {
     struct utsname machine_info;
 
@@ -179,7 +179,7 @@ int main(void) {
 
     if (!username) username = "unknown";
 
-    const bool is_a_tty = isatty(STDOUT_FILENO);
+    is_a_tty = isatty(STDOUT_FILENO);
 
     char distro_name[BUFFER_SIZE] = {0};
 
@@ -222,22 +222,22 @@ int main(void) {
     char battery_information[BUFFER_SIZE] = {0};
     get_battery_information(battery_label, battery_information, BUFFER_SIZE);
 
-    print_header(username, nodename, is_a_tty);
-    print_information("OS", distro_name, is_a_tty);
-    print_information("Kernel", machine_info.release, is_a_tty);
-    print_information("Uptime", uptime_str, is_a_tty);
-    print_information("Processes", procs_str, is_a_tty);
-    print_information("Shell", shell_name, is_a_tty);
-    print_information("Locale", locale, is_a_tty);
-    print_information("CPU", cpu_information, is_a_tty);
-    print_information("RAM", ram_information, is_a_tty);
-    print_information("Swap", swap_information, is_a_tty);
-    if (strlen(battery_label) != 0) print_information(battery_label, battery_information, is_a_tty);
+    print_header(username, nodename);
+    print_information("OS", distro_name);
+    print_information("Kernel", machine_info.release);
+    print_information("Uptime", uptime_str);
+    print_information("Processes", procs_str);
+    print_information("Shell", shell_name);
+    print_information("Locale", locale);
+    print_information("CPU", cpu_information);
+    print_information("RAM", ram_information);
+    print_information("Swap", swap_information);
+    if (strlen(battery_label) != 0) print_information(battery_label, battery_information);
 
     return 0;
 }
 
-void print_header(const char *username, const char *nodename, const bool is_a_tty) {
+void print_header(const char *username, const char *nodename) {
     int print_len = strlen(username) + strlen(nodename) + 1;
 
     if (is_a_tty) {
@@ -250,7 +250,7 @@ void print_header(const char *username, const char *nodename, const bool is_a_tt
     printf("\n");
 }
 
-void print_information(const char *label, const char *information, const bool is_a_tty) {
+void print_information(const char *label, const char *information) {
     if (is_a_tty) {
         printf(ANSI_BOLD "%s: " ANSI_RESET, label);
     } else {
