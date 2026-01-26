@@ -10,10 +10,12 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <locale.h>
+#include <mntent.h>
 #include <pwd.h>
 #include <unistd.h>
 
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/sysinfo.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
@@ -25,6 +27,7 @@
 #define ANSI_RESET           "\x1b[0m"
 #define BUFFER_SIZE          512
 #define BYTES_TO_MIB_DIVISOR 1048576ULL
+#define BYTES_TO_GIB_DIVISOR (1024.0 * 1024.0 * 1024.0)
 
 /**
  * Renders the user@hostname header with an underline separator.
@@ -164,6 +167,33 @@ void read_battery_attr(const char *filepath, char *out_buffer, size_t buf_size);
  */
 void get_battery_information(char *label_out_buffer, char *information_out_buffer, size_t buf_size);
 
+/**
+ * Iterates through the system's mounted filesystems to identify and process physical storage devices.
+ *
+ * This function parses "/proc/mounts" and applies filters to exclude:
+ * - Virtual filesystems (checked via "/dev/" prefix).
+ * - Loopback devices (e.g., snapd, squashfs).
+ * - Specific system partitions (/boot, /var) and duplicate binds (e.g., /home on root).
+ *
+ * It retrieves filesystem statistics via statvfs() only for valid candidates 
+ * to ensure efficient processing before passing data to the display function.
+ */
+void scan_mounted_volumes();
+
+/**
+ * Calculates disk usage statistics and formats the output for display.
+ *
+ * Converts raw block counts into human-readable GiB format. Computes used space 
+ * as (Total - Free) to reflect physical occupancy.
+ * Generates a label with the mount point and a formatted string showing usage details 
+ * and filesystem type.
+ *
+ * @param mount_point The directory path where the filesystem is mounted.
+ * @param fs_stats    Pointer to the structure containing raw filesystem statistics (blocks).
+ * @param mount_entry Pointer to the mntent structure containing filesystem metadata (type, name).
+ */
+void print_volume_usage(const char *mount_point, const struct statvfs *fs_stats, const struct mntent *mount_entry);
+
 bool is_a_tty; 
 
 int main(void) {
@@ -232,6 +262,7 @@ int main(void) {
     print_information("CPU", cpu_information);
     print_information("RAM", ram_information);
     print_information("Swap", swap_information);
+    scan_mounted_volumes();
     if (strlen(battery_label) != 0) print_information(battery_label, battery_information);
 
     return 0;
@@ -635,4 +666,68 @@ void get_battery_information(char *label_out_buffer, char *information_out_buffe
     read_battery_attr(sysfs_attr_path, sysfs_attr_buffer, BUFFER_SIZE);
     snprintf(information_out_buffer + strlen(information_out_buffer), buf_size - strlen(information_out_buffer), 
              "(%s)", sysfs_attr_buffer);
+}
+
+void scan_mounted_volumes() {
+    struct mntent *mnt_entry;
+    struct statvfs fs_stats;
+    char root_dev_source[BUFFER_SIZE] = "";
+
+    FILE *mounts_file = fopen("/proc/mounts", "r");
+    if (!mounts_file) {
+        perror("fail to open /proc/mounts");
+        return;
+    }
+
+    while ((mnt_entry = getmntent(mounts_file)) != NULL) {
+        if (strncmp(mnt_entry->mnt_dir, "/run/user/", 10) == 0) continue;
+
+        if (strncmp(mnt_entry->mnt_fsname, "/dev/", 5) != 0) continue; 
+
+        if (strncmp(mnt_entry->mnt_fsname, "/dev/loop", 9) == 0) continue;
+
+        if (strcmp(mnt_entry->mnt_dir, "/boot") == 0 ||
+            strcmp(mnt_entry->mnt_dir, "/boot/efi") == 0 ||
+            strncmp(mnt_entry->mnt_dir, "/var", 4) == 0) continue;
+
+        if (strcmp(mnt_entry->mnt_dir, "/") == 0) {
+            snprintf(root_dev_source, BUFFER_SIZE, "%s", mnt_entry->mnt_fsname);
+        }
+
+        if (strcmp(mnt_entry->mnt_dir, "/home") == 0 && root_dev_source[0] != '\0') {
+            if (strcmp(mnt_entry->mnt_fsname, root_dev_source) == 0) {
+                continue;
+            }
+        }
+
+        if (statvfs(mnt_entry->mnt_dir, &fs_stats) != 0) {
+            fprintf(stderr, "Warning: statvfs failed for %s\n", mnt_entry->mnt_dir);
+            continue;
+        }
+
+        if (fs_stats.f_blocks == 0) continue; 
+
+        print_volume_usage(mnt_entry->mnt_dir, &fs_stats, mnt_entry);
+    }
+
+    fclose(mounts_file);
+}
+
+void print_volume_usage(const char *mount_point, const struct statvfs *fs_stats, const struct mntent *mount_entry) {
+    unsigned long long block_size = fs_stats->f_frsize;
+    unsigned long long total_size = (unsigned long long)fs_stats->f_blocks * block_size;
+    unsigned long long free_size  = (unsigned long long)fs_stats->f_bfree * block_size;
+    unsigned long long used_size  = total_size - free_size;
+
+    double total_gb = (double)total_size / BYTES_TO_GIB_DIVISOR;
+    double used_gb  = (double)used_size / BYTES_TO_GIB_DIVISOR;
+
+    char label[BUFFER_SIZE];
+    snprintf(label, BUFFER_SIZE, "Disk (%s)", mount_point);
+
+    char usage_info[BUFFER_SIZE];
+    snprintf(usage_info, BUFFER_SIZE, "%.02f GiB / %.02f GiB (%s)", 
+             used_gb, total_gb, mount_entry->mnt_type);
+
+    print_information(label, usage_info);
 }
