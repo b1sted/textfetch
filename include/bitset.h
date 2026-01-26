@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+
 #ifndef BITSET_H
 #define BITSET_H
 
