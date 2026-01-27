@@ -24,31 +24,12 @@
 #include <sys/wait.h>
 
 #include "bitset.h"
+#include "system.h"
 #include "ui.h"
 
 #define BUFFER_SIZE          512
 #define BYTES_TO_MIB_DIVISOR 1048576ULL
 #define BYTES_TO_GIB_DIVISOR (1024.0 * 1024.0 * 1024.0)
-
-/**
- * Attempts to retrieve the distribution name from standard release files.
- * Prioritizes PRETTY_NAME, falls back to NAME.
- *
- * @param dest_buffer Buffer to store the result string.
- * @param dest_len Size of the destination buffer.
- * @return 0 on success (name found), -1 if files cannot be read.
- */
-int get_distro_name(char *dest_buffer, const size_t dest_len);
-
-/**
- * Formats the uptime duration into a human-readable string.
- * Output format: "D days, HH:MM:SS" (e.g. "2 days, 10:05:01").
- *
- * @param uptime The time in seconds since system boot.
- * @param dest_buffer Buffer to store the resulting string.
- * @param dest_len Size of the destination buffer to prevent overflow.
- */
-void format_uptime(long uptime, char *dest_buffer, const size_t dest_len);
 
 /**
  * Retrieves the version string of the parent process's shell.
@@ -211,41 +192,6 @@ void process_gpu_entry(const char *card_path);
 void scan_drm_cards();
 
 int main(void) {
-    struct utsname machine_info;
-
-    if (uname(&machine_info) != 0) {
-        perror("uname");
-        return 1;
-    }
-    
-    const char *nodename = machine_info.nodename;
-    const char *username = getenv("USER");
-
-    if (!username) username = "unknown";
-
-    char distro_name[BUFFER_SIZE] = {0};
-
-    if (get_distro_name(distro_name, BUFFER_SIZE) != 0) {
-        fprintf(stderr, "Failed to read os-release\n");
-        snprintf(distro_name, sizeof(distro_name), "%s", machine_info.sysname);
-    }
-
-    int size_distro_name = sizeof(distro_name);
-    snprintf(distro_name + strlen(distro_name), size_distro_name - strlen(distro_name), " %s", machine_info.machine);
-
-    struct sysinfo system_info;
-
-    if (sysinfo(&system_info) != 0) {
-        perror("sysinfo");
-        return 1;
-    }
-
-    char uptime_str[BUFFER_SIZE] = {0};
-    format_uptime(system_info.uptime, uptime_str, BUFFER_SIZE);
-
-    char procs_str[BUFFER_SIZE] = {0};
-    snprintf(procs_str, sizeof(procs_str), "%u", system_info.procs);
-
     pid_t parent_pid = getppid();
     char shell_name[BUFFER_SIZE] = {0};
     if (get_parent_shell_name(parent_pid, shell_name, BUFFER_SIZE) != 0) return 1;
@@ -265,11 +211,11 @@ int main(void) {
     get_battery_information(battery_label, battery_information, BUFFER_SIZE);
 
     ui_init();
-    ui_render_header(username, nodename);
-    ui_print_info("OS", distro_name);
-    ui_print_info("Kernel", machine_info.release);
-    ui_print_info("Uptime", uptime_str);
-    ui_print_info("Processes", procs_str);
+    
+    system_init();
+    system_print_header();
+    system_print_info();
+    
     ui_print_info("Shell", shell_name);
     ui_print_info("Locale", locale);
     ui_print_info("CPU", cpu_information);
@@ -280,70 +226,6 @@ int main(void) {
     if (strlen(battery_label) != 0) ui_print_info(battery_label, battery_information);
 
     return 0;
-}
-
-int get_distro_name(char *dest_buffer, const size_t dest_len) {
-    FILE *release_file = fopen("/etc/os-release", "r");
-
-    if (!release_file) {
-        release_file = fopen("/usr/lib/os-release", "r");
-
-        if (!release_file) {
-            perror("fail to open os-release");
-            return -1;
-        }
-    }
-
-    char file_line[BUFFER_SIZE];
-    
-    while (fgets(file_line, sizeof(file_line), release_file)) {
-        char *delimiter_ptr = strchr(file_line, '=');
-        if (!delimiter_ptr) continue;
-
-        *delimiter_ptr = 0;
-        char *key = file_line;
-        char *value = delimiter_ptr + 1;
-
-        value[strcspn(value, "\n")] = 0;
-
-        if (value[0] == '"') {
-            value++;
-
-            size_t len = strlen(value);
-
-            if (len > 0 && value[len - 1] == '"') {
-                value[len - 1] = 0;
-            }
-        }
-
-        if (strcmp(key, "NAME") == 0) {
-            snprintf(dest_buffer, dest_len, "%s", value);
-        }
-
-        if (strcmp(key, "PRETTY_NAME") == 0) {
-            snprintf(dest_buffer, dest_len, "%s", value);
-            break;
-        }
-    }
-
-    fclose(release_file);
-
-    return 0;
-}
-
-void format_uptime(long uptime, char *dest_buffer, const size_t dest_len) {
-    long days = uptime / 86400;
-    uptime %= 86400;
-    long hours = uptime / 3600;
-    uptime %= 3600;
-    long minutes = uptime / 60;
-    long seconds = uptime % 60;
-
-    if (days != 0) {
-        snprintf(dest_buffer, dest_len, "%ld days, %02ld:%02ld:%02ld", days, hours, minutes, seconds);
-    } else {
-        snprintf(dest_buffer, dest_len, "%02ld:%02ld:%02ld", hours, minutes, seconds);
-    }
 }
 
 int get_parent_shell_name(pid_t ppid, char *dest_buffer, const size_t dest_len) {
