@@ -24,30 +24,11 @@
 #include <sys/wait.h>
 
 #include "bitset.h"
+#include "ui.h"
 
-#define ANSI_BOLD            "\x1b[1m"
-#define ANSI_RESET           "\x1b[0m"
 #define BUFFER_SIZE          512
 #define BYTES_TO_MIB_DIVISOR 1048576ULL
 #define BYTES_TO_GIB_DIVISOR (1024.0 * 1024.0 * 1024.0)
-
-/**
- * Renders the user@hostname header with an underline separator.
- * Colors are applied only if the output is a TTY.
- *
- * @param username Current user's login name.
- * @param nodename System hostname.
- */
-void print_header(const char *username, const char *nodename);
-
-/**
- * Prints a labeled system property formatted nicely.
- * Example output: "OS: Debian GNU/Linux"
- *
- * @param label The property name (e.g., "OS", "Kernel").
- * @param information The property value.
- */
-void print_information(const char *label, const char *information);
 
 /**
  * Attempts to retrieve the distribution name from standard release files.
@@ -213,7 +194,7 @@ uint16_t read_sysfs_hex(const char *filepath);
  * Reads the 'vendor' and 'device' IDs from the card's sysfs directory.
  * Translates known Vendor IDs (Nvidia, AMD, Intel) into string names.
  * Formats the output as "Vendor DeviceID" (e.g., "Nvidia 0x1C03") and 
- * passes it to the generic print_information handler.
+ * passes it to the generic ui_print_info handler.
  *
  * @param card_path The full path to the specific card's directory (e.g., "/sys/class/drm/card0").
  */
@@ -229,8 +210,6 @@ void process_gpu_entry(const char *card_path);
  */
 void scan_drm_cards();
 
-bool is_a_tty; 
-
 int main(void) {
     struct utsname machine_info;
 
@@ -243,8 +222,6 @@ int main(void) {
     const char *username = getenv("USER");
 
     if (!username) username = "unknown";
-
-    is_a_tty = isatty(STDOUT_FILENO);
 
     char distro_name[BUFFER_SIZE] = {0};
 
@@ -287,44 +264,22 @@ int main(void) {
     char battery_information[BUFFER_SIZE] = {0};
     get_battery_information(battery_label, battery_information, BUFFER_SIZE);
 
-    print_header(username, nodename);
-    print_information("OS", distro_name);
-    print_information("Kernel", machine_info.release);
-    print_information("Uptime", uptime_str);
-    print_information("Processes", procs_str);
-    print_information("Shell", shell_name);
-    print_information("Locale", locale);
-    print_information("CPU", cpu_information);
+    ui_init();
+    ui_render_header(username, nodename);
+    ui_print_info("OS", distro_name);
+    ui_print_info("Kernel", machine_info.release);
+    ui_print_info("Uptime", uptime_str);
+    ui_print_info("Processes", procs_str);
+    ui_print_info("Shell", shell_name);
+    ui_print_info("Locale", locale);
+    ui_print_info("CPU", cpu_information);
     scan_drm_cards();
-    print_information("RAM", ram_information);
-    print_information("Swap", swap_information);
+    ui_print_info("RAM", ram_information);
+    ui_print_info("Swap", swap_information);
     scan_mounted_volumes();
-    if (strlen(battery_label) != 0) print_information(battery_label, battery_information);
+    if (strlen(battery_label) != 0) ui_print_info(battery_label, battery_information);
 
     return 0;
-}
-
-void print_header(const char *username, const char *nodename) {
-    int print_len = strlen(username) + strlen(nodename) + 1;
-
-    if (is_a_tty) {
-        printf(ANSI_BOLD "%s@%s\n" ANSI_RESET, username, nodename);
-    } else {
-        printf("%s@%s\n", username, nodename);
-    }
-
-    for (int i = 0; i < print_len; i++) putchar('-');
-    printf("\n");
-}
-
-void print_information(const char *label, const char *information) {
-    if (is_a_tty) {
-        printf(ANSI_BOLD "%s: " ANSI_RESET, label);
-    } else {
-        printf("%s: ", label);
-    }
-
-    printf("%s\n", information);
 }
 
 int get_distro_name(char *dest_buffer, const size_t dest_len) {
@@ -767,7 +722,7 @@ void print_volume_usage(const char *mount_point, const struct statvfs *fs_stats,
     snprintf(usage_info, BUFFER_SIZE, "%.02f GiB / %.02f GiB (%s)", 
              used_gb, total_gb, mount_entry->mnt_type);
 
-    print_information(label, usage_info);
+    ui_print_info(label, usage_info);
 }
 
 uint16_t read_sysfs_hex(const char *filepath) {
@@ -816,7 +771,7 @@ void process_gpu_entry(const char *card_path) {
 
     snprintf(output_buf, BUFFER_SIZE, "%s 0x%04X", vendor_name, device_id);
 
-    print_information("GPU", output_buf);
+    ui_print_info("GPU", output_buf);
 }
 
 void scan_drm_cards() {
