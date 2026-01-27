@@ -1,26 +1,48 @@
-CC ?= gcc
-SRCS = src/textfetch.c src/bitset.c
-HEADERS = include/bitset.h
+CC          ?= gcc
+CPPFLAGS    += -Iinclude -MMD -MP
+CFLAGS      += -Wall -Wextra -std=c99
+LDFLAGS     += 
 
-CFLAGS += -O3 -DNDEBUG -Wall -Wextra -std=c99 -Iinclude -ffunction-sections -fdata-sections
-LDFLAGS += -Wl,--gc-sections -s
+BINDIR      = bin
+OBJDIR      = obj
+SRCDIR      = src
+TARGET      = $(BINDIR)/textfetch
+TARGET_DEV  = $(BINDIR)/textfetch-dev
 
-DEBUG_FLAGS = -Wall -Wextra -std=c99 -Iinclude -g -O0
+SRCS        = $(wildcard $(SRCDIR)/*.c)
 
-.PHONY: all debug clean
+OBJS_REL    = $(SRCS:$(SRCDIR)/%.c=$(OBJDIR)/release/%.o)
+OBJS_DEV    = $(SRCS:$(SRCDIR)/%.c=$(OBJDIR)/dev/%.o)
 
-all: bin/textfetch
+DEPS        = $(OBJS_REL:.o=.d) $(OBJS_DEV:.o=.d)
 
-debug: bin/textfetch-debug
+REL_CFLAGS  = -O3 -DNDEBUG -ffunction-sections -fdata-sections
+REL_LDFLAGS = -Wl,--gc-sections -s
 
-bin/textfetch: $(SRCS) $(HEADERS) | bin
-	$(CC) $(CFLAGS) $(LDFLAGS) $(SRCS) -o $@
+DEV_CFLAGS  = -g -O0 -DDEBUG
 
-bin/textfetch-debug: $(SRCS) $(HEADERS) | bin
-	$(CC) $(DEBUG_FLAGS) $(SRCS) -o $@
+.PHONY: all dev clean
 
-bin:
-	mkdir -p bin
+all: $(TARGET)
+
+dev: $(TARGET_DEV)
+
+$(TARGET): $(OBJS_REL) | $(BINDIR)
+	$(CC) $(CFLAGS) $(REL_CFLAGS) $^ -o $@ $(LDFLAGS) $(REL_LDFLAGS)
+
+$(TARGET_DEV): $(OBJS_DEV) | $(BINDIR)
+	$(CC) $(CFLAGS) $(DEV_CFLAGS) $^ -o $@ $(LDFLAGS)
+
+$(OBJDIR)/release/%.o: $(SRCDIR)/%.c | $(OBJDIR)/release
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(REL_CFLAGS) -c $< -o $@
+
+$(OBJDIR)/dev/%.o: $(SRCDIR)/%.c | $(OBJDIR)/dev
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(DEV_CFLAGS) -c $< -o $@
+
+$(BINDIR) $(OBJDIR)/release $(OBJDIR)/dev:
+	mkdir -p $@
+
+-include $(DEPS)
 
 clean:
-	rm -rf bin
+	rm -rf $(BINDIR) $(OBJDIR)
