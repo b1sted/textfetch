@@ -25,23 +25,12 @@
 
 #include "bitset.h"
 #include "system.h"
+#include "terminal.h"
 #include "ui.h"
 
 #define BUFFER_SIZE          512
 #define BYTES_TO_MIB_DIVISOR 1048576ULL
 #define BYTES_TO_GIB_DIVISOR (1024.0 * 1024.0 * 1024.0)
-
-/**
- * Retrieves the version string of the parent process's shell.
- * It identifies the shell binary via /proc, executes it with the '--version' flag,
- * and captures the first line of the standard output.
- *
- * @param ppid The process ID of the parent process (used to determine the shell name).
- * @param dest_buffer The buffer where the resulting version string will be stored.
- * @param dest_len The maximum size of the destination buffer.
- * @return Returns 0 on success, or a non-zero error code on failure.
- */
-int get_parent_shell_name(pid_t ppid, char *dest_buffer, const size_t dest_len);
 
 /**
  * Retrieves the CPU brand string using CPUID instructions.
@@ -192,13 +181,6 @@ void process_gpu_entry(const char *card_path);
 void scan_drm_cards();
 
 int main(void) {
-    pid_t parent_pid = getppid();
-    char shell_name[BUFFER_SIZE] = {0};
-    if (get_parent_shell_name(parent_pid, shell_name, BUFFER_SIZE) != 0) return 1;
-
-    char *locale = setlocale(LC_ALL, "");
-    if (!locale) locale = "-";
-
     char cpu_information[BUFFER_SIZE] = {0};
     get_cpu_information(cpu_information, sizeof(cpu_information));
 
@@ -216,85 +198,14 @@ int main(void) {
     system_print_header();
     system_print_info();
     
-    ui_print_info("Shell", shell_name);
-    ui_print_info("Locale", locale);
+    terminal_print_info();
+
     ui_print_info("CPU", cpu_information);
     scan_drm_cards();
     ui_print_info("RAM", ram_information);
     ui_print_info("Swap", swap_information);
     scan_mounted_volumes();
     if (strlen(battery_label) != 0) ui_print_info(battery_label, battery_information);
-
-    return 0;
-}
-
-int get_parent_shell_name(pid_t ppid, char *dest_buffer, const size_t dest_len) {
-    char shell_proc_path[BUFFER_SIZE] = {0};
-    snprintf(shell_proc_path, sizeof(shell_proc_path), "/proc/%d/comm", ppid);
-
-    FILE *shell_proc_file = fopen(shell_proc_path, "r");
-    if (!shell_proc_file) {
-        perror("fail to open comm file");
-        return -1;
-    }
-
-    char buffer[BUFFER_SIZE];
-    if (fgets(buffer, BUFFER_SIZE, shell_proc_file) == NULL) {
-        fclose(shell_proc_file);
-        return -1;
-    }
-    fclose(shell_proc_file);
-
-    buffer[strcspn(buffer, "\n")] = 0;
-
-    char binary_path[BUFFER_SIZE] = "/usr/bin/";
-    strncat(binary_path, buffer, sizeof(binary_path) - strlen(binary_path) - 1);
-    
-    int pipefd[2]; // [0] - read, [1] - write
-
-    if (pipe(pipefd) == -1) {
-        perror("pipe failed");
-        return 1;
-    }
-
-    pid_t pid = fork();
-    
-    if (pid == -1) {
-        perror("fork failed");
-        return 1;
-    } else if (pid == 0) {
-        close(pipefd[0]);
-
-        dup2(pipefd[1], STDOUT_FILENO);
-        close(pipefd[1]);
-
-        execlp(binary_path, buffer, "--version", NULL);
-
-        perror("exec failed");
-        exit(1); 
-    } else {
-        close(pipefd[1]);
-        
-        FILE *stream = fdopen(pipefd[0], "r");
-        if (!stream) {
-            perror("fdopen");
-            close(pipefd[0]);
-            wait(NULL);
-            return -1;
-        }
-
-        if (fgets(dest_buffer, dest_len, stream) != NULL) {
-            size_t len = strlen(dest_buffer);
-            if (len > 0 && dest_buffer[len - 1] == '\n') {
-                dest_buffer[len - 1] = '\0';
-            }
-        } else {
-            snprintf(dest_buffer, dest_len, "%s", buffer);
-        }
-
-        fclose(stream);
-        wait(NULL);
-    }
 
     return 0;
 }
