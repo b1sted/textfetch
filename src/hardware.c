@@ -8,7 +8,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <cpuid.h>
+#if defined(__x86_64__) || defined(__i386__)
+    #include <cpuid.h>
+#endif
+
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -44,8 +47,9 @@
 static void hw_get_cpu_info(char *out_buf, const size_t buf_size);
 
 /**
- * Retrieves the CPU brand string using CPUID leaf instructions.
- * Trims trailing whitespace from the resulting string.
+ * Retrieves the CPU brand string.
+ * On x86/i386, it uses the CPUID instruction. On other architectures, 
+ * it falls back to parsing /proc/cpuinfo for the 'model name' field.
  * 
  * @param model_buf The buffer to store the model name.
  */
@@ -197,17 +201,18 @@ static void hw_get_cpu_info(char *out_buf, const size_t buf_size) {
              cpu_model_name, phy_core_count, frequency_ghz, freq_fractional);
 }
 
+#if defined(__x86_64__) || defined(__i386__)
 static void hw_get_cpu_model(char *model_buf) {
-    unsigned int cpuid_regs[4];
+    unsigned int regs[4];
     char *write_cursor = model_buf;
 
     for (unsigned int leaf_id = 0x80000002; leaf_id <= 0x80000004; leaf_id++) {
-        if (__get_cpuid(leaf_id, &cpuid_regs[0], &cpuid_regs[1], &cpuid_regs[2], &cpuid_regs[3]) == 0) {
+        if (__get_cpuid(leaf_id, &regs[0], &regs[1], &regs[2], &regs[3]) == 0) {
             return ;
         }
 
-        memcpy(write_cursor, cpuid_regs, sizeof(cpuid_regs));
-        write_cursor += sizeof(cpuid_regs);
+        memcpy(write_cursor, regs, sizeof(regs));
+        write_cursor += sizeof(regs);
     }
 
     *write_cursor = '\0';
@@ -221,6 +226,36 @@ static void hw_get_cpu_model(char *model_buf) {
 
     return ;
 }
+#else
+static void hw_get_cpu_model(char *model_buf) {
+    FILE *fp = fopen("/proc/cpuinfo", "r");
+    if (!fp) {
+        fprintf(stderr, "Error: failed to open CPU info file: %s\n", strerror(errno));
+        return ;
+    }
+
+    char line[LINE_BUFFER];
+    while (fgets(line, LINE_BUFFER, fp)) {
+        char *delim = strchr(line, ':');
+        if (!delim) continue;
+
+        *delim = 0;
+        char *key = line;
+        char *value = delim + 1;
+
+        value[strcspn(value, "\n")] = 0;
+
+        if (value[0] == ' ') value++;
+
+        if (strncmp(key, "model name", 10) == 0) {
+            snprintf(model_buf, LINE_BUFFER, "%s", value);
+            break;
+        }
+    }
+
+    fclose(fp);
+}
+#endif
 
 static void hw_get_cpu_cores(uint32_t *core_count) {
     struct stat sb;
@@ -392,14 +427,16 @@ static void hw_get_mem_info(char *ram_buf, char *swap_buf, const size_t buf_size
 
     if (ram_size > 0) {
         uint64_t used_ram = ram_size - ram_available;
-        snprintf(ram_buf, buf_size, "%lu MiB / %lu MiB", 
-                 used_ram / 1024, ram_size / 1024);
+        snprintf(ram_buf, buf_size, "%llu MiB / %llu MiB", 
+                 (unsigned long long)(used_ram / 1024), 
+                 (unsigned long long)(ram_size / 1024));
     }
 
     if (swap_size > 0) {
         uint64_t used_swap = swap_size - swap_free;
-        snprintf(swap_buf, buf_size, "%lu MiB / %lu MiB", 
-                 used_swap / 1024, swap_size / 1024);
+        snprintf(swap_buf, buf_size, "%llu MiB / %llu MiB", 
+                 (unsigned long long)(used_swap / 1024), 
+                 (unsigned long long)(swap_size / 1024));
     }
 }
 
@@ -510,16 +547,16 @@ static void hw_find_battery(char *out_buf, const size_t buf_size) {
         char type_path[PATH_MAX];
         snprintf(type_path, sizeof(type_path), "%s%s/type", power_path, entry->d_name);
 
-        FILE *f = fopen(type_path, "r");
-        if (!f) continue;
+        FILE *fp = fopen(type_path, "r");
+        if (!fp) continue;
 
         char buf[SMALL_BUFFER];
-        if (fgets(buf, SMALL_BUFFER, f) && strncmp(buf, "Battery", 7) == 0) {
+        if (fgets(buf, SMALL_BUFFER, fp) && strncmp(buf, "Battery", 7) == 0) {
             snprintf(out_buf, buf_size, "%.*s", (int)(buf_size - 1), entry->d_name);
-            fclose(f);
+            fclose(fp);
             break;
         }
-        fclose(f);
+        fclose(fp);
     }
 
     closedir(dir);
