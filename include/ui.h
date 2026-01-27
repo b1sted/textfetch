@@ -3,8 +3,11 @@
 #ifndef UI_H
 #define UI_H
 
-#define ANSI_BOLD            "\x1b[1m"
-#define ANSI_RESET           "\x1b[0m"
+#define ANSI_BOLD    "\x1b[1m"
+#define ANSI_RESET   "\x1b[0m"
+
+#define SMALL_BUFFER 64
+#define LINE_BUFFER  256
 
 /**
  * Initializes the user interface module.
