@@ -230,7 +230,7 @@ static void hw_get_cpu_model(char *model_buf) {
 static void hw_get_cpu_model(char *model_buf) {
     FILE *fp = fopen("/proc/cpuinfo", "r");
     if (!fp) {
-        fprintf(stderr, "Error: failed to open CPU info file: %s\n", strerror(errno));
+        V_PRINTF("Error: failed to open CPU info file: %s\n", strerror(errno));
         return ;
     }
 
@@ -280,12 +280,12 @@ static void hw_get_cpu_cores(uint32_t *core_count) {
         int core_id = -1;
         FILE *core_file = fopen(core_path, "r");
         if (!core_file) {
-            fprintf(stderr, "Error: failed to open CPU core ID file: %s\n", strerror(errno));
+            V_PRINTF("Error: failed to open CPU core ID file: %s\n", strerror(errno));
             break;
         }
 
         if (fscanf(core_file, "%d", &core_id) != 1) {
-            fprintf(stderr, "Error: failed to parse numeric value from sysfs\n");
+            V_PRINTF("Error: failed to parse numeric value from sysfs\n");
         }
 
         fclose(core_file);
@@ -299,13 +299,13 @@ static void hw_get_cpu_cores(uint32_t *core_count) {
 static void hw_get_cpu_freq(uint32_t *out_ghz, uint32_t *out_frac) {
     FILE *fp = fopen("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq", "r");
     if (!fp) {
-        fprintf(stderr, "Error: failed to open CPU frequency file: %s\n", strerror(errno));
+        V_PRINTF("Error: failed to open CPU frequency file: %s\n", strerror(errno));
         return ;
     } 
 
     uint32_t frequency_khz = 0;
     if (fscanf(fp, "%u", &frequency_khz) == -1) {
-        fprintf(stderr, "Error: failed to parse numeric value from sysfs\n");
+        V_PRINTF("Error: failed to parse numeric value from sysfs\n");
     }
 
     fclose(fp);
@@ -328,7 +328,7 @@ static void hw_scan_gpus(void) {
 
     DIR *dir_handle = opendir(gpu_directory);
     if (!dir_handle) {
-        fprintf(stderr, "Error: failed to open GPU directory %s: %s\n", 
+        V_PRINTF("Error: failed to open GPU directory %s: %s\n", 
                 gpu_directory, strerror(errno));
         return ;
     }
@@ -393,7 +393,7 @@ static void hw_process_gpu(const char *card_path) {
 static void hw_get_mem_info(char *ram_buf, char *swap_buf, const size_t buf_size) {
     FILE *memory_file = fopen("/proc/meminfo", "r");
     if (!memory_file) {
-        fprintf(stderr, "Error: failed to open /proc/meminfo: %s\n", strerror(errno));
+        V_PRINTF("Error: failed to open /proc/meminfo: %s\n", strerror(errno));
         snprintf(ram_buf, buf_size, "- MiB / - MiB");
         snprintf(swap_buf, buf_size, "- MiB / - MiB");
         return ;
@@ -449,7 +449,7 @@ static void hw_scan_disks(void) {
 
     FILE *mounts_file = fopen("/proc/mounts", "r");
     if (!mounts_file) {
-        fprintf(stderr, "Error: failed to open /proc/mounts: %s\n", strerror(errno));
+        V_PRINTF("Error: failed to open /proc/mounts: %s\n", strerror(errno));
         return;
     }
 
@@ -476,7 +476,7 @@ static void hw_scan_disks(void) {
         }
 
         if (statvfs(mnt_entry->mnt_dir, &fs) != 0) {
-            fprintf(stderr, "Error: statvfs failed for %s: %s\n", 
+            V_PRINTF("Error: statvfs failed for %s: %s\n", 
                     mnt_entry->mnt_dir, strerror(errno));
             continue;
         }
@@ -568,7 +568,7 @@ static uint16_t hw_read_hex(const char *path) {
 
 	FILE *sysfs_fp = fopen(path, "r");
     if (!sysfs_fp) {
-        fprintf(stderr, "Error: failed to open sysfs file: %s\n", strerror(errno));
+        V_PRINTF("Error: failed to open sysfs file: %s\n", strerror(errno));
         return 0;
     }
 
@@ -588,7 +588,7 @@ static void hw_read_attr(const char *path, char *out_buf, const size_t buf_size)
 
 	FILE *sysfs_fp = fopen(path, "r");
     if (!sysfs_fp) {
-        fprintf(stderr, "Error: failed to open sysfs file: %s\n", strerror(errno));
+        V_PRINTF("Error: failed to open sysfs file: %s\n", strerror(errno));
         snprintf(out_buf, buf_size, "-");
         return ;
     }

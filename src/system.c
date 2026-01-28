@@ -59,7 +59,7 @@ void system_init(void) {
     memset(&sys_info, 0, sizeof(struct utsname));
 
     if (uname(&sys_info) != 0) {
-        fprintf(stderr, "Error: uname failed: %s\n", strerror(errno));
+        V_PRINTF("Error: uname failed: %s\n", strerror(errno));
 
         strncpy(sys_info.sysname,  fallback, sizeof(sys_info.sysname)  - 1);
         strncpy(sys_info.nodename, fallback, sizeof(sys_info.nodename) - 1);
@@ -70,7 +70,7 @@ void system_init(void) {
     memset(&sys_stat, 0, sizeof(struct sysinfo));
 
     if (sysinfo(&sys_stat) != 0) {
-        fprintf(stderr, "Error: sysinfo failed: %s\n", strerror(errno));
+        V_PRINTF("Error: sysinfo failed: %s\n", strerror(errno));
 
         sys_stat.uptime = 0;
         sys_stat.procs = 0;
@@ -105,7 +105,7 @@ static void sys_get_identity(char *out_buf, const size_t buf_size) {
     uid_t uid = geteuid();
 
     if ((pwd = getpwuid(uid)) == NULL) {
-        fprintf(stderr, "Error: getpwuid failed: %s\n", strerror(errno));
+        V_PRINTF("Error: getpwuid failed: %s\n", strerror(errno));
         snprintf(out_buf, buf_size, "unknown");
         return ;
     }
@@ -119,7 +119,7 @@ static void sys_get_distro(char *out_buf, const size_t buf_size) {
         fp = fopen("/usr/lib/os-release", "r");
 
         if (!fp) {
-            fprintf(stderr, "Error: open os-release file failed: %s\n", strerror(errno));
+            V_PRINTF("Error: open os-release file failed: %s\n", strerror(errno));
             snprintf(out_buf, buf_size, "%s %s", sys_info.sysname, sys_info.machine);
             return ;
         }

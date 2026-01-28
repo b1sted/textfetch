@@ -49,8 +49,7 @@ static void term_get_shell(char *out_buf, const size_t buf_size) {
 
     FILE *fp = fopen(proc_path, "r");
     if (!fp) {
-        fprintf(stderr, "Error: failed to open %s: %s\n", 
-                proc_path, strerror(errno));
+        V_PRINTF("Error: failed to open %s: %s\n", proc_path, strerror(errno));
         return ;
     }
 
@@ -70,14 +69,14 @@ static void term_get_shell(char *out_buf, const size_t buf_size) {
     int pipefd[2]; // [0] - read, [1] - write
 
     if (pipe(pipefd) == -1) {
-        fprintf(stderr, "Error: pipe failed: %s\n", strerror(errno));
+        V_PRINTF("Error: pipe failed: %s\n", strerror(errno));
         return ;
     }
 
     pid_t pid = fork();
     
     if (pid == -1) {
-        fprintf(stderr, "Error: fork failed: %s\n", strerror(errno));
+        V_PRINTF("Error: fork failed: %s\n", strerror(errno));
         return ;
     } else if (pid == 0) {
         close(pipefd[0]);
@@ -87,15 +86,14 @@ static void term_get_shell(char *out_buf, const size_t buf_size) {
 
         execlp(bin_path, comm_buf, "--version", NULL);
 
-        fprintf(stderr, "Error: exec failed for %s: %s\n", 
-                bin_path, strerror(errno));
+        V_PRINTF("Error: exec failed for %s: %s\n", bin_path, strerror(errno));
         exit(1); 
     } else {
         close(pipefd[1]);
         
         FILE *pipe_stream = fdopen(pipefd[0], "r");
         if (!pipe_stream) {
-            fprintf(stderr, "Error: fdopen failed: %s\n", strerror(errno));
+            V_PRINTF("Error: fdopen failed: %s\n", strerror(errno));
             close(pipefd[0]);
             wait(NULL);
             return ;

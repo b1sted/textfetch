@@ -3,6 +3,8 @@
 #ifndef UI_H
 #define UI_H
 
+#include "config.h"
+
 #define ANSI_BOLD    "\x1b[1m"
 #define ANSI_RESET   "\x1b[0m"
 
@@ -10,11 +12,18 @@
 #define LINE_BUFFER  256
 
 /**
- * Initializes the user interface module.
- * Detects terminal capabilities (TTY) to determine whether ANSI color 
- * formatting should be enabled for all subsequent output.
+ * Verbose perror wrapper.
+ * Only prints the system error message if the verbose flag is set.
  */
-void ui_init(void);
+#define V_PERROR(msg) \
+    do { if (cfg_is_verbose()) perror(msg); } while (0)
+
+/**
+ * Verbose formatted print wrapper.
+ * Sends output to stderr only if the verbose flag is set.
+ */
+#define V_PRINTF(fmt, ...) \
+    do { if (cfg_is_verbose()) fprintf(stderr, fmt, ##__VA_ARGS__); } while (0)
 
 /**
  * Renders the user@hostname header with an underline separator.
@@ -33,5 +42,20 @@ void ui_render_header(const char *username, const char *nodename);
  * @param information The property value.
  */
 void ui_print_info(const char *label, const char *information);
+
+/**
+ * Displays the usage instructions and available command-line options.
+ * Automatically adjusts formatting based on the global color configuration.
+ *
+ * @param prog_name The name of the executable, typically passed from argv[0].
+ */
+void ui_print_help(const char *prog_name);
+
+/**
+ * Displays the current program version information.
+ *
+ * @param app_version The version string to display (e.g., "1.0-alpha").
+ */
+void ui_print_version(const char *app_version);
 
 #endif // UI_H
