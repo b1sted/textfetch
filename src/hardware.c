@@ -30,6 +30,7 @@
 
 #include "bitset.h"
 #include "hardware.h"
+#include "hashtable.h"
 #include "ui.h"
 
 /**
@@ -445,7 +446,10 @@ static void hw_scan_disks(void) {
     struct statvfs fs;
     memset(&fs, 0, sizeof(struct statvfs));
 
-    char root_dev_source[PATH_MAX] = "";
+    const char *ignore_name[] = {
+        "/.", "/boot", "/mnt/wslg/distro", "/run/user", "/var", 
+        "/apex", "/bootstrap-apex", NULL
+    };
 
     FILE *mounts_file = fopen("/proc/mounts", "r");
     if (!mounts_file) {
@@ -453,27 +457,24 @@ static void hw_scan_disks(void) {
         return;
     }
 
+    string_set_t *outputted_partitions = strset_create(INITIAL_CAPACITY);
+
     while ((mnt_entry = getmntent(mounts_file)) != NULL) {
         if (strncmp(mnt_entry->mnt_fsname, "/dev/", 5) != 0) continue; 
-
         if (strncmp(mnt_entry->mnt_fsname, "/dev/loop", 9) == 0) continue;
+        
+        if (strcmp(mnt_entry->mnt_type, "fuse") == 0 ||
+            strcmp(mnt_entry->mnt_type, "erofs") == 0) continue;
 
-        if (strncmp(mnt_entry->mnt_dir, "/.", 2) == 0 ||
-            strcmp(mnt_entry->mnt_dir, "/boot") == 0 ||
-            strcmp(mnt_entry->mnt_dir, "/boot/efi") == 0 ||
-            strcmp(mnt_entry->mnt_dir, "/mnt/wslg/distro") == 0 ||
-            strncmp(mnt_entry->mnt_dir, "/run/user/", 10) == 0 ||
-            strncmp(mnt_entry->mnt_dir, "/var", 4) == 0) continue;
-
-        if (strcmp(mnt_entry->mnt_dir, "/") == 0) {
-            snprintf(root_dev_source, PATH_MAX, "%s", mnt_entry->mnt_fsname);
-        }
-
-        if (strcmp(mnt_entry->mnt_dir, "/home") == 0 && root_dev_source[0] != '\0') {
-            if (strcmp(mnt_entry->mnt_fsname, root_dev_source) == 0) {
-                continue;
+        bool is_ignore = false;
+        for (int i = 0; ignore_name[i] != NULL; i++) {
+            if (strncmp(mnt_entry->mnt_dir, ignore_name[i], 
+                        strlen(ignore_name[i])) == 0) {
+                is_ignore = true;
             }
         }
+
+        if (is_ignore) continue;
 
         if (statvfs(mnt_entry->mnt_dir, &fs) != 0) {
             V_PRINTF("Error: statvfs failed for %s: %s\n", 
@@ -483,9 +484,13 @@ static void hw_scan_disks(void) {
 
         if (fs.f_blocks == 0) continue; 
 
-        hw_print_disk(mnt_entry->mnt_dir, &fs, mnt_entry);
+        if (!strset_contains(outputted_partitions, mnt_entry->mnt_fsname)) {
+            strset_add(outputted_partitions, mnt_entry->mnt_fsname);
+            hw_print_disk(mnt_entry->mnt_dir, &fs, mnt_entry);
+        }
     }
 
+    strset_destroy(outputted_partitions);
     fclose(mounts_file);
 }
 
