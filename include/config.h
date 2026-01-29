@@ -8,15 +8,38 @@
 #define APP_VERSION "1.0-alpha"
 
 /**
+ * Checks if force kibibytes (KiB) output is enabled.
+ * @return true if the -k or --kibibytes flag was provided.
+ */
+bool cfg_is_kib(void);
+
+/**
+ * Checks if force mebibytes (MiB) output is enabled.
+ * @return true if the -m or --mebibytes flag was provided.
+ */
+bool cfg_is_mib(void);
+
+/**
+ * Checks if force gibibytes (GiB) output is enabled.
+ * @return true if the -g or --gibibytes flag was provided.
+ */
+bool cfg_is_gib(void);
+
+/**
  * Checks if verbose logging is enabled.
- * @return true if the --verbose flag was provided.
+ * @return true if the -v or --verbose flag was provided.
  */
 bool cfg_is_verbose(void);
 
 /**
- * Checks if color output should be used.
- * Default is true if stdout is a TTY, unless overridden by --no-color.
- * @return true if colors are enabled.
+ * Checks if color output is enabled.
+ * 
+ * Logic:
+ * - Enabled by default if stdout is a TTY.
+ * - Automatically disabled if the NO_COLOR environment variable is set.
+ * - Can be explicitly disabled via the --no-color command-line flag.
+ * 
+ * @return true if colors should be used for output.
  */
 bool cfg_is_color(void);
 

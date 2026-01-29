@@ -146,8 +146,23 @@ static void hw_find_battery(char *out_buf, const size_t buf_size);
 
 /**
  * Internal Utility Helpers
- * Low-level functions to read hexadecimal and string attributes from sysfs files.
+ * Low-level functions for sysfs attribute reading and data formatting.
  */
+
+/**
+ * Formats used and total sizes into a human-readable string.
+ * 
+ * Respects user settings for force units (KiB, MiB, GiB). If no force flag is set,
+ * it auto-scales the values. Used and total sizes are scaled independently
+ * to provide maximum granularity.
+ * 
+ * @param used_size  The used size in bytes.
+ * @param total_size The total size in bytes.
+ * @param out_buf    Destination buffer for the formatted string.
+ * @param buf_size   Size of the destination buffer.
+ */
+static void format_bytes(double used_size, double total_size, char *out_buf, 
+                         const size_t buf_size);
 
 /**
  * Reads a 16-bit hexadecimal value from a sysfs attribute file.
@@ -176,8 +191,11 @@ void hardware_print_info(void) {
     char ram_buf[LINE_BUFFER] = {0};
     char swap_buf[LINE_BUFFER] = {0};
     hw_get_mem_info(ram_buf, swap_buf, LINE_BUFFER);
-    ui_print_info("RAM", ram_buf);
-    ui_print_info("Swap", swap_buf);
+    
+    if (strlen(ram_buf) != 0) {
+        ui_print_info("RAM", ram_buf);
+        ui_print_info("Swap", swap_buf);
+    }
 
     hw_scan_disks();
 
@@ -192,7 +210,7 @@ static void hw_get_cpu_info(char *out_buf, const size_t buf_size) {
     uint32_t phy_core_count = 0;
     uint32_t frequency_ghz = 0;
     uint32_t freq_fractional = 0;
-    char cpu_model_name[LINE_BUFFER] = {0};
+    char cpu_model_name[LINE_BUFFER] = "Unknown";
 
     hw_get_cpu_model(cpu_model_name);
     hw_get_cpu_cores(&phy_core_count);
@@ -395,13 +413,10 @@ static void hw_get_mem_info(char *ram_buf, char *swap_buf, const size_t buf_size
     FILE *memory_file = fopen("/proc/meminfo", "r");
     if (!memory_file) {
         V_PRINTF("Error: failed to open /proc/meminfo: %s\n", strerror(errno));
-        snprintf(ram_buf, buf_size, "- MiB / - MiB");
-        snprintf(swap_buf, buf_size, "- MiB / - MiB");
         return ;
     }
 
-    snprintf(ram_buf, buf_size, "- MiB / - MiB");
-    snprintf(swap_buf, buf_size, "0 MiB / 0 MiB");
+    snprintf(swap_buf, buf_size, "none");
 
     char file_line[LINE_BUFFER];
     uint64_t ram_size = 0;
@@ -426,19 +441,15 @@ static void hw_get_mem_info(char *ram_buf, char *swap_buf, const size_t buf_size
 
     fclose(memory_file);
 
-    if (ram_size > 0) {
-        uint64_t used_ram = ram_size - ram_available;
-        snprintf(ram_buf, buf_size, "%llu MiB / %llu MiB", 
-                 (unsigned long long)(used_ram / 1024), 
-                 (unsigned long long)(ram_size / 1024));
-    }
+    uint64_t used_ram = ram_size - ram_available;
+    format_bytes(used_ram * BYTES_TO_KIB_DIVISOR, ram_size * BYTES_TO_KIB_DIVISOR, 
+                 ram_buf, buf_size);
 
-    if (swap_size > 0) {
-        uint64_t used_swap = swap_size - swap_free;
-        snprintf(swap_buf, buf_size, "%llu MiB / %llu MiB", 
-                 (unsigned long long)(used_swap / 1024), 
-                 (unsigned long long)(swap_size / 1024));
-    }
+    if (swap_size == 0) return ;
+
+    uint64_t used_swap = swap_size - swap_free;
+    format_bytes(used_swap * BYTES_TO_KIB_DIVISOR, swap_size * BYTES_TO_KIB_DIVISOR, 
+                 swap_buf, buf_size);
 }
 
 static void hw_scan_disks(void) {
@@ -495,20 +506,19 @@ static void hw_scan_disks(void) {
 }
 
 static void hw_print_disk(const char *mnt, const struct statvfs *fs, const struct mntent *ent) {
-    unsigned long long block_size = fs->f_frsize;
-    unsigned long long total_size = (unsigned long long)fs->f_blocks * block_size;
-    unsigned long long free_size  = (unsigned long long)fs->f_bfree * block_size;
-    unsigned long long used_size  = total_size - free_size;
-
-    double total_gb = (double)total_size / BYTES_TO_GIB_DIVISOR;
-    double used_gb  = (double)used_size / BYTES_TO_GIB_DIVISOR;
+    uint64_t block_size = fs->f_frsize;
+    double total_size   = (uint64_t)fs->f_blocks * block_size;
+    double free_size    = fs->f_bfree * block_size;
+    double used_size    = total_size - free_size;
 
     char label[LINE_BUFFER];
     snprintf(label, LINE_BUFFER, "Disk (%s)", mnt);
 
     char usage_info[LINE_BUFFER];
-    snprintf(usage_info, LINE_BUFFER, "%.02f GiB / %.02f GiB (%s)", 
-             used_gb, total_gb, ent->mnt_type);
+    format_bytes(used_size, total_size, usage_info, LINE_BUFFER);
+
+    size_t len = strlen(usage_info);
+    snprintf(usage_info + len, LINE_BUFFER - len, " [%s]", ent->mnt_type);
 
     ui_print_info(label, usage_info);
 }
@@ -565,6 +575,61 @@ static void hw_find_battery(char *out_buf, const size_t buf_size) {
     }
 
     closedir(dir);
+}
+
+static void format_bytes(double used_size, double total_size, char *out_buf, 
+                         const size_t buf_size) {
+    const char *memory_units[] = {"B", "KiB", "MiB", "GiB", "TiB", "PiB"};
+    uint8_t usage_pct = (total_size > 0) ? (uint8_t)((used_size / total_size) * 100) : 0;
+
+    if (cfg_is_kib()) {
+        total_size /= BYTES_TO_KIB_DIVISOR;
+        used_size /= BYTES_TO_KIB_DIVISOR;
+
+        snprintf(out_buf, buf_size, "%.0f %s / %.0f %s (%hhu%%)", 
+                 used_size, memory_units[1], 
+                 total_size, memory_units[1], usage_pct);
+
+        return;
+    }
+
+    if (cfg_is_mib()) {
+        total_size /= BYTES_TO_MIB_DIVISOR;
+        used_size /= BYTES_TO_MIB_DIVISOR;
+        
+        snprintf(out_buf, buf_size, "%.0f %s / %.0f %s (%hhu%%)", 
+                 used_size, memory_units[2], 
+                 total_size, memory_units[2], usage_pct);
+        
+        return;
+    }
+
+    if (cfg_is_gib()) {
+        total_size /= BYTES_TO_GIB_DIVISOR;
+        used_size /= BYTES_TO_GIB_DIVISOR;
+        
+        snprintf(out_buf, buf_size, "%.2f %s / %.2f %s (%hhu%%)", 
+                 used_size, memory_units[3], 
+                 total_size, memory_units[3], usage_pct);
+    
+        return;
+    }
+
+    int i = 0;
+    while (total_size >= 1024 && i < 5) {
+        total_size /= 1024;
+        i++;
+    }
+
+    int j = 0;
+    while (used_size >= 1024 && j < 5) {
+        used_size /= 1024;
+        j++;
+    }
+
+    snprintf(out_buf, buf_size, "%.2f %s / %.2f %s (%hhu%%)", 
+             used_size, memory_units[j], 
+             total_size, memory_units[i], usage_pct);
 }
 
 static uint16_t hw_read_hex(const char *path) {

@@ -108,6 +108,11 @@ static void term_get_shell(char *out_buf, const size_t buf_size) {
             out_buf[len - 1] = '\0';
         }
 
+        char *p = strchr(out_buf, '(');
+        if (p) {
+            *p = '\0';
+        }
+
         fclose(pipe_stream);
         wait(NULL);
     }
