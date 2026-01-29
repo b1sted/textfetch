@@ -17,6 +17,10 @@
 #include <sys/utsname.h>
 #include <sys/wait.h>
 
+#ifdef __ANDROID__
+    #include <sys/system_properties.h>
+#endif
+
 #include "system.h"
 #include "ui.h"
 
@@ -35,8 +39,13 @@ static void sys_get_identity(char *out_buf, const size_t buf_size);
 
 /**
  * Internal helper to identify the OS distribution name.
- * Parses /etc/os-release (or /usr/lib/os-release) to find NAME or 
- * PRETTY_NAME keys, then appends the machine architecture.
+ *
+ * On Android: Retrieves the version via system property "ro.build.version.release".
+ * 
+ * On Linux:   Parses /etc/os-release (or /usr/lib/os-release) to find NAME
+ *             or PRETTY_NAME keys.
+ *
+ * Appends the machine architecture to the result.
  *
  * @param out_buf  Destination buffer for the distro string.
  * @param buf_size Maximum size of the destination buffer.
@@ -113,6 +122,17 @@ static void sys_get_identity(char *out_buf, const size_t buf_size) {
     snprintf(out_buf, buf_size, "%s", pwd->pw_name);
 }
 
+#ifdef __ANDROID__
+static void sys_get_distro(char *out_buf, const size_t buf_size) {
+    char android_version[PROP_VALUE_MAX] = "unknown";
+
+    if (__system_property_get("ro.build.version.release", android_version) <= 0) {
+        V_PRINTF("Warning: Could not read version, using 'unknown'\n");
+    }
+
+    snprintf(out_buf, buf_size, "Android %s %s", android_version, sys_info.machine);
+}
+#else
 static void sys_get_distro(char *out_buf, const size_t buf_size) {
     FILE *fp = fopen("/etc/os-release", "r");
     if (!fp) {
@@ -121,7 +141,7 @@ static void sys_get_distro(char *out_buf, const size_t buf_size) {
         if (!fp) {
             V_PRINTF("Error: open os-release file failed: %s\n", strerror(errno));
             snprintf(out_buf, buf_size, "%s %s", sys_info.sysname, sys_info.machine);
-            return ;
+            return;
         }
     }
 
@@ -161,6 +181,7 @@ static void sys_get_distro(char *out_buf, const size_t buf_size) {
     size_t len = strlen(out_buf);
     snprintf(out_buf + len, buf_size - len, " %s", sys_info.machine);
 }
+#endif
 
 static void sys_format_uptime(char *out_buf, const size_t buf_size) {
     long uptime = sys_stat.uptime;
