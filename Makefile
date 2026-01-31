@@ -1,3 +1,15 @@
+UNAME_S := $(shell uname -s)
+
+ifneq (,$(filter $(UNAME_S),Linux Android))
+    PLATFORM_DIR := linux
+    REL_LDFLAGS  := -Wl,--gc-sections -s
+else ifeq ($(UNAME_S), Darwin)
+    PLATFORM_DIR := macos
+    REL_LDFLAGS  := -Wl,-dead_strip
+else
+    $(error Platform $(UNAME_S) not supported)
+endif
+
 CC          ?= gcc
 CPPFLAGS    += -Iinclude -MMD -MP
 CFLAGS      += -Wall -Wextra -std=c99
@@ -9,16 +21,16 @@ SRCDIR      = src
 TARGET      = $(BINDIR)/textfetch
 TARGET_DEV  = $(BINDIR)/textfetch-dev
 
-SRCS        = $(wildcard $(SRCDIR)/*.c)
+CORE_SRCS     = $(wildcard $(SRCDIR)/core/*.c)
+PLATFORM_SRCS = $(wildcard $(SRCDIR)/platform/$(PLATFORM_DIR)/*.c)
+SRCS          = $(CORE_SRCS) $(PLATFORM_SRCS)
 
-OBJS_REL    = $(SRCS:$(SRCDIR)/%.c=$(OBJDIR)/release/%.o)
-OBJS_DEV    = $(SRCS:$(SRCDIR)/%.c=$(OBJDIR)/dev/%.o)
+OBJS_REL    = $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/release/%.o, $(SRCS))
+OBJS_DEV    = $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/dev/%.o, $(SRCS))
 
 DEPS        = $(OBJS_REL:.o=.d) $(OBJS_DEV:.o=.d)
 
 REL_CFLAGS  = -O3 -DNDEBUG -ffunction-sections -fdata-sections
-REL_LDFLAGS = -Wl,--gc-sections -s
-
 DEV_CFLAGS  = -g -O0 -DDEBUG
 
 .PHONY: all dev clean
@@ -33,13 +45,15 @@ $(TARGET): $(OBJS_REL) | $(BINDIR)
 $(TARGET_DEV): $(OBJS_DEV) | $(BINDIR)
 	$(CC) $(CFLAGS) $(DEV_CFLAGS) $^ -o $@ $(LDFLAGS)
 
-$(OBJDIR)/release/%.o: $(SRCDIR)/%.c | $(OBJDIR)/release
+$(OBJDIR)/release/%.o: $(SRCDIR)/%.c
+	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(REL_CFLAGS) -c $< -o $@
 
-$(OBJDIR)/dev/%.o: $(SRCDIR)/%.c | $(OBJDIR)/dev
+$(OBJDIR)/dev/%.o: $(SRCDIR)/%.c
+	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(DEV_CFLAGS) -c $< -o $@
 
-$(BINDIR) $(OBJDIR)/release $(OBJDIR)/dev:
+$(BINDIR):
 	mkdir -p $@
 
 -include $(DEPS)
