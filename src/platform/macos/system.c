@@ -17,6 +17,13 @@
 #include <sys/utsname.h>
 #include <sys/wait.h>
 
+#include <TargetConditionals.h>
+
+#if TARGET_CPU_ARM64
+#include <CoreFoundation/CoreFoundation.h>
+#include <IOKit/IOKitLib.h>
+#endif
+
 #include "capture.h"
 #include "system.h"
 #include "ui.h"
@@ -63,11 +70,15 @@ static const macos_name_map_t darwin_map[] = {
 };
 
 /**
- * Pointer to the process environment variables array.
- * This is a POSIX-standard global variable used to pass the current
- * environment strings to child processes (e.g., via posix_spawn).
+ * Retrieves the hardware model name of the device.
+ * On ARM64, it first attempts to get a "pretty" marketing name from IORegistry 
+ * (AppleARMPE product description). If that fails or if on Intel, it falls 
+ * back to the standard "hw.model" sysctl.
+ *
+ * @param out_buf  Destination buffer for the model name string.
+ * @param buf_size Maximum size of the destination buffer.
  */
-extern char **environ;
+static void sys_get_model_name(char *out_buf, size_t buf_size);
 
 /**
  * Internal helper to retrieve the effective username.
@@ -140,12 +151,7 @@ void system_print_info(void) {
     sys_get_distro(os_buf, LINE_BUFFER);
     
     char device_model[LINE_BUFFER] = {0};
-    size_t device_len = LINE_BUFFER;
-
-    if (sysctlbyname("hw.model", device_model, &device_len, NULL, 0) != 0) {
-        V_PRINTF("[Error] sysctlbyname(hw.model) failed: %s\n", strerror(errno));
-        snprintf(device_model, LINE_BUFFER, "Unrecognized");
-    }
+    sys_get_model_name(device_model, LINE_BUFFER);
 
     char uptime_buf[LINE_BUFFER] = {0};
     sys_format_uptime(uptime_buf, LINE_BUFFER);
@@ -160,7 +166,68 @@ void system_print_info(void) {
     ui_print_info("Processes", procs_buf);
 }
 
+static void sys_get_model_name(char *out_buf, size_t buf_size) {
+    if (!out_buf || buf_size == 0) {
+        V_PRINTF("[Error] %s: invalid arguments\n", __func__);
+        return;
+    }
+
+#if TARGET_CPU_ARM64
+    const char *path = "IOService:/AppleARMPE/product";
+    io_registry_entry_t entry = IORegistryEntryFromPath(kIOMainPortDefault, path);
+    if (entry) {
+        CFTypeRef ref = IORegistryEntryCreateCFProperty(entry, CFSTR("product-description"), 
+                                                        kCFAllocatorDefault, 0);
+        if (ref) {
+            CFStringRef cf_str = NULL;
+
+            if (CFGetTypeID(ref) == CFDataGetTypeID()) {
+                cf_str = CFStringCreateFromExternalRepresentation(kCFAllocatorDefault,
+                                                                  (CFDataRef)ref,
+                                                                  kCFStringEncodingUTF8);
+            } else if (CFGetTypeID(ref) == CFStringGetTypeID()) {
+                cf_str = (CFStringRef)CFRetain(ref);
+            }
+
+            if (cf_str) {
+                CFMutableStringRef m_str = CFStringCreateMutableCopy(NULL, 0, cf_str);
+                CFStringTrimWhitespace(m_str);
+
+                bool ok = CFStringGetCString(m_str, out_buf, (CFIndex)buf_size, 
+                                             kCFStringEncodingUTF8);
+
+                CFRelease(m_str);
+                CFRelease(cf_str);
+                
+                if (ok && out_buf[0] != '\0') {
+                    CFRelease(ref);
+                    IOObjectRelease(entry);
+                    return; 
+                }
+            }
+
+            CFRelease(ref);
+        }
+
+        IOObjectRelease(entry);
+    }
+
+    V_PRINTF("[Warning] Using hw.model fallback\n");
+#endif
+
+    if (sysctlbyname("hw.model", out_buf, &buf_size, NULL, 0) != 0) {
+        V_PRINTF("[Error] sysctlbyname(hw.model) failed: %s\n", strerror(errno));
+        snprintf(out_buf, buf_size, "Unrecognized");
+        return;
+    }
+}
+
 static void sys_get_identity(char *out_buf, const size_t buf_size) {
+    if (!out_buf || buf_size == 0) {
+        V_PRINTF("[Error] %s: invalid arguments\n", __func__);
+        return;
+    }
+
     struct passwd *pwd;
     uid_t uid = geteuid();
 
@@ -174,6 +241,11 @@ static void sys_get_identity(char *out_buf, const size_t buf_size) {
 }
 
 static void sys_get_distro(char *out_buf, const size_t buf_size) {
+    if (!out_buf || buf_size == 0) {
+        V_PRINTF("[Error] %s: invalid arguments\n", __func__);
+        return;
+    }
+
     char product_version[SMALL_BUFFER] = {0};
     size_t size = sizeof(product_version);
 
@@ -210,6 +282,11 @@ static const char* sys_get_os_name(void) {
 }
 
 static void sys_format_uptime(char *out_buf, const size_t buf_size) {
+    if (!out_buf || buf_size == 0) {
+        V_PRINTF("[Error] %s: invalid arguments\n", __func__);
+        return;
+    }
+
     struct timeval boot_time = {0};
     size_t size = sizeof(boot_time);
 
@@ -244,6 +321,11 @@ static void sys_format_uptime(char *out_buf, const size_t buf_size) {
 }
 
 static void sys_get_procs_count(char *out_buf, const size_t buf_size) {
+    if (!out_buf || buf_size == 0) {
+        V_PRINTF("[Error] %s: invalid arguments\n", __func__);
+        return;
+    }
+
     int mib[3] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
     size_t len;
 
