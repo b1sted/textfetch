@@ -1,3 +1,5 @@
+DEV_CFLAGS  = -g -O0 -DDEBUG
+
 UNAME_S := $(shell uname -s)
 
 ifneq (,$(filter $(UNAME_S),Linux Android))
@@ -33,7 +35,6 @@ OBJS_DEV    = $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/dev/%.o, $(SRCS))
 DEPS        = $(OBJS_REL:.o=.d) $(OBJS_DEV:.o=.d)
 
 REL_CFLAGS  = -O3 -DNDEBUG -ffunction-sections -fdata-sections
-DEV_CFLAGS  = -g -O0 -DDEBUG
 
 .PHONY: all dev clean
 
