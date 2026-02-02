@@ -17,6 +17,7 @@
 #include <sys/utsname.h>
 #include <sys/wait.h>
 
+#include "capture.h"
 #include "system.h"
 #include "ui.h"
 
@@ -89,18 +90,6 @@ static void sys_get_identity(char *out_buf, const size_t buf_size);
 static void sys_get_distro(char *out_buf, const size_t buf_size);
 
 /**
- * Executes a shell command and captures its standard output.
- * Uses posix_spawn for performance and safety on macOS.
- *
- * @param command  The shell command to execute.
- * @param out_buf  Buffer to store the command output.
- * @param buf_size Size of the output buffer.
- * @return 0 on success, non-zero on error.
- */
-static int sys_exec_capture(const char *command, char *out_buf, 
-                            const size_t buf_size);
-
-/**
  * Maps the current Darwin release version to a macOS marketing name.
  * 
  * @return Pointer to a static string containing the OS name.
@@ -130,7 +119,7 @@ void system_init(void) {
     memset(&sys_info, 0, sizeof(struct utsname));
 
     if (uname(&sys_info) != 0) {
-        V_PRINTF("Error: uname failed: %s\n", strerror(errno));
+        V_PRINTF("Error: uname() failed: %s\n", strerror(errno));
 
         strncpy(sys_info.sysname,  fallback, sizeof(sys_info.sysname)  - 1);
         strncpy(sys_info.nodename, fallback, sizeof(sys_info.nodename) - 1);
@@ -154,8 +143,8 @@ void system_print_info(void) {
     size_t device_len = LINE_BUFFER;
 
     if (sysctlbyname("hw.model", device_model, &device_len, NULL, 0) != 0) {
-        V_PRINTF("Error: get hw.model failed\n");
-        snprintf(device_model, LINE_BUFFER, "unrecognized");
+        V_PRINTF("Error: sysctlbyname(hw.model) failed: %s\n", strerror(errno));
+        snprintf(device_model, LINE_BUFFER, "Unrecognized");
     }
 
     char uptime_buf[LINE_BUFFER] = {0};
@@ -176,7 +165,7 @@ static void sys_get_identity(char *out_buf, const size_t buf_size) {
     uid_t uid = geteuid();
 
     if ((pwd = getpwuid(uid)) == NULL) {
-        V_PRINTF("Error: getpwuid failed: %s\n", strerror(errno));
+        V_PRINTF("Error: getpwuid(%u) failed: %s\n", uid, strerror(errno));
         snprintf(out_buf, buf_size, "unknown");
         return;
     }
@@ -199,48 +188,14 @@ static void sys_get_distro(char *out_buf, const size_t buf_size) {
     }
 
     /* Fallback to sw_vers for older systems */
-    if (sys_exec_capture("sw_vers -productVersion", product_version, sizeof(product_version)) == 0) {
-        product_version[strcspn(product_version, "\r\n")] = 0;
-    } else {
+    if (capture_line("sw_vers -productVersion", product_version, sizeof(product_version)) != 0) {
+        V_PRINTF("Error: failed to capture sw_vers output\n");
         strncpy(product_version, "unknown", sizeof(product_version) - 1);
     }
 
     snprintf(out_buf + current_len, buf_size - current_len, "%s (%s)", 
              product_version, sys_info.machine);
 } 
-
-static int sys_exec_capture(const char *command, char *out_buf, const size_t buf_size) {
-    int pipefd[2];
-    if (pipe(pipefd) != 0) {
-        V_PRINTF("Error: pipe failed: %s\n", strerror(errno));
-        return -1;
-    }
-
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-
-    posix_spawn_file_actions_addclose(&actions, pipefd[0]);
-    posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
-    posix_spawn_file_actions_addclose(&actions, pipefd[1]);
-
-    char *argv[] = {"sh", "-c", (char *)command, NULL};
-    pid_t pid;
-    int status = posix_spawnp(&pid, "sh", &actions, NULL, argv, environ);
-
-    if (status == 0) {
-        close(pipefd[1]);
-        ssize_t bytes_read = read(pipefd[0], out_buf, buf_size - 1);
-        if (bytes_read >= 0) out_buf[bytes_read] = '\0';
-        close(pipefd[0]);
-        waitpid(pid, NULL, 0);
-    } else {
-        close(pipefd[0]);
-        close(pipefd[1]);
-    }
-
-    posix_spawn_file_actions_destroy(&actions);
-    return status;
-}
 
 static const char* sys_get_os_name(void) {
     int major = atoi(sys_info.release);
@@ -259,12 +214,16 @@ static void sys_format_uptime(char *out_buf, const size_t buf_size) {
     size_t size = sizeof(boot_time);
 
     if (sysctlbyname("kern.boottime", &boot_time, &size, NULL, 0) != 0) {
-        V_PRINTF("Error: get kern.boottime failed\n");
-        snprintf(out_buf, buf_size, "--:--:--");
+        V_PRINTF("Error: sysctlbyname(kern.boottime) failed: %s\n", strerror(errno));
         return;
     }
 
     time_t now = time(NULL);
+    if (now == (time_t)-1) {
+        V_PRINTF("Error: time() failed: %s\n", strerror(errno));
+        return;
+    }
+
     time_t uptime = now - boot_time.tv_sec;
     if (uptime < 0) uptime = 0;
 
@@ -293,19 +252,19 @@ static void sys_get_procs_count(char *out_buf, const size_t buf_size) {
 
     /* First call to get the required buffer size */
     if (sysctl(mib, 3, NULL, &len, NULL, 0) < 0) {
-        V_PRINTF("Error: failed to get process list size\n");
+        V_PRINTF("Error: sysctl(KERN_PROC_ALL) size query failed: %s\n", strerror(errno));
         return;
     }
 
     struct kinfo_proc *procs = malloc(len);
     if (!procs) {
-        V_PRINTF("Error: malloc for kinfo_proc failed (%s)\n", strerror(errno));
+        V_PRINTF("Error: malloc(%zu) for kinfo_proc failed: %s\n", len, strerror(errno));
         return;
     }
 
     /* Second call to fetch the actual process list */
     if (sysctl(mib, 3, procs, &len, NULL, 0) < 0) {
-        V_PRINTF("Error: failed to fetch process list\n");
+        V_PRINTF("Error: sysctl(KERN_PROC_ALL) data fetch failed: %s\n", strerror(errno));
         free(procs);
         return;
     }

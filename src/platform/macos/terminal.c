@@ -12,20 +12,15 @@
 #include <spawn.h>
 #include <unistd.h>
 
-#include <sys/types.h>   /* Must be included before libproc.h */
+#include <sys/types.h>
 #include <libproc.h>
 
 #include <sys/utsname.h>
 #include <sys/wait.h>
 
+#include "capture.h"
 #include "terminal.h"
 #include "ui.h"
-
-/**
- * Pointer to the process environment variables array.
- * Global POSIX variable for passing environment to child processes.
- */
-extern char **environ;
 
 /**
  * Internal helper to identify the parent shell and its version.
@@ -36,18 +31,6 @@ extern char **environ;
  * @param buf_size The size of the destination buffer.
  */
 static void term_get_shell(char *out_buf, const size_t buf_size);
-
-/**
- * Executes a command and captures its first line of standard output.
- * Uses posix_spawn for efficient process creation on Darwin systems.
- *
- * @param command  The full command string to execute.
- * @param out_buf  Buffer to store the captured output.
- * @param buf_size Size of the output buffer.
- * @return 0 on success, non-zero on error.
- */
-static int term_exec_capture(const char *command, char *out_buf, 
-                             const size_t buf_size);
 
 /**
  * Cleans up the shell version string by removing redundant prefixes,
@@ -65,7 +48,10 @@ void terminal_print_info(void) {
     term_get_shell(shell_buf, LINE_BUFFER);
 
     char *locale = setlocale(LC_ALL, "");
-    if (!locale) locale = "-";
+    if (!locale) {
+        V_PRINTF("Error: setlocale(LC_ALL, \"\") failed\n");
+        locale = "-";
+    }
 
     ui_print_info("Shell", shell_buf);
     ui_print_info("Locale", locale);
@@ -81,7 +67,7 @@ static void term_get_shell(char *out_buf, const size_t buf_size) {
     int ret = proc_pidpath(ppid, pathbuf, PROC_PIDPATHINFO_MAXSIZE);
 
     if (ret <= 0) {
-        V_PRINTF("Error: could not obtain path to parent process via libproc\n");
+        V_PRINTF("Error: proc_pidpath(pid: %d) failed: %s\n", ppid, strerror(errno));
         snprintf(out_buf, buf_size, "%s", fallback_shell);
         return;
     }
@@ -89,56 +75,13 @@ static void term_get_shell(char *out_buf, const size_t buf_size) {
     size_t len = strlen(pathbuf);
     snprintf(pathbuf + len, sizeof(pathbuf) - len, " --version");
 
-    if (term_exec_capture(pathbuf, out_buf, buf_size) != 0) {
+    if (capture_line(pathbuf, out_buf, buf_size) != 0) {
+        V_PRINTF("Error: failed to capture shell version from: %s\n", pathbuf);
         snprintf(out_buf, buf_size, "%s", fallback_shell);
         return;
     }
 
     term_sanitize_name(out_buf);
-}
-
-static int term_exec_capture(const char *command, char *out_buf, const size_t buf_size) {
-    int pipefd[2];
-    if (pipe(pipefd) != 0) {
-        V_PRINTF("Error: pipe failed: %s\n", strerror(errno));
-        return -1;
-    }
-
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-
-    posix_spawn_file_actions_addclose(&actions, pipefd[0]);
-    posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
-    posix_spawn_file_actions_addclose(&actions, pipefd[1]);
-
-    char *argv[] = {"sh", "-c", (char *)command, NULL};
-    pid_t pid;
-    int status = posix_spawnp(&pid, "sh", &actions, NULL, argv, environ);
-
-    if (status == 0) {
-        close(pipefd[1]);
-
-        FILE *stream = fdopen(pipefd[0], "r");
-        if (stream) {
-            if (fgets(out_buf, (int)buf_size, stream) == NULL) {
-                V_PRINTF("Error: failed to read command output\n");
-            }
-
-            fclose(stream); // Also closes pipefd[0]
-        } else {
-            close(pipefd[0]);
-        }
-
-        out_buf[strcspn(out_buf, "\r\n")] = '\0';
-        waitpid(pid, NULL, 0);
-    } else {
-        close(pipefd[0]);
-        close(pipefd[1]);
-        V_PRINTF("Error: posix_spawn failed: %s\n", strerror(status));
-    }
-
-    posix_spawn_file_actions_destroy(&actions);
-    return status;
 }
 
 static void term_sanitize_name(char *out_buf) {

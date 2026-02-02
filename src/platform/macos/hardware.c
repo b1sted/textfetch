@@ -199,7 +199,7 @@ static void hw_get_cpu_info(char *out_buf, const size_t buf_size) {
 
 static void hw_get_cpu_model(char *model_buf, size_t buf_size) {
     if (sysctlbyname("machdep.cpu.brand_string", model_buf, &buf_size, NULL, 0) != 0) {
-        V_PRINTF("Error: failed to retrieve CPU brand string\n");
+        V_PRINTF("Error: sysctlbyname(machdep.cpu.brand_string) failed: %s\n", strerror(errno));
         return;
     }
 
@@ -212,7 +212,7 @@ static void hw_get_cpu_model(char *model_buf, size_t buf_size) {
 static void hw_get_cpu_cores(uint32_t *core_count) {
     size_t size = sizeof(core_count);
     if (sysctlbyname("hw.physicalcpu", core_count, &size, NULL, 0) != 0) {
-        V_PRINTF("Error: failed to get physical CPU cores\n");
+        V_PRINTF("Error: sysctlbyname(hw.physicalcpu) failed: %s\n", strerror(errno));
     }
 }
 
@@ -222,7 +222,7 @@ static void hw_get_cpu_freq(double *cpu_freq) {
 
     /* Using max freq as it's most stable */
     if (sysctlbyname("hw.cpufrequency_max", &hz, &size, NULL, 0) == -1) {
-        V_PRINTF("Error: failed to get CPU frequency\n");
+        V_PRINTF("Error: sysctlbyname(hw.cpufrequency_max) failed: %s\n", strerror(errno));
         return;
     }
 
@@ -234,6 +234,7 @@ static void hw_get_gpu_info(char *out_buf, const size_t buf_size) {
     io_iterator_t it;
 
     if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) != kIOReturnSuccess) {
+        V_PRINTF("Error: IOServiceGetMatchingServices failed to find IOPCIDevice\n");
         return;
     }
 
@@ -257,7 +258,7 @@ static void hw_get_ram_info(char *out_buf, const size_t buf_size) {
     size_t len = sizeof(total);
 
     if (sysctlbyname("hw.memsize", &total, &len, NULL, 0) != 0) {
-        V_PRINTF("Error: failed to get memory size\n");
+        V_PRINTF("Error: sysctlbyname(hw.memsize) failed: %s\n", strerror(errno));
         return;
     }
 
@@ -266,9 +267,13 @@ static void hw_get_ram_info(char *out_buf, const size_t buf_size) {
     mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
     vm_size_t pg;
 
-    if (host_page_size(host, &pg) != KERN_SUCCESS ||
-        host_statistics64(host, HOST_VM_INFO64, (host_info64_t)&vm, &count) != KERN_SUCCESS) {
-        V_PRINTF("Error: failed to retrieve Mach VM statistics\n");
+    if (host_page_size(host, &pg) != KERN_SUCCESS != KERN_SUCCESS) {
+        V_PRINTF("Error: Mach host_page_size() failed\n");
+        return;
+    }
+
+    if (host_statistics64(host, HOST_VM_INFO64, (host_info64_t)&vm, &count) != KERN_SUCCESS) {
+        V_PRINTF("Error: Mach host_statistics64() failed\n");
         return;
     }
 
@@ -283,18 +288,36 @@ static void hw_get_ram_info(char *out_buf, const size_t buf_size) {
 static void hw_get_swap_info(char *out_buf, const size_t buf_size) {
     struct xsw_usage xsw;
     size_t swap_len = sizeof(struct xsw_usage);
-    if (sysctlbyname("vm.swapusage", &xsw, &swap_len, NULL, 0) != 0 || 
-        xsw.xsu_total == 0) return;
+
+    if (sysctlbyname("vm.swapusage", &xsw, &swap_len, NULL, 0) != 0) {
+        V_PRINTF("Error: sysctlbyname(vm.swapusage) failed: %s\n", strerror(errno));
+        return;
+    }
+    
+    if (xsw.xsu_total == 0) return;
 
     format_bytes(xsw.xsu_used, xsw.xsu_total, out_buf, buf_size);
 }
 
 static void hw_scan_and_print_disks(void) {
     int n = getfsstat(NULL, 0, MNT_WAIT);
-    if (n <= 0) return;
+    if (n <= 0) {
+        V_PRINTF("Error: getfsstat() size query failed: %s\n", strerror(errno));
+        return;
+    }
 
     struct statfs *st = malloc(sizeof(struct statfs) * n);
+    if (!st) {
+        V_PRINTF("Error: malloc(%zu) for statfs failed: %s\n", sizeof(struct statfs) * n, strerror(errno));
+        return;
+    }
+
     n = getfsstat(st, (int)(sizeof(struct statfs) * n), MNT_NOWAIT);
+    if (n <= 0) {
+        V_PRINTF("Error: getfsstat() data fetch failed: %s\n", strerror(errno));
+        free(st);
+        return;
+    }
 
     for (int i = 0; i < n; i++) {
         if ((strcmp(st[i].f_mntonname, "/") != 0 &&
@@ -317,8 +340,12 @@ static void hw_scan_and_print_disks(void) {
 
 static void hw_get_bat_info(char *label_buf, char *info_buf, const size_t buf_size) {
     CFTypeRef info = IOPSCopyPowerSourcesInfo();
-    CFArrayRef list = IOPSCopyPowerSourcesList(info);
+    if (!info) {
+        V_PRINTF("Error: IOPSCopyPowerSourcesInfo() failed (no power sources found)\n");
+        return;
+    }
 
+    CFArrayRef list = IOPSCopyPowerSourcesList(info);
     if (!list || CFArrayGetCount(list) == 0) {
         if (list) CFRelease(list);
         CFRelease(info);
