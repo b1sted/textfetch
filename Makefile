@@ -5,7 +5,9 @@ ifneq (,$(filter $(UNAME_S),Linux Android))
     REL_LDFLAGS  := -Wl,--gc-sections -s
 else ifeq ($(UNAME_S), Darwin)
     PLATFORM_DIR := macos
+	DEV_CFLAGS   += -gdwarf-4
     REL_LDFLAGS  := -Wl,-dead_strip
+	LDFLAGS		 += -framework IOKit -framework CoreFoundation
 else
     $(error Platform $(UNAME_S) not supported)
 endif
