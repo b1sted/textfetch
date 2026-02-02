@@ -49,7 +49,7 @@ void terminal_print_info(void) {
 
     char *locale = setlocale(LC_ALL, "");
     if (!locale) {
-        V_PRINTF("Error: setlocale(LC_ALL, \"\") failed\n");
+        V_PRINTF("[Error] setlocale(LC_ALL, \"\") failed\n");
         locale = "-";
     }
 
@@ -67,7 +67,7 @@ static void term_get_shell(char *out_buf, const size_t buf_size) {
     int ret = proc_pidpath(ppid, pathbuf, PROC_PIDPATHINFO_MAXSIZE);
 
     if (ret <= 0) {
-        V_PRINTF("Error: proc_pidpath(pid: %d) failed: %s\n", ppid, strerror(errno));
+        V_PRINTF("[Error] proc_pidpath(pid: %d) failed: %s\n", ppid, strerror(errno));
         snprintf(out_buf, buf_size, "%s", fallback_shell);
         return;
     }
@@ -76,7 +76,7 @@ static void term_get_shell(char *out_buf, const size_t buf_size) {
     snprintf(pathbuf + len, sizeof(pathbuf) - len, " --version");
 
     if (capture_line(pathbuf, out_buf, buf_size) != 0) {
-        V_PRINTF("Error: failed to capture shell version from: %s\n", pathbuf);
+        V_PRINTF("[Error] failed to capture shell version from: %s\n", pathbuf);
         snprintf(out_buf, buf_size, "%s", fallback_shell);
         return;
     }

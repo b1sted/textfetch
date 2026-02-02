@@ -21,7 +21,7 @@ extern char **environ;
 int capture_line(const char *command, char *out_buf, const size_t buf_size) {
     int pipefd[2];
     if (pipe(pipefd) != 0) {
-        V_PRINTF("Error: pipe failed: %s\n", strerror(errno));
+        V_PRINTF("[Error] pipe failed: %s\n", strerror(errno));
         return -1;
     }
 
@@ -42,7 +42,7 @@ int capture_line(const char *command, char *out_buf, const size_t buf_size) {
         FILE *stream = fdopen(pipefd[0], "r");
         if (stream) {
             if (fgets(out_buf, (int)buf_size, stream) == NULL) {
-                V_PRINTF("Error: failed to read command output\n");
+                V_PRINTF("[Error] failed to read command output\n");
             }
 
             fclose(stream); // Also closes pipefd[0]
@@ -55,7 +55,7 @@ int capture_line(const char *command, char *out_buf, const size_t buf_size) {
     } else {
         close(pipefd[0]);
         close(pipefd[1]);
-        V_PRINTF("Error: posix_spawn failed: %s\n", strerror(status));
+        V_PRINTF("[Error] posix_spawn failed: %s\n", strerror(status));
     }
 
     posix_spawn_file_actions_destroy(&actions);

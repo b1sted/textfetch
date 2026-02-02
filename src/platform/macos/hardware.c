@@ -21,8 +21,19 @@
 #include <IOKit/ps/IOPSKeys.h>
 #include <IOKit/ps/IOPowerSources.h>
 
+#include "hashtable.h"
 #include "hardware.h"
 #include "ui.h"
+
+/**
+ * Fix for macOS 12+ renaming kIOMasterPortDefault -> kIOMainPortDefault
+ * 
+ * To support older systems like Mojave without triggering 'deprecated' warnings
+ * on newer SDKs, we define it manually. Both are functionally MACH_PORT_NULL (0).
+ */
+#ifndef kIOMainPortDefault
+    #define kIOMainPortDefault ((mach_port_t)0)
+#endif
 
 typedef enum {
     FLAG_AC       = 1 << 0,
@@ -199,7 +210,7 @@ static void hw_get_cpu_info(char *out_buf, const size_t buf_size) {
 
 static void hw_get_cpu_model(char *model_buf, size_t buf_size) {
     if (sysctlbyname("machdep.cpu.brand_string", model_buf, &buf_size, NULL, 0) != 0) {
-        V_PRINTF("Error: sysctlbyname(machdep.cpu.brand_string) failed: %s\n", strerror(errno));
+        V_PRINTF("[Error] sysctlbyname(machdep.cpu.brand_string) failed: %s\n", strerror(errno));
         return;
     }
 
@@ -212,7 +223,7 @@ static void hw_get_cpu_model(char *model_buf, size_t buf_size) {
 static void hw_get_cpu_cores(uint32_t *core_count) {
     size_t size = sizeof(core_count);
     if (sysctlbyname("hw.physicalcpu", core_count, &size, NULL, 0) != 0) {
-        V_PRINTF("Error: sysctlbyname(hw.physicalcpu) failed: %s\n", strerror(errno));
+        V_PRINTF("[Error] sysctlbyname(hw.physicalcpu) failed: %s\n", strerror(errno));
     }
 }
 
@@ -222,11 +233,11 @@ static void hw_get_cpu_freq(double *cpu_freq) {
 
     /* Using max freq as it's most stable */
     if (sysctlbyname("hw.cpufrequency_max", &hz, &size, NULL, 0) == -1) {
-        V_PRINTF("Error: sysctlbyname(hw.cpufrequency_max) failed: %s\n", strerror(errno));
+        V_PRINTF("[Error] sysctlbyname(hw.cpufrequency_max) failed: %s\n", strerror(errno));
         return;
     }
 
-    *cpu_freq = (double)hz / 1e9;
+    *cpu_freq = (double)hz / HZ_PER_GHZ;
 }
 
 static void hw_get_gpu_info(char *out_buf, const size_t buf_size) {
@@ -234,7 +245,7 @@ static void hw_get_gpu_info(char *out_buf, const size_t buf_size) {
     io_iterator_t it;
 
     if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) != kIOReturnSuccess) {
-        V_PRINTF("Error: IOServiceGetMatchingServices failed to find IOPCIDevice\n");
+        V_PRINTF("[Error] IOServiceGetMatchingServices failed to find IOPCIDevice\n");
         return;
     }
 
@@ -258,7 +269,7 @@ static void hw_get_ram_info(char *out_buf, const size_t buf_size) {
     size_t len = sizeof(total);
 
     if (sysctlbyname("hw.memsize", &total, &len, NULL, 0) != 0) {
-        V_PRINTF("Error: sysctlbyname(hw.memsize) failed: %s\n", strerror(errno));
+        V_PRINTF("[Error] sysctlbyname(hw.memsize) failed: %s\n", strerror(errno));
         return;
     }
 
@@ -268,12 +279,12 @@ static void hw_get_ram_info(char *out_buf, const size_t buf_size) {
     vm_size_t pg;
 
     if (host_page_size(host, &pg) != KERN_SUCCESS != KERN_SUCCESS) {
-        V_PRINTF("Error: Mach host_page_size() failed\n");
+        V_PRINTF("[Error] Mach host_page_size() failed\n");
         return;
     }
 
     if (host_statistics64(host, HOST_VM_INFO64, (host_info64_t)&vm, &count) != KERN_SUCCESS) {
-        V_PRINTF("Error: Mach host_statistics64() failed\n");
+        V_PRINTF("[Error] Mach host_statistics64() failed\n");
         return;
     }
 
@@ -287,13 +298,13 @@ static void hw_get_ram_info(char *out_buf, const size_t buf_size) {
 
 static void hw_get_swap_info(char *out_buf, const size_t buf_size) {
     struct xsw_usage xsw;
-    size_t swap_len = sizeof(struct xsw_usage);
+    size_t xsw_len = sizeof(struct xsw_usage);
 
-    if (sysctlbyname("vm.swapusage", &xsw, &swap_len, NULL, 0) != 0) {
-        V_PRINTF("Error: sysctlbyname(vm.swapusage) failed: %s\n", strerror(errno));
+    if (sysctlbyname("vm.swapusage", &xsw, &xsw_len, NULL, 0) != 0) {
+        V_PRINTF("[Error] sysctlbyname(vm.swapusage) failed: %s\n", strerror(errno));
         return;
     }
-    
+
     if (xsw.xsu_total == 0) return;
 
     format_bytes(xsw.xsu_used, xsw.xsu_total, out_buf, buf_size);
@@ -302,26 +313,32 @@ static void hw_get_swap_info(char *out_buf, const size_t buf_size) {
 static void hw_scan_and_print_disks(void) {
     int n = getfsstat(NULL, 0, MNT_WAIT);
     if (n <= 0) {
-        V_PRINTF("Error: getfsstat() size query failed: %s\n", strerror(errno));
+        V_PRINTF("[Error] getfsstat() size query failed: %s\n", strerror(errno));
         return;
     }
 
     struct statfs *st = malloc(sizeof(struct statfs) * n);
     if (!st) {
-        V_PRINTF("Error: malloc(%zu) for statfs failed: %s\n", sizeof(struct statfs) * n, strerror(errno));
+        V_PRINTF("[Error] malloc(%zu) for statfs failed: %s\n", sizeof(struct statfs) * n, strerror(errno));
         return;
     }
 
     n = getfsstat(st, (int)(sizeof(struct statfs) * n), MNT_NOWAIT);
     if (n <= 0) {
-        V_PRINTF("Error: getfsstat() data fetch failed: %s\n", strerror(errno));
+        V_PRINTF("[Error] getfsstat() data fetch failed: %s\n", strerror(errno));
         free(st);
         return;
     }
 
+    string_set_t *outputted_disks = strset_create(INITIAL_CAPACITY);
+
     for (int i = 0; i < n; i++) {
         if ((strcmp(st[i].f_mntonname, "/") != 0 &&
             strncmp(st[i].f_mntonname, "/Volumes/", 9) != 0)) continue;
+
+        if (strset_contains(outputted_disks, st[i].f_mntfromname)) return;
+
+        strset_add(outputted_disks, st[i].f_mntfromname);
 
         uint64_t total = (uint64_t)st[i].f_blocks * st[i].f_bsize;
         uint64_t used = total - ((uint64_t)st[i].f_bfree * st[i].f_bsize);
@@ -335,13 +352,14 @@ static void hw_scan_and_print_disks(void) {
         ui_print_info(label, info);
     }
 
+    strset_destroy(outputted_disks);
     free(st);
 }
 
 static void hw_get_bat_info(char *label_buf, char *info_buf, const size_t buf_size) {
     CFTypeRef info = IOPSCopyPowerSourcesInfo();
     if (!info) {
-        V_PRINTF("Error: IOPSCopyPowerSourcesInfo() failed (no power sources found)\n");
+        V_PRINTF("[Error] IOPSCopyPowerSourcesInfo() failed (no power sources found)\n");
         return;
     }
 
@@ -356,17 +374,21 @@ static void hw_get_bat_info(char *label_buf, char *info_buf, const size_t buf_si
                                           CFArrayGetValueAtIndex(list, 0));
 
     char model[SMALL_BUFFER] = "Unknown";
-    CFStringRef model_ref = CFDictionaryGetValue(dict, CFSTR("Model"));
-    if (model_ref) {
-         CFStringGetCString(model_ref, model, 
-                            sizeof(model), kCFStringEncodingUTF8);
+    CFStringRef model_ref = CFDictionaryGetValue(dict, CFSTR("DeviceName"));
+
+    if (!model_ref) {
+        V_PRINTF("[Warning] Battery specific name not found; using fallback: %s\n", kIOPSNameKey);
+        model_ref = CFDictionaryGetValue(dict, CFSTR(kIOPSNameKey));
+    }
+
+    if (model_ref && CFGetTypeID(model_ref) == CFStringGetTypeID()) {
+         CFStringGetCString(model_ref, model, sizeof(model), kCFStringEncodingUTF8);
     }
 
     char health[SMALL_BUFFER] = "Unknown";
     CFStringRef health_ref = CFDictionaryGetValue(dict, CFSTR(kIOPSBatteryHealthKey));
     if (health_ref) {
-         CFStringGetCString(health_ref, health, 
-                            sizeof(health), kCFStringEncodingUTF8);
+         CFStringGetCString(health_ref, health, sizeof(health), kCFStringEncodingUTF8);
     }
 
     uint8_t pct = hw_get_bat_percentage(dict);

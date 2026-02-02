@@ -119,7 +119,7 @@ void system_init(void) {
     memset(&sys_info, 0, sizeof(struct utsname));
 
     if (uname(&sys_info) != 0) {
-        V_PRINTF("Error: uname() failed: %s\n", strerror(errno));
+        V_PRINTF("[Error] uname() failed: %s\n", strerror(errno));
 
         strncpy(sys_info.sysname,  fallback, sizeof(sys_info.sysname)  - 1);
         strncpy(sys_info.nodename, fallback, sizeof(sys_info.nodename) - 1);
@@ -143,7 +143,7 @@ void system_print_info(void) {
     size_t device_len = LINE_BUFFER;
 
     if (sysctlbyname("hw.model", device_model, &device_len, NULL, 0) != 0) {
-        V_PRINTF("Error: sysctlbyname(hw.model) failed: %s\n", strerror(errno));
+        V_PRINTF("[Error] sysctlbyname(hw.model) failed: %s\n", strerror(errno));
         snprintf(device_model, LINE_BUFFER, "Unrecognized");
     }
 
@@ -165,7 +165,7 @@ static void sys_get_identity(char *out_buf, const size_t buf_size) {
     uid_t uid = geteuid();
 
     if ((pwd = getpwuid(uid)) == NULL) {
-        V_PRINTF("Error: getpwuid(%u) failed: %s\n", uid, strerror(errno));
+        V_PRINTF("[Error] getpwuid(%u) failed: %s\n", uid, strerror(errno));
         snprintf(out_buf, buf_size, "unknown");
         return;
     }
@@ -189,7 +189,7 @@ static void sys_get_distro(char *out_buf, const size_t buf_size) {
 
     /* Fallback to sw_vers for older systems */
     if (capture_line("sw_vers -productVersion", product_version, sizeof(product_version)) != 0) {
-        V_PRINTF("Error: failed to capture sw_vers output\n");
+        V_PRINTF("[Error] failed to capture sw_vers output\n");
         strncpy(product_version, "unknown", sizeof(product_version) - 1);
     }
 
@@ -214,13 +214,13 @@ static void sys_format_uptime(char *out_buf, const size_t buf_size) {
     size_t size = sizeof(boot_time);
 
     if (sysctlbyname("kern.boottime", &boot_time, &size, NULL, 0) != 0) {
-        V_PRINTF("Error: sysctlbyname(kern.boottime) failed: %s\n", strerror(errno));
+        V_PRINTF("[Error] sysctlbyname(kern.boottime) failed: %s\n", strerror(errno));
         return;
     }
 
     time_t now = time(NULL);
     if (now == (time_t)-1) {
-        V_PRINTF("Error: time() failed: %s\n", strerror(errno));
+        V_PRINTF("[Error] time() failed: %s\n", strerror(errno));
         return;
     }
 
@@ -252,19 +252,19 @@ static void sys_get_procs_count(char *out_buf, const size_t buf_size) {
 
     /* First call to get the required buffer size */
     if (sysctl(mib, 3, NULL, &len, NULL, 0) < 0) {
-        V_PRINTF("Error: sysctl(KERN_PROC_ALL) size query failed: %s\n", strerror(errno));
+        V_PRINTF("[Error] sysctl(KERN_PROC_ALL) size query failed: %s\n", strerror(errno));
         return;
     }
 
     struct kinfo_proc *procs = malloc(len);
     if (!procs) {
-        V_PRINTF("Error: malloc(%zu) for kinfo_proc failed: %s\n", len, strerror(errno));
+        V_PRINTF("[Error] malloc(%zu) for kinfo_proc failed: %s\n", len, strerror(errno));
         return;
     }
 
     /* Second call to fetch the actual process list */
     if (sysctl(mib, 3, procs, &len, NULL, 0) < 0) {
-        V_PRINTF("Error: sysctl(KERN_PROC_ALL) data fetch failed: %s\n", strerror(errno));
+        V_PRINTF("[Error] sysctl(KERN_PROC_ALL) data fetch failed: %s\n", strerror(errno));
         free(procs);
         return;
     }
