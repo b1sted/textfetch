@@ -16,6 +16,8 @@
 #include <mach/mach_types.h>
 #include <mach/vm_statistics.h>
 
+#include <TargetConditionals.h>
+
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
 #include <IOKit/ps/IOPSKeys.h>
@@ -35,6 +37,18 @@
     #define kIOMainPortDefault ((mach_port_t)0)
 #endif
 
+/**
+ * DVFS (Dynamic Voltage and Frequency Scaling) table entry.
+ * Used on Apple Silicon to map performance states to frequencies.
+ */
+typedef struct {
+    uint32_t freq_hz;
+    uint32_t voltage;
+} arm_dvfs_entry_t;
+
+/**
+ * System power status bitmask flags.
+ */
 typedef enum {
     FLAG_AC       = 1 << 0,
     FLAG_CHARGING = 1 << 1,
@@ -72,9 +86,12 @@ static void hw_get_cpu_model(char *model_buf, size_t buf_size);
 static void hw_get_cpu_cores(uint32_t *core_count);
 
 /**
- * Retrieves the maximum CPU frequency in GHz using sysctl.
+ * Retrieves the maximum CPU frequency in GHz.
  * 
- * @param cpu_freq Pointer to store the result as a double.
+ * On ARM64 (Apple Silicon), this parses the AppleARMIODevice PMGR tables.
+ * On x86_64, it retrieves the nominal frequency via sysctl.
+ * 
+ * @param cpu_freq Pointer to a double where the result (in GHz) will be stored.
  */
 static void hw_get_cpu_freq(double *cpu_freq);
 
@@ -170,7 +187,20 @@ void hardware_print_info(void) {
     ui_print_info("CPU", cpu_buf);
 
     char gpu_buf[LINE_BUFFER] = "Unknown";
+
+#if TARGET_CPU_ARM64
+    char *delim = strchr(cpu_buf, '(');
+    if (delim) {
+        size_t count = delim - cpu_buf;
+        memcpy(gpu_buf, cpu_buf, count);
+        gpu_buf[count] = '\0';
+
+        if (count > 0 && gpu_buf[count - 1] == ' ') gpu_buf[count - 1] = '\0';
+    }
+#else
     hw_get_gpu_info(gpu_buf, LINE_BUFFER);
+#endif
+
     ui_print_info("GPU", gpu_buf);
 
     char ram_buf[LINE_BUFFER] = "";
@@ -198,14 +228,13 @@ void hardware_print_info(void) {
 static void hw_get_cpu_info(char *out_buf, const size_t buf_size) {
     uint32_t phy_cores = 0;
     double freq_ghz = 0;
-    char model[LINE_BUFFER] = "Unknown CPU";
+    char model[LINE_BUFFER] = "Unknown";
 
     hw_get_cpu_model(model, LINE_BUFFER);
     hw_get_cpu_cores(&phy_cores);
     hw_get_cpu_freq(&freq_ghz);
  
-    snprintf(out_buf, buf_size, "%s (%u) @ %.03f GHz", 
-             model, phy_cores, freq_ghz);
+    snprintf(out_buf, buf_size, "%s (%u) @ %.03f GHz", model, phy_cores, freq_ghz);
 }
 
 static void hw_get_cpu_model(char *model_buf, size_t buf_size) {
@@ -227,6 +256,42 @@ static void hw_get_cpu_cores(uint32_t *core_count) {
     }
 }
 
+#if TARGET_CPU_ARM64
+static void hw_get_cpu_freq(double *cpu_freq) {
+    CFMutableDictionaryRef match = IOServiceMatching("AppleARMIODevice");
+    io_iterator_t it;
+    
+    if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) != KERN_SUCCESS) {
+        return;
+    }
+
+    io_registry_entry_t obj;
+    while ((obj = IOIteratorNext(it))) {
+        char name[LINE_BUFFER];
+        IORegistryEntryGetName(obj, name);
+
+        if (strncmp(name, "pmgr", LINE_BUFFER) == 0) {
+            CFTypeRef p_core_data = IORegistryEntryCreateCFProperty(obj, 
+                                                                    CFSTR("voltage-states5-sram"), 
+                                                                    kCFAllocatorDefault, 0);
+
+            if (p_core_data) {
+                CFIndex size = CFDataGetLength(p_core_data);
+                int count = size / sizeof(arm_dvfs_entry_t);
+                const arm_dvfs_entry_t* table = (const arm_dvfs_entry_t*)CFDataGetBytePtr(p_core_data);
+            
+                if (count > 0) *cpu_freq = (double)table[count - 1].freq_hz / HZ_PER_GHZ;
+
+                CFRelease(p_core_data);
+            }
+        }
+
+        IOObjectRelease(obj);
+    }
+
+    IOObjectRelease(it);
+}
+#else
 static void hw_get_cpu_freq(double *cpu_freq) {
     int64_t hz = 0;
     size_t size = sizeof(hz);
@@ -257,12 +322,16 @@ static void hw_get_gpu_info(char *out_buf, const size_t buf_size) {
             if (model) {
                 snprintf(out_buf, buf_size, "%s", (const char *)CFDataGetBytePtr(model));
             }
+
             CFRelease(props);
         }
+
         IOObjectRelease(entry);
     }
+
     IOObjectRelease(it);
 }
+#endif
 
 static void hw_get_ram_info(char *out_buf, const size_t buf_size) {
     uint64_t total = 0;
@@ -371,7 +440,7 @@ static void hw_get_bat_info(char *label_buf, char *info_buf, const size_t buf_si
     }
 
     CFDictionaryRef dict = IOPSGetPowerSourceDescription(info, 
-                                          CFArrayGetValueAtIndex(list, 0));
+                                                         CFArrayGetValueAtIndex(list, 0));
 
     char model[SMALL_BUFFER] = "Unknown";
     CFStringRef model_ref = CFDictionaryGetValue(dict, CFSTR("DeviceName"));
