@@ -8,8 +8,8 @@ ifneq (,$(filter $(UNAME_S),Linux Android))
 else ifeq ($(UNAME_S), Darwin)
     PLATFORM_DIR := macos
 	DEV_CFLAGS   += -gdwarf-4
-    REL_LDFLAGS  := -Wl,-dead_strip
-	LDFLAGS		 += -framework IOKit -framework CoreFoundation
+    override REL_LDFLAGS := -Wl,-dead_strip
+	override LDFLAGS	 += -framework IOKit -framework CoreFoundation
 else
     $(error Platform $(UNAME_S) not supported)
 endif
