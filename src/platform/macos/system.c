@@ -8,25 +8,27 @@
 #include <errno.h>
 #include <limits.h>
 #include <pwd.h>
-#include <spawn.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 #include <sys/param.h>
+#include <sys/mman.h>
 #include <sys/sysctl.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
-#include <sys/wait.h>
 
 #include <TargetConditionals.h>
 
-#if TARGET_CPU_ARM64
 #include <CoreFoundation/CoreFoundation.h>
-#include <IOKit/IOKitLib.h>
-#endif
 
 #include "capture.h"
 #include "system.h"
 #include "ui.h"
+
+#if MAC_OS_X_VERSION_MIN_REQUIRED > MAC_OS_VERSION_11_0
+#define NANOSECONDS_IN_SECONDS 1e9
+#endif
 
 /**
  * Mapping structure to associate Darwin kernel major versions 
@@ -45,40 +47,29 @@ static struct utsname sys_info;
  * Darwin version = macOS minor + 4 (for Mac OS X 10.x).
  */
 static const macos_name_map_t darwin_map[] = {
-    {25, "macOS Tahoe"},           // macOS 26
-    {24, "macOS Sequoia"},         // macOS 15
-    {23, "macOS Sonoma"},          // macOS 14
-    {22, "macOS Ventura"},         // macOS 13
-    {21, "macOS Monterey"},        // macOS 12
-    {20, "macOS Big Sur"},         // macOS 11
-    {19, "macOS Catalina"},        // 10.15
-    {18, "macOS Mojave"},          // 10.14
-    {17, "macOS High Sierra"},     // 10.13
-    {16, "macOS Sierra"},          // 10.12
-    {15, "OS X El Capitan"},       // 10.11
-    {14, "OS X Yosemite"},         // 10.10
-    {13, "OS X Mavericks"},        // 10.9
-    {12, "OS X Mountain Lion"},    // 10.8
-    {11, "Mac OS X Lion"},         // 10.7
-    {10, "Mac OS X Snow Leopard"}, // 10.6
-    {9,  "Mac OS X Leopard"},      // 10.5
-    {8,  "Mac OS X Tiger"},        // 10.4
-    {7,  "Mac OS X Panther"},      // 10.3
-    {6,  "Mac OS X Jaguar"},       // 10.2
-    {5,  "Mac OS X Puma"},         // 10.1
+    {25, "macOS Tahoe"},           /* macOS 26 */
+    {24, "macOS Sequoia"},         /* macOS 15 */
+    {23, "macOS Sonoma"},          /* macOS 14 */
+    {22, "macOS Ventura"},         /* macOS 13 */
+    {21, "macOS Monterey"},        /* macOS 12 */
+    {20, "macOS Big Sur"},         /* macOS 11 */
+    {19, "macOS Catalina"},        /* 10.15 */
+    {18, "macOS Mojave"},          /* 10.14 */
+    {17, "macOS High Sierra"},     /* 10.13 */
+    {16, "macOS Sierra"},          /* 10.12 */
+    {15, "OS X El Capitan"},       /* 10.11 */
+    {14, "OS X Yosemite"},         /* 10.10 */
+    {13, "OS X Mavericks"},        /* 10.9 */
+    {12, "OS X Mountain Lion"},    /* 10.8 */
+    {11, "Mac OS X Lion"},         /* 10.7 */
+    {10, "Mac OS X Snow Leopard"}, /* 10.6 */
+    {9,  "Mac OS X Leopard"},      /* 10.5 */
+    {8,  "Mac OS X Tiger"},        /* 10.4 */
+    {7,  "Mac OS X Panther"},      /* 10.3 */
+    {6,  "Mac OS X Jaguar"},       /* 10.2 */
+    {5,  "Mac OS X Puma"},         /* 10.1 */
     {0,  NULL}
 };
-
-/**
- * Retrieves the hardware model name of the device.
- * On ARM64, it first attempts to get a "pretty" marketing name from IORegistry 
- * (AppleARMPE product description). If that fails or if on Intel, it falls 
- * back to the standard "hw.model" sysctl.
- *
- * @param out_buf  Destination buffer for the model name string.
- * @param buf_size Maximum size of the destination buffer.
- */
-static void sys_get_model_name(char *out_buf, size_t buf_size);
 
 /**
  * Internal helper to retrieve the effective username.
@@ -106,6 +97,27 @@ static void sys_get_distro(char *out_buf, const size_t buf_size);
  * @return Pointer to a static string containing the OS name.
  */
 static const char* sys_get_os_name(void);
+
+/**
+ * Retrieves the hardware model name of the device.
+ * On ARM64, it first attempts to get a "pretty" marketing name from IORegistry 
+ * (AppleARMPE product description). If that fails or if on Intel, it falls 
+ * back to the standard "hw.model" sysctl.
+ *
+ * @param out_buf  Destination buffer for the model name string.
+ * @param buf_size Maximum size of the destination buffer.
+ */
+static void sys_get_model_name(char *out_buf, size_t buf_size);
+
+/**
+ * Fast plist parser using memory mapping.
+ * Opens a file, maps it to the process address space, and creates a 
+ * CFPropertyListRef without copying the underlying data.
+ *
+ * @param path Path to the .plist file.
+ * @return A CFPropertyListRef object, or NULL if the file cannot be read or parsed.
+ */
+static CFPropertyListRef create_plist_from_file(const char* path);
 
 /**
  * Formats the raw system uptime into a human-readable duration string.
@@ -166,62 +178,6 @@ void system_print_info(void) {
     ui_print_info("Processes", procs_buf);
 }
 
-static void sys_get_model_name(char *out_buf, size_t buf_size) {
-    if (!out_buf || buf_size == 0) {
-        V_PRINTF("[Error] %s: invalid arguments\n", __func__);
-        return;
-    }
-
-#if TARGET_CPU_ARM64
-    const char *path = "IOService:/AppleARMPE/product";
-    io_registry_entry_t entry = IORegistryEntryFromPath(kIOMainPortDefault, path);
-    if (entry) {
-        CFTypeRef ref = IORegistryEntryCreateCFProperty(entry, CFSTR("product-description"), 
-                                                        kCFAllocatorDefault, 0);
-        if (ref) {
-            CFStringRef cf_str = NULL;
-
-            if (CFGetTypeID(ref) == CFDataGetTypeID()) {
-                cf_str = CFStringCreateFromExternalRepresentation(kCFAllocatorDefault,
-                                                                  (CFDataRef)ref,
-                                                                  kCFStringEncodingUTF8);
-            } else if (CFGetTypeID(ref) == CFStringGetTypeID()) {
-                cf_str = (CFStringRef)CFRetain(ref);
-            }
-
-            if (cf_str) {
-                CFMutableStringRef m_str = CFStringCreateMutableCopy(NULL, 0, cf_str);
-                CFStringTrimWhitespace(m_str);
-
-                bool ok = CFStringGetCString(m_str, out_buf, (CFIndex)buf_size, 
-                                             kCFStringEncodingUTF8);
-
-                CFRelease(m_str);
-                CFRelease(cf_str);
-                
-                if (ok && out_buf[0] != '\0') {
-                    CFRelease(ref);
-                    IOObjectRelease(entry);
-                    return; 
-                }
-            }
-
-            CFRelease(ref);
-        }
-
-        IOObjectRelease(entry);
-    }
-
-    V_PRINTF("[Warning] Using hw.model fallback\n");
-#endif
-
-    if (sysctlbyname("hw.model", out_buf, &buf_size, NULL, 0) != 0) {
-        V_PRINTF("[Error] sysctlbyname(hw.model) failed: %s\n", strerror(errno));
-        snprintf(out_buf, buf_size, "Unrecognized");
-        return;
-    }
-}
-
 static void sys_get_identity(char *out_buf, const size_t buf_size) {
     if (!out_buf || buf_size == 0) {
         V_PRINTF("[Error] %s: invalid arguments\n", __func__);
@@ -270,15 +226,120 @@ static void sys_get_distro(char *out_buf, const size_t buf_size) {
 } 
 
 static const char* sys_get_os_name(void) {
-    int major = atoi(sys_info.release);
+    int kern_major_number = atoi(sys_info.release);
 
     for (int i = 0; darwin_map[i].name != NULL; i++) {
-        if (darwin_map[i].major == major) {
+        if (darwin_map[i].major == kern_major_number) {
             return darwin_map[i].name;
         }
     }
 
     return "macOS";
+}
+
+static void sys_get_model_name(char *out_buf, size_t buf_size) {
+    if (!out_buf || buf_size == 0) {
+        V_PRINTF("[Error] %s: invalid arguments\n", __func__);
+        return;
+    }
+
+    size_t size = buf_size;
+    if (sysctlbyname("hw.model", out_buf, &size, NULL, 0) != 0) {
+        V_PRINTF("[Error] sysctlbyname(hw.model) failed: %s\n", strerror(errno));
+        snprintf(out_buf, buf_size, "Unknown Apple Device");
+        return;
+    }
+
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_9
+    const char* path = "/System/Library/PrivateFrameworks/ServerInformation.framework/Versions/A/Resources/en.lproj/SIMachineAttributes.plist";
+    
+    CFPropertyListRef plist = create_plist_from_file(path);
+    
+    if (!plist) {
+        /* Fallback for different localized folder naming conventions */
+        path = "/System/Library/PrivateFrameworks/ServerInformation.framework/Versions/A/Resources/English.lproj/SIMachineAttributes.plist";
+        V_PRINTF("[Info] %s: trying fallback path: %s\n", __func__, path);
+        plist = create_plist_from_file(path);
+    }
+
+    if (!plist) {
+        V_PRINTF("[Error] %s: SIMachineAttributes.plist not found or failed to parse\n", __func__);
+        return; 
+    }
+
+    if (CFGetTypeID(plist) == CFDictionaryGetTypeID()) {
+        CFDictionaryRef main_dict = (CFDictionaryRef)plist;
+
+        CFStringRef model_key = CFStringCreateWithCString(kCFAllocatorDefault, out_buf, kCFStringEncodingUTF8);
+        if (model_key) {
+            CFDictionaryRef model_dict = CFDictionaryGetValue(main_dict, model_key);
+
+            if (model_dict && CFGetTypeID(model_dict) == CFDictionaryGetTypeID()) {
+                CFDictionaryRef local_dict = CFDictionaryGetValue(model_dict, CFSTR("_LOCALIZABLE_"));
+                
+                if (local_dict && CFGetTypeID(local_dict) == CFDictionaryGetTypeID()) {
+                    CFStringRef marketing_name = CFDictionaryGetValue(local_dict, CFSTR("marketingModel"));
+
+                    if (marketing_name && CFGetTypeID(marketing_name) == CFStringGetTypeID()) {
+                        CFStringGetCString(marketing_name, out_buf, buf_size, kCFStringEncodingUTF8);
+                    } else {
+                        V_PRINTF("[Warning] %s: 'marketingModel' key missing for %s\n", __func__, out_buf);
+                    }
+                } else {
+                    V_PRINTF("[Warning] %s: '_LOCALIZABLE_' dictionary missing for %s\n", __func__, out_buf);
+                }
+            } else {
+                V_PRINTF("[Warning] %s: Model ID %s not found in attributes database\n", __func__, out_buf);
+            }
+
+            CFRelease(model_key);
+        }
+    } else {
+        V_PRINTF("[Error] %s: Root of plist is not a dictionary\n", __func__);
+    }
+
+    CFRelease(plist);
+#endif
+}
+
+static CFPropertyListRef create_plist_from_file(const char* path) {
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return NULL;
+
+    struct stat sb;
+    if (fstat(fd, &sb) == -1) {
+        close(fd);
+        return NULL;
+    }
+
+    if (sb.st_size == 0) {
+        V_PRINTF("[Error] create_plist_from_file(%s): file is empty\n", path);
+        close(fd);
+        return NULL;
+    }
+
+    void *ptr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (ptr == MAP_FAILED) {
+        close(fd);
+        return NULL;
+    }
+
+    CFDataRef data_ref = CFDataCreateWithBytesNoCopy(kCFAllocatorDefault, 
+                                                    ptr, 
+                                                    sb.st_size, 
+                                                    kCFAllocatorNull);
+
+    CFPropertyListRef plist = CFPropertyListCreateWithData(kCFAllocatorDefault, 
+                                                           data_ref, 
+                                                           kCFPropertyListImmutable, 
+                                                           NULL, 
+                                                           NULL);
+
+    CFRelease(data_ref);
+    munmap(ptr, sb.st_size);
+    close(fd);
+
+    return plist;
 }
 
 static void sys_format_uptime(char *out_buf, const size_t buf_size) {
@@ -287,7 +348,7 @@ static void sys_format_uptime(char *out_buf, const size_t buf_size) {
         return;
     }
 
-    struct timeval boot_time = {0};
+    struct timeval boot_time = {0, 0};
     size_t size = sizeof(boot_time);
 
     if (sysctlbyname("kern.boottime", &boot_time, &size, NULL, 0) != 0) {
@@ -295,6 +356,7 @@ static void sys_format_uptime(char *out_buf, const size_t buf_size) {
         return;
     }
 
+#if MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_VERSION_11_0
     time_t now = time(NULL);
     if (now == (time_t)-1) {
         V_PRINTF("[Error] time() failed: %s\n", strerror(errno));
@@ -318,6 +380,32 @@ static void sys_format_uptime(char *out_buf, const size_t buf_size) {
         snprintf(out_buf, buf_size, "%02ld:%02ld:%02ld", 
                  (long)hours, (long)minutes, (long)seconds);
     }
+#else
+    ino_t uptime = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW);
+    if (uptime == 0) {
+        V_PRINTF("[Error] clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW) failed: %s\n", strerror(errno));
+        return;
+    }
+
+    uptime /= NANOSECONDS_IN_SECONDS;
+
+    ino_t days = uptime / 86400;
+    uptime %= 86400;
+    ino_t hours = uptime / 3600;
+    uptime %= 3600;
+    ino_t minutes = uptime / 60;
+    ino_t seconds = uptime % 60;
+
+    if (days > 0) {
+        snprintf(out_buf, buf_size, "%llu days, %02llu:%02llu:%02llu", 
+                 (unsigned long long)days, (unsigned long long)hours, 
+                 (unsigned long long)minutes, (unsigned long long)seconds);
+    } else {
+        snprintf(out_buf, buf_size, "%02llu:%02llu:%02llu",
+                 (unsigned long long)hours, (unsigned long long)minutes, 
+                 (unsigned long long)seconds);
+    }
+#endif
 }
 
 static void sys_get_procs_count(char *out_buf, const size_t buf_size) {

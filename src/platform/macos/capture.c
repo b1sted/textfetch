@@ -45,7 +45,7 @@ int capture_line(const char *command, char *out_buf, const size_t buf_size) {
                 V_PRINTF("[Error] failed to read command output\n");
             }
 
-            fclose(stream); // Also closes pipefd[0]
+            fclose(stream); /* Also closes pipefd[0] */ 
         } else {
             close(pipefd[0]);
         }
