@@ -108,6 +108,7 @@ static double hw_get_cpu_freq(const char *model);
  *   within the main printing logic, as it is an integrated part of the M-series chip.
  */
 
+#if !TARGET_CPU_ARM64
 /**
  * Retrieves GPU model names from the I/O Registry for Intel-based Macs.
  * 
@@ -119,6 +120,7 @@ static double hw_get_cpu_freq(const char *model);
  * @param buf_size The size of the destination buffer.
  */
 static void hw_get_gpu_info(char *out_buf, const size_t buf_size);
+#endif
 
 /**
  * Memory and Storage Helpers
@@ -333,6 +335,7 @@ static double hw_get_cpu_freq(const char *model) {
 }
 #endif
 
+#if !TARGET_CPU_ARM64
 static void hw_get_gpu_info(char *out_buf, const size_t buf_size) {
     CFMutableDictionaryRef match = IOServiceMatching("IOPCIDevice");
     io_iterator_t it;
@@ -401,6 +404,7 @@ static void hw_get_gpu_info(char *out_buf, const size_t buf_size) {
 
     IOObjectRelease(it);
 }
+#endif
 
 static void hw_get_ram_info(char *out_buf, const size_t buf_size) {
     uint64_t total = 0;

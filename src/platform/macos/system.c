@@ -26,7 +26,7 @@
 #include "system.h"
 #include "ui.h"
 
-#if MAC_OS_X_VERSION_MIN_REQUIRED > MAC_OS_VERSION_11_0
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_VERSION_11_0
 #define NANOSECONDS_IN_SECONDS 1e9
 #endif
 
@@ -109,6 +109,7 @@ static const char* sys_get_os_name(void);
  */
 static void sys_get_model_name(char *out_buf, size_t buf_size);
 
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_9
 /**
  * Fast plist parser using memory mapping.
  * Opens a file, maps it to the process address space, and creates a 
@@ -118,6 +119,7 @@ static void sys_get_model_name(char *out_buf, size_t buf_size);
  * @return A CFPropertyListRef object, or NULL if the file cannot be read or parsed.
  */
 static CFPropertyListRef create_plist_from_file(const char* path);
+#endif
 
 /**
  * Formats the raw system uptime into a human-readable duration string.
@@ -302,6 +304,7 @@ static void sys_get_model_name(char *out_buf, size_t buf_size) {
 #endif
 }
 
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_9
 static CFPropertyListRef create_plist_from_file(const char* path) {
     int fd = open(path, O_RDONLY);
     if (fd < 0) return NULL;
@@ -341,6 +344,7 @@ static CFPropertyListRef create_plist_from_file(const char* path) {
 
     return plist;
 }
+#endif
 
 static void sys_format_uptime(char *out_buf, const size_t buf_size) {
     if (!out_buf || buf_size == 0) {
