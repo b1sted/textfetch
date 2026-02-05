@@ -28,23 +28,28 @@
 #include "ui.h"
 
 /**
- * Fix for macOS 12+ renaming kIOMasterPortDefault -> kIOMainPortDefault
+ * Compatibility shim for kIOMainPortDefault.
  * 
- * To support older systems like Mojave without triggering 'deprecated' warnings
- * on newer SDKs, we define it manually. Both are functionally MACH_PORT_NULL (0).
+ * macOS 12.0 renamed kIOMasterPortDefault to kIOMainPortDefault.
+ * This definition ensures the code compiles on older SDKs (like Mavericks/Mojave)
+ * while avoiding deprecation warnings on modern macOS versions.
  */
 #ifndef kIOMainPortDefault
-    #define kIOMainPortDefault ((mach_port_t)0)
+#define kIOMainPortDefault ((mach_port_t)0)
 #endif
 
+#if TARGET_CPU_ARM64
 /**
- * DVFS (Dynamic Voltage and Frequency Scaling) table entry.
- * Used on Apple Silicon to map performance states to frequencies.
+ * Static lookup entry for mapping SoC brand strings to peak P-core frequencies.
+ * 
+ * Used as a stable alternative to querying undocumented IOKit PMGR nodes,
+ * which are subject to format changes across different Apple Silicon generations.
  */
 typedef struct {
-    uint32_t freq_hz;
-    uint32_t voltage;
-} arm_dvfs_entry_t;
+    double p_frequency; /* Peak Performance-core clock speed in GHz. */
+    const char *model;
+} dvfs_entry_t;
+#endif
 
 /**
  * System power status bitmask flags.
@@ -62,7 +67,8 @@ typedef enum {
  */
 
 /**
- * Aggregates CPU model, physical core count, and frequency into a string.
+ * Aggregates CPU model name, physical core count, and max frequency into a 
+ * formatted string (e.g., "Apple M1 Max (10) @ 3.23 GHz").
  * 
  * @param out_buf  The destination buffer.
  * @param buf_size The size of the destination buffer.
@@ -71,7 +77,7 @@ static void hw_get_cpu_info(char *out_buf, const size_t buf_size);
 
 /**
  * Retrieves the CPU brand string using sysctl (machdep.cpu.brand_string).
- * Trims trailing whitespace often present in the sysctl output.
+ * Trims trailing whitespace often present in Apple Silicon brand strings.
  * 
  * @param model_buf The buffer to store the model name.
  * @param buf_size  The size of the buffer.
@@ -79,7 +85,8 @@ static void hw_get_cpu_info(char *out_buf, const size_t buf_size);
 static void hw_get_cpu_model(char *model_buf, size_t buf_size);
 
 /**
- * Gets the number of physical (non-logical) CPU cores.
+ * Gets the number of physical (performance + efficiency) CPU cores.
+ * Excludes logical threads (Hyper-Threading) on Intel systems.
  * 
  * @param core_count Pointer to store the count.
  */
@@ -88,22 +95,25 @@ static void hw_get_cpu_cores(uint32_t *core_count);
 /**
  * Retrieves the maximum CPU frequency in GHz.
  * 
- * On ARM64 (Apple Silicon), this parses the AppleARMIODevice PMGR tables.
- * On x86_64, it retrieves the nominal frequency via sysctl.
- * 
- * @param cpu_freq Pointer to a double where the result (in GHz) will be stored.
+ * On ARM64 (Apple Silicon): Determined via a static lookup table of M-series
+ * SoC specifications for better stability across macOS versions.
+ * On x86_64: Reads the nominal maximum (advertised) frequency via sysctl.
  */
-static void hw_get_cpu_freq(double *cpu_freq);
+static double hw_get_cpu_freq(const char *model);
 
 /**
  * GPU Detection Helpers
- * Uses IOKit IORegistry to scan for IOPCIDevice nodes and extract 
- * the "model" property.
+ * - On Intel (x86_64): Scans the I/O Registry for PCI display controllers.
+ * - On Apple Silicon (ARM64): The GPU name is extracted from the SoC brand string
+ *   within the main printing logic, as it is an integrated part of the M-series chip.
  */
 
 /**
- * Iterates through the I/O Registry to find PCI display devices.
- * Extracts the model name from the device properties.
+ * Retrieves GPU model names from the I/O Registry for Intel-based Macs.
+ * 
+ * Scans 'IOPCIDevice' nodes specifically for Display Controllers (class-code 03xxxxxx).
+ * This identifies both integrated Intel graphics and discrete AMD/NVIDIA GPUs,
+ * formatting them into a multi-line string if multiple GPUs are present.
  * 
  * @param out_buf  The destination buffer.
  * @param buf_size The size of the destination buffer.
@@ -116,8 +126,11 @@ static void hw_get_gpu_info(char *out_buf, const size_t buf_size);
  */
 
 /**
- * Calculates RAM usage following Activity Monitor logic.
- * Formula: Used = (Internal - Purgeable) + Wired + Compressed.
+ * Calculates RAM usage based on the macOS memory management model.
+ * 
+ * Modern logic (10.9+) replicates Activity Monitor:
+ * Used = (Internal - Purgeable) + Wired + Compressed.
+ * This excludes 'Cached Files' and 'Free' memory to show actual memory pressure.
  * 
  * @param out_buf  Buffer for formatted RAM info.
  * @param buf_size Size of the buffer.
@@ -125,7 +138,7 @@ static void hw_get_gpu_info(char *out_buf, const size_t buf_size);
 static void hw_get_ram_info(char *out_buf, const size_t buf_size);
 
 /**
- * Retrieves Swap usage via the vm.swapusage sysctl node.
+ * Retrieves virtual memory swap usage via the vm.swapusage sysctl node.
  * 
  * @param out_buf  Buffer for formatted Swap info.
  * @param buf_size Size of the buffer.
@@ -133,46 +146,49 @@ static void hw_get_ram_info(char *out_buf, const size_t buf_size);
 static void hw_get_swap_info(char *out_buf, const size_t buf_size);
 
 /**
- * Iterates through all mounted file systems using getfsstat.
- * Filters results to show only the root and user-mounted volumes.
+ * Iterates through mounted file systems. Filters results to show only the
+ * root ("/") and user-visible volumes ("/Volumes/ *"), ignoring system-reserved 
+ * or firmware partitions.
  */
 static void hw_scan_and_print_disks(void);
 
 /**
  * Power Supply Helpers
- * Uses IOPowerSources API to detect batteries and their status.
+ * Uses the IOKit IOPowerSources API to monitor battery status and health.
  */
 
 /**
- * Collects battery hardware model, health, and charging status.
+ * Collects battery hardware identification, health state, and charging status.
  * 
- * @param label_buf Buffer for the "Battery (Model)" label.
- * @param info_buf  Buffer for the "Percentage% (Status)" string.
+ * @param label_buf Buffer for the hardware model label (e.g., "Battery (A2141)").
+ * @param info_buf  Buffer for status (Percentage, Charging/Full, Health).
  * @param buf_size  Size of the buffers.
  */
 static void hw_get_bat_info(char *label_buf, char *info_buf, const size_t buf_size);
 
 /**
- * Calculates battery percentage based on current and max capacity.
+ * Calculates current battery percentage based on capacity reports.
  * 
- * @param power_source A dictionary containing power source properties.
+ * @param power_source CFDictionary containing power source properties.
  * @return The calculated percentage (0-100).
  */
 static uint8_t hw_get_bat_percentage(const CFDictionaryRef power_source);
 
 /**
- * Determines the charging status string (Charging, Discharging, etc.)
+ * Maps power source state and capacity to a human-readable status string.
+ * Handles edge cases like "Not Charging" when AC is connected but battery is full.
  * 
- * @param power_source       A dictionary containing power source properties.
- * @param battery_percentage Current percentage to check for "Full" state.
- * @return A constant string representing the battery status.
+ * @param power_source       CFDictionary containing power source properties.
+ * @param battery_percentage Current percentage to determine "Full" state.
+ * @return A constant string: "Charging", "Discharging", "Full", or "Not Charging".
  */
 static const char* hw_get_bat_status(const CFDictionaryRef power_source, uint8_t battery_percentage);
 
 /**
  * Utility: Human-readable byte formatting.
  * 
- * Scales byte values to KiB, MiB, GiB, etc., based on configuration.
+ * Dynamically scales byte values to KiB, MiB, GiB, etc., using a 1024-based 
+ * binary prefix (IEC standard units).
  * 
  * @param used_size  The used size in bytes.
  * @param total_size The total size in bytes.
@@ -187,8 +203,13 @@ void hardware_print_info(void) {
     ui_print_info("CPU", cpu_buf);
 
     char gpu_buf[LINE_BUFFER] = "Unknown";
-
 #if TARGET_CPU_ARM64
+    /* 
+     * On Apple Silicon, GPU info is typically part of the SoC brand string.
+     * Example: "Apple M2 Max (12) @ 3.50 GHz" -> Extract "Apple M2 Max".
+     * We truncate at the first parenthesis and trim trailing spaces.
+     */
+
     char *delim = strchr(cpu_buf, '(');
     if (delim) {
         size_t count = delim - cpu_buf;
@@ -200,17 +221,14 @@ void hardware_print_info(void) {
 #else
     hw_get_gpu_info(gpu_buf, LINE_BUFFER);
 #endif
-
     ui_print_info("GPU", gpu_buf);
 
-    char ram_buf[LINE_BUFFER] = "";
+    char ram_buf[LINE_BUFFER] = "- / -";
     hw_get_ram_info(ram_buf, LINE_BUFFER);
-    if (strlen(ram_buf) > 0) {
-        ui_print_info("RAM", ram_buf);
-    }
+    ui_print_info("RAM", ram_buf);
 
     char swap_buf[LINE_BUFFER] = "";
-    hw_get_swap_info(ram_buf, LINE_BUFFER);
+    hw_get_swap_info(swap_buf, LINE_BUFFER);
     if (strlen(swap_buf) > 0) {
         ui_print_info("Swap", swap_buf);
     }
@@ -226,15 +244,14 @@ void hardware_print_info(void) {
 }
 
 static void hw_get_cpu_info(char *out_buf, const size_t buf_size) {
-    uint32_t phy_cores = 0;
-    double freq_ghz = 0;
     char model[LINE_BUFFER] = "Unknown";
+    uint32_t phy_cores = 0;
 
     hw_get_cpu_model(model, LINE_BUFFER);
     hw_get_cpu_cores(&phy_cores);
-    hw_get_cpu_freq(&freq_ghz);
+    double freq_ghz = hw_get_cpu_freq(model);
  
-    snprintf(out_buf, buf_size, "%s (%u) @ %.03f GHz", model, phy_cores, freq_ghz);
+    snprintf(out_buf, buf_size, "%s (%u) @ %.02f GHz", model, phy_cores, freq_ghz);
 }
 
 static void hw_get_cpu_model(char *model_buf, size_t buf_size) {
@@ -250,60 +267,71 @@ static void hw_get_cpu_model(char *model_buf, size_t buf_size) {
 }
 
 static void hw_get_cpu_cores(uint32_t *core_count) {
-    size_t size = sizeof(core_count);
+    size_t size = sizeof(*core_count);
     if (sysctlbyname("hw.physicalcpu", core_count, &size, NULL, 0) != 0) {
         V_PRINTF("[Error] sysctlbyname(hw.physicalcpu) failed: %s\n", strerror(errno));
+        *core_count = 0;
     }
 }
 
 #if TARGET_CPU_ARM64
-static void hw_get_cpu_freq(double *cpu_freq) {
-    CFMutableDictionaryRef match = IOServiceMatching("AppleARMIODevice");
-    io_iterator_t it;
-    
-    if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) != KERN_SUCCESS) {
-        return;
-    }
+static double hw_get_cpu_freq(const char *model) {
+    if (model == NULL) return 0.0;
 
-    io_registry_entry_t obj;
-    while ((obj = IOIteratorNext(it))) {
-        char name[LINE_BUFFER];
-        IORegistryEntryGetName(obj, name);
+    /**
+     * Friendship ended with IOKIT
+     * Now HARDCODED TABLE is my best friend
+     * 
+     * PMGR and IOKit nodes for frequency scaling are undocumented and change 
+     * frequently across macOS versions. A static lookup table indexed by SoC 
+     * brand strings provides a more reliable and stable frequency report.
+     * 
+     * Note: Search order is crucial (e.g., "M1 Max" must be checked before "M1").
+     */
+    static const dvfs_entry_t m_series[] = {
+        {3.23, "M1 Ultra"},
+        {3.23, "M1 Max"},
+        {3.23, "M1 Pro"},
+        {3.2, "M1"},
+        {3.70, "M2 Ultra"},
+        {3.69, "M2 Max"},
+        {3.5, "M2 Pro"},
+        {3.5, "M2"},
+        {4.05, "M3 Ultra"},
+        {4.05, "M3 Max"},
+        {4.05, "M3 Pro"},
+        {4.05, "M3"},
+        {4.51, "M4 Max"},
+        {4.51, "M4 Pro"},
+        {4.40, "M4"},
+        {4.61, "M5"},
+        {0, NULL}
+    };
 
-        if (strncmp(name, "pmgr", LINE_BUFFER) == 0) {
-            CFTypeRef p_core_data = IORegistryEntryCreateCFProperty(obj, 
-                                                                    CFSTR("voltage-states5-sram"), 
-                                                                    kCFAllocatorDefault, 0);
-
-            if (p_core_data) {
-                CFIndex size = CFDataGetLength(p_core_data);
-                int count = size / sizeof(arm_dvfs_entry_t);
-                const arm_dvfs_entry_t* table = (const arm_dvfs_entry_t*)CFDataGetBytePtr(p_core_data);
-            
-                if (count > 0) *cpu_freq = (double)table[count - 1].freq_hz / HZ_PER_GHZ;
-
-                CFRelease(p_core_data);
-            }
+    for (uint8_t i = 0; m_series[i].model != NULL; i++) {
+        if (strstr(model, m_series[i].model) != NULL) {
+            return m_series[i].p_frequency;
         }
-
-        IOObjectRelease(obj);
     }
 
-    IOObjectRelease(it);
+    return 0.0;
 }
 #else
-static void hw_get_cpu_freq(double *cpu_freq) {
+static double hw_get_cpu_freq(const char *model) {
+    (void)model;
+
     int64_t hz = 0;
     size_t size = sizeof(hz);
 
-    /* Using max freq as it's most stable */
+    /* Using nominal maximum frequency (advertised clock speed) */
     if (sysctlbyname("hw.cpufrequency_max", &hz, &size, NULL, 0) == -1) {
         V_PRINTF("[Error] sysctlbyname(hw.cpufrequency_max) failed: %s\n", strerror(errno));
-        return;
+        return 0.0;
     }
 
-    *cpu_freq = (double)hz / HZ_PER_GHZ;
+    return (double)hz / HZ_PER_GHZ;
 }
+#endif
 
 static void hw_get_gpu_info(char *out_buf, const size_t buf_size) {
     CFMutableDictionaryRef match = IOServiceMatching("IOPCIDevice");
@@ -314,13 +342,50 @@ static void hw_get_gpu_info(char *out_buf, const size_t buf_size) {
         return;
     }
 
+    if (strcmp(out_buf, "Unknown") == 0) {
+        out_buf[0] = '\0';
+    }
+
+    /**
+     * PCI class-code struct (Little Endian):
+     * code[0] - Prog IF
+     * code[1] - Sub-class
+     * code[2] - Base Class (0x03 = Display Controller)
+     * code[3] - 0x00
+     */
     io_registry_entry_t entry;
     while ((entry = IOIteratorNext(it))) {
         CFMutableDictionaryRef props;
         if (IORegistryEntryCreateCFProperties(entry, &props, kCFAllocatorDefault, kNilOptions) == kIOReturnSuccess) {
+            CFDataRef class_data = (CFDataRef)CFDictionaryGetValue(props, CFSTR("class-code"));
+            if (class_data && CFGetTypeID(class_data) == CFDataGetTypeID() && CFDataGetLength(class_data) >= 4) {
+                const uint8_t *code = CFDataGetBytePtr(class_data);
+                if (code[2] != 0x03) {
+                    CFRelease(props);
+                    IOObjectRelease(entry);
+                    continue;
+                }
+            } else {
+                CFRelease(props);
+                IOObjectRelease(entry);
+                continue;
+            }
+
             CFDataRef model = (CFDataRef)CFDictionaryGetValue(props, CFSTR("model"));
-            if (model) {
-                snprintf(out_buf, buf_size, "%s", (const char *)CFDataGetBytePtr(model));
+            if (model && CFGetTypeID(model) == CFDataGetTypeID()) {
+                const char *model_ptr = (const char *)CFDataGetBytePtr(model);
+                size_t model_len = CFDataGetLength(model);
+                if (model_len > 0 && model_ptr[model_len - 1] == '\0') model_len--;
+
+                size_t current_len = strlen(out_buf);
+                if (current_len > 0) {
+                    strlcat(out_buf, "\n    ", buf_size);
+                    current_len = strlen(out_buf);
+                }
+
+                if (current_len < buf_size) {
+                    snprintf(out_buf + current_len, buf_size - current_len, "%.*s", (int)model_len, model_ptr);
+                }
             }
 
             CFRelease(props);
@@ -329,9 +394,13 @@ static void hw_get_gpu_info(char *out_buf, const size_t buf_size) {
         IOObjectRelease(entry);
     }
 
+    if (strlen(out_buf) == 0) {
+        V_PRINTF("[Info] No PCI GPU found (might be VM)\n");
+        snprintf(out_buf, buf_size, "Unknown");
+    }
+
     IOObjectRelease(it);
 }
-#endif
 
 static void hw_get_ram_info(char *out_buf, const size_t buf_size) {
     uint64_t total = 0;
@@ -346,8 +415,7 @@ static void hw_get_ram_info(char *out_buf, const size_t buf_size) {
     vm_statistics64_data_t vm;
     mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
     vm_size_t pg;
-
-    if (host_page_size(host, &pg) != KERN_SUCCESS != KERN_SUCCESS) {
+    if (host_page_size(host, &pg) != KERN_SUCCESS) {
         V_PRINTF("[Error] Mach host_page_size() failed\n");
         return;
     }
@@ -357,11 +425,18 @@ static void hw_get_ram_info(char *out_buf, const size_t buf_size) {
         return;
     }
 
-    int64_t app = (int64_t)(vm.internal_page_count - vm.purgeable_count) * pg;
     int64_t wired = (int64_t)vm.wire_count * pg;
+
+#if MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_X_VERSION_10_9
+    int64_t active = (int64_t)vm.active_count * pg;
+    int64_t inactive = (int64_t)vm.inactive_count * pg;
+    int64_t used = active + inactive + wired;
+#else
+    int64_t app = (int64_t)(vm.internal_page_count - vm.purgeable_count) * pg;
     int64_t compressed = (int64_t)vm.compressor_page_count * pg;
     int64_t used = app + wired + compressed;
-    
+#endif
+
     format_bytes((double)used, (double)total, out_buf, buf_size);
 }
 
@@ -405,7 +480,7 @@ static void hw_scan_and_print_disks(void) {
         if ((strcmp(st[i].f_mntonname, "/") != 0 &&
             strncmp(st[i].f_mntonname, "/Volumes/", 9) != 0)) continue;
 
-        if (strset_contains(outputted_disks, st[i].f_mntfromname)) return;
+        if (strset_contains(outputted_disks, st[i].f_mntfromname)) continue;
 
         strset_add(outputted_disks, st[i].f_mntfromname);
 
@@ -479,7 +554,8 @@ static uint8_t hw_get_bat_percentage(const CFDictionaryRef power_source) {
     if (cur_ref) CFNumberGetValue(cur_ref, kCFNumberIntType, &cur_cap);
     if (max_ref) CFNumberGetValue(max_ref, kCFNumberIntType, &max_cap);
 
-    return (max_ref > 0) ? (uint8_t)((double)cur_cap / max_cap * 100) : 0;
+    /* Check max_cap > 0 to avoid division by zero if battery is reporting error */
+    return (max_cap > 0) ? (uint8_t)((double)cur_cap / max_cap * 100) : 0;
 }
 
 static const char* hw_get_bat_status(const CFDictionaryRef power_source, uint8_t battery_percentage) {
@@ -501,55 +577,50 @@ static const char* hw_get_bat_status(const CFDictionaryRef power_source, uint8_t
 
 static void format_bytes(double used_size, double total_size, char *out_buf, 
                          const size_t buf_size) {
-    const char *memory_units[] = {"B", "KiB", "MiB", "GiB", "TiB", "PiB"};
-    uint8_t usage_pct = (total_size > 0) ? (uint8_t)((used_size / total_size) * 100) : 0;
+    static const char *memory_units[] = {"B", "KiB", "MiB", "GiB", "TiB", "PiB"};
 
-    if (cfg_is_kib()) {
-        total_size /= BYTES_TO_KIB_DIVISOR;
-        used_size /= BYTES_TO_KIB_DIVISOR;
+    static const double divisors[] = {
+        1.0,               /* B */
+        1024.0,            /* KiB */
+        1048576.0,         /* MiB */
+        1073741824.0,      /* GiB */
+        1099511627776.0,   /* TiB */
+        1125899906842624.0 /* PiB */
+    };
 
-        snprintf(out_buf, buf_size, "%.0f %s / %.0f %s (%hhu%%)", 
-                 used_size, memory_units[1], 
-                 total_size, memory_units[1], usage_pct);
+    const uint8_t usage_pct = (total_size > 1e-9) ? (uint8_t)((used_size / total_size) * 100) : 0;
 
-        return;
+    int8_t forced_unit = -1;
+    uint8_t precision = 2;
+
+    if (cfg_is_kib()) { forced_unit = 1; precision = 0; }
+    if (cfg_is_mib()) { forced_unit = 2; precision = 0; }
+    if (cfg_is_gib()) { forced_unit = 3; precision = 2; }
+
+    uint8_t total_unit = 0;
+    uint8_t used_unit = 0;
+
+    if (forced_unit != -1) {
+        total_unit = forced_unit;
+        used_unit = forced_unit;
+
+        total_size /= divisors[forced_unit];
+        used_size /= divisors[forced_unit];
+    } else {
+        uint8_t array_border = (sizeof(memory_units) / sizeof(memory_units[0]));
+
+        while (total_size >= 1024 && total_unit < array_border - 1) {
+            total_size /= 1024;
+            total_unit++;
+        }
+
+        while (used_size >= 1024 && used_unit < array_border - 1) {
+            used_size /= 1024;
+            used_unit++;
+        }
     }
 
-    if (cfg_is_mib()) {
-        total_size /= BYTES_TO_MIB_DIVISOR;
-        used_size /= BYTES_TO_MIB_DIVISOR;
-        
-        snprintf(out_buf, buf_size, "%.0f %s / %.0f %s (%hhu%%)", 
-                 used_size, memory_units[2], 
-                 total_size, memory_units[2], usage_pct);
-        
-        return;
-    }
-
-    if (cfg_is_gib()) {
-        total_size /= BYTES_TO_GIB_DIVISOR;
-        used_size /= BYTES_TO_GIB_DIVISOR;
-        
-        snprintf(out_buf, buf_size, "%.2f %s / %.2f %s (%hhu%%)", 
-                 used_size, memory_units[3], 
-                 total_size, memory_units[3], usage_pct);
-    
-        return;
-    }
-
-    int i = 0;
-    while (total_size >= 1024 && i < 5) {
-        total_size /= 1024;
-        i++;
-    }
-
-    int j = 0;
-    while (used_size >= 1024 && j < 5) {
-        used_size /= 1024;
-        j++;
-    }
-
-    snprintf(out_buf, buf_size, "%.2f %s / %.2f %s (%hhu%%)", 
-             used_size, memory_units[j], 
-             total_size, memory_units[i], usage_pct);
+    snprintf(out_buf, buf_size, "%.*f %s / %.*f %s (%hhu%%)", 
+             precision, used_size, memory_units[used_unit], 
+             precision, total_size, memory_units[total_unit], usage_pct);
 }
