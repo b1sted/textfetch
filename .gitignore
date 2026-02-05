@@ -25,5 +25,5 @@ obj/
 
 # --- Debugging and system files ---
 .gdb_history
-core
+/core
 .DS_Store

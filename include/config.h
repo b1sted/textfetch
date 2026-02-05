@@ -5,6 +5,18 @@
 
 #include <stdbool.h>
 
+#if defined(__APPLE__) && defined(__MACH__)
+#include <AvailabilityMacros.h>
+
+#ifndef MAC_OS_X_VERSION_10_9
+    #define MAC_OS_X_VERSION_10_9 1090
+#endif
+
+#ifndef MAC_OS_VERSION_11_0
+    #define MAC_OS_VERSION_11_0 110000
+#endif
+#endif
+
 #define APP_VERSION "1.0-alpha"
 
 /**
