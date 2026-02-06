@@ -19,6 +19,14 @@
 
 #define APP_VERSION "1.0-alpha"
 
+#ifdef __APPLE__
+    #define VERSION_SECTION "__TEXT,__app_version"
+#else
+    #define VERSION_SECTION ".app_version"
+#endif
+
+extern const char version_string[];
+
 /**
  * Checks if force kibibytes (KiB) output is enabled.
  * @return true if the -k or --kibibytes flag was provided.

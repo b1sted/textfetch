@@ -1,4 +1,4 @@
-name: Build and Release
+name: Build, Test and Release
 
 on:
   push:
@@ -9,21 +9,160 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-linux-amd64:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Compile
-        run: make all
+        run: make
 
-      - name: Rename binary
-        run: mv bin/textfetch bin/textfetch-linux-amd64
+      - name: Test
+        run: ./bin/textfetch
 
-      - name: Release
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: textfetch-linux-amd64
+          path: bin/textfetch
+
+  build-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile
+        run: make
+
+      - name: Test
+        run: ./bin/textfetch
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: textfetch-linux-arm64
+          path: bin/textfetch
+
+  build-linux-arm7v:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download SDK
+        uses: actions/checkout@v4
+        with:
+          repository: LuckfoxTECH/luckfox-pico
+          path: SDKs
+          sparse-checkout: |
+            tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf
+          sparse-checkout-cone-mode: false
+
+      - name: Compile
+        run: |
+          export TOOLCHAIN=$GITHUB_WORKSPACE/SDKs/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin
+          make CC=$TOOLCHAIN/arm-rockchip830-linux-uclibcgnueabihf-gcc
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: textfetch-linux-arm7v
+          path: bin/textfetch
+
+  build-macos-intel:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download SDK
+        uses: actions/checkout@v4
+        with:
+          repository: phracker/MacOSX-SDKs
+          path: SDKs
+          sparse-checkout: MacOSX10.11.sdk
+          sparse-checkout-cone-mode: false
+
+      - name: Compile
+        run: |
+          SDKROOT=$GITHUB_WORKSPACE/SDKs/MacOSX10.11.sdk
+          make CFLAGS="-target x86_64-apple-macos10.7 -isysroot $SDKROOT" \
+               LDFLAGS="-target x86_64-apple-macos10.7 -isysroot $SDKROOT" \
+               TARGET="bin/textfetch_legacy"
+          
+          rm -rf obj
+          
+          make CFLAGS="-target x86_64-apple-macos10.9 -isysroot $SDKROOT" \
+               LDFLAGS="-target x86_64-apple-macos10.9 -isysroot $SDKROOT" \
+               TARGET="bin/textfetch_modern"
+
+      - name: Test
+        run: |
+          ./bin/textfetch_legacy
+          ./bin/textfetch_modern
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: textfetch-macos-intel
+          path: bin/textfetch_*
+
+  build-macos-arm64:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile
+        run: |
+          make CFLAGS="-target arm64-apple-macos11" \
+               LDFLAGS="-target arm64-apple-macos11"
+
+      - name: Test
+        run: ./bin/textfetch
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: textfetch-macos-arm64
+          path: bin/textfetch
+
+  release:
+    needs: [build-linux-amd64, build-linux-arm64, build-linux-arm7v, build-macos-intel, build-macos-arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare Archives
+        run: |
+          mkdir release_dist
+          
+          # 1. Linux AMD64
+          tar -C artifacts/textfetch-linux-amd64 -czvf release_dist/textfetch-linux-amd64.tar.gz textfetch
+          
+          # 2. Linux ARM64
+          tar -C artifacts/textfetch-linux-arm64 -czvf release_dist/textfetch-linux-arm64.tar.gz textfetch
+          
+          # 3. Linux ARM7v (Luckfox)
+          tar -C artifacts/textfetch-linux-arm7v -czvf release_dist/textfetch-linux-arm7v.tar.gz textfetch
+          
+          # 4. macOS ARM64 (Apple Silicon)
+          tar -C artifacts/textfetch-macos-arm64 -czvf release_dist/textfetch-macos-arm64.tar.gz textfetch
+          
+          # 5. macOS Intel - Legacy (10.7+)
+          mkdir -p temp_intel_legacy
+          cp artifacts/textfetch-macos-intel/textfetch_legacy temp_intel_legacy/textfetch
+          tar -C temp_intel_legacy -czvf release_dist/textfetch-macos-intel-legacy.tar.gz textfetch
+          
+          # 6. macOS Intel - Modern (10.9+)
+          mkdir -p temp_intel_modern
+          cp artifacts/textfetch-macos-intel/textfetch_modern temp_intel_modern/textfetch
+          tar -C temp_intel_modern -czvf release_dist/textfetch-macos-intel-modern.tar.gz textfetch
+
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: bin/textfetch-linux-amd64
+          files: release_dist/*.tar.gz
           generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

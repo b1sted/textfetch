@@ -9,6 +9,8 @@
 #include "config.h"
 #include "ui.h"
 
+const char version_string[] __attribute__((used, section(VERSION_SECTION))) = APP_VERSION;
+
 static struct {
     unsigned int kib_format     : 1;
     unsigned int mib_format     : 1;

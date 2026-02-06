@@ -8,15 +8,15 @@ ifneq (,$(filter $(UNAME_S),Linux Android))
 else ifeq ($(UNAME_S), Darwin)
     PLATFORM_DIR := macos
 	DEV_CFLAGS   += -gdwarf-4
-    override REL_LDFLAGS := -Wl,-dead_strip
+    override REL_LDFLAGS := -Wl,-dead_strip,-source_version,1.0
 	override LDFLAGS	 += -framework IOKit -framework CoreFoundation
 else
     $(error Platform $(UNAME_S) not supported)
 endif
 
 CC          ?= gcc
-CPPFLAGS    += -Iinclude -MMD -MP
-CFLAGS      += -Wall -Wextra -std=c99
+override CPPFLAGS += -Iinclude -MMD -MP
+override CFLAGS   += -Wall -Wextra -std=c99
 LDFLAGS     += 
 
 BINDIR      = bin
