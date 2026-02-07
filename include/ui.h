@@ -5,8 +5,10 @@
 
 #include "config.h"
 
-#define SMALL_BUFFER 64
-#define LINE_BUFFER  256
+#define TINY_BUFFER   16
+#define SMALL_BUFFER  64
+#define MEDIUM_BUFFER 128
+#define LINE_BUFFER   256
 
 /**
  * Verbose perror wrapper.

@@ -1,40 +1,48 @@
-DEV_CFLAGS  = -g -O0 -DDEBUG
-
-UNAME_S := $(shell uname -s)
-
-ifneq (,$(filter $(UNAME_S),Linux Android))
-    PLATFORM_DIR := linux
-    REL_LDFLAGS  := -Wl,--gc-sections -s
-else ifeq ($(UNAME_S), Darwin)
-    PLATFORM_DIR := macos
-	DEV_CFLAGS   += -gdwarf-4
-    override REL_LDFLAGS := -Wl,-dead_strip,-source_version,1.0
-	override LDFLAGS	 += -framework IOKit -framework CoreFoundation
-else
-    $(error Platform $(UNAME_S) not supported)
-endif
-
 CC          ?= gcc
 override CPPFLAGS += -Iinclude -MMD -MP
 override CFLAGS   += -Wall -Wextra -std=c99
 LDFLAGS     += 
 
-BINDIR      = bin
-OBJDIR      = obj
-SRCDIR      = src
-TARGET      = $(BINDIR)/textfetch
-TARGET_DEV  = $(BINDIR)/textfetch-dev
+DEV_CFLAGS  := -g -O0 -DDEBUG
+REL_CFLAGS  := -O3 -DNDEBUG -ffunction-sections -fdata-sections
 
-CORE_SRCS     = $(wildcard $(SRCDIR)/core/*.c)
-PLATFORM_SRCS = $(wildcard $(SRCDIR)/platform/$(PLATFORM_DIR)/*.c)
-SRCS          = $(CORE_SRCS) $(PLATFORM_SRCS)
+UNAME_S := $(shell uname -s)
+UNAME_O := $(shell uname -o 2>/dev/null)
 
-OBJS_REL    = $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/release/%.o, $(SRCS))
-OBJS_DEV    = $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/dev/%.o, $(SRCS))
+PLATFORM_SUBDIRS := posix
 
-DEPS        = $(OBJS_REL:.o=.d) $(OBJS_DEV:.o=.d)
+ifeq ($(UNAME_S), Darwin)
+    PLATFORM_SUBDIRS += macos
+    DEV_CFLAGS       += -gdwarf-4
+    REL_LDFLAGS      := -Wl,-dead_strip,-source_version,1.0
+    override LDFLAGS += -framework IOKit -framework CoreFoundation
+else ifneq (,$(filter $(UNAME_S),Linux Android))
+    PLATFORM_SUBDIRS += linux-common
+    REL_LDFLAGS      := -Wl,--gc-sections -s
+    
+    ifeq ($(UNAME_O), Android)
+        PLATFORM_SUBDIRS += android
+    else
+        PLATFORM_SUBDIRS += linux
+    endif
+else
+    $(error Platform $(UNAME_S) not supported)
+endif
 
-REL_CFLAGS  = -O3 -DNDEBUG -ffunction-sections -fdata-sections
+BINDIR      := bin
+OBJDIR      := obj
+SRCDIR      := src
+TARGET      := $(BINDIR)/textfetch
+TARGET_DEV  := $(BINDIR)/textfetch-dev
+
+CORE_SRCS     := $(wildcard $(SRCDIR)/core/*.c)
+PLATFORM_SRCS := $(foreach dir,$(PLATFORM_SUBDIRS),$(wildcard $(SRCDIR)/platform/$(dir)/*.c))
+SRCS          := $(CORE_SRCS) $(PLATFORM_SRCS)
+
+OBJS_REL    := $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/release/%.o, $(SRCS))
+OBJS_DEV    := $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/dev/%.o, $(SRCS))
+
+DEPS        := $(OBJS_REL:.o=.d) $(OBJS_DEV:.o=.d)
 
 .PHONY: all dev clean
 

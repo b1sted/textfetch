@@ -3,6 +3,9 @@
 #ifndef BITSET_H
 #define BITSET_H
 
+#include <stdbool.h>
+#include <stdint.h>
+
 /**
  * Maximum number of unique elements (IDs) the bitset can handle.
  * Determines the valid range of input integers: [0, MAX_ELEMENTS - 1].
@@ -15,6 +18,8 @@
  * Division by 32 corresponds to sizeof(uint32_t) in bits.
  */
 #define SET_SIZE (MAX_ELEMENTS / 32 + 1)
+
+#define BIT(n) (1U << ((n) % 32))
 
 /**
  * Adds an element to the bitset.

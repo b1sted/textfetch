@@ -3,6 +3,16 @@
 #ifndef SYSTEM_H
 #define SYSTEM_H
 
+#include <limits.h>
+
+#ifdef LOGIN_NAME_MAX
+    #define SYS_USER_MAX LOGIN_NAME_MAX
+#elif defined(MAXLOGNAME)
+    #define SYS_USER_MAX MAXLOGNAME
+#else
+    #define SYS_USER_MAX 256
+#endif
+
 /**
  * Initializes the system module data.
  * Caches kernel information (uname) and system statistics (sysinfo) 
