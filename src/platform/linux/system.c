@@ -1,16 +1,18 @@
 /* SPDX-License-Identifier: MIT */
 
-#define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
 
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h> 
+#include <string.h>
+// #include <strings.h>s
 
 #include <errno.h>
 #include <limits.h>
 #include <pwd.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include <sys/sysinfo.h>
 #include <sys/types.h>
@@ -21,126 +23,23 @@
     #include <sys/system_properties.h>
 #endif
 
+#include "bitset.h"
 #include "system.h"
+#include "internal/system_os.h"
 #include "ui.h"
+#include "utils.h"
 
-static struct utsname sys_info;
-static struct sysinfo sys_stat;
+static bool sys_is_portable(void);
 
-/**
- * Internal helper to retrieve the effective username.
- * Queries the system password database (getpwuid) using the current 
- * effective user ID. Falls back to "unknown" on failure.
- *
- * @param out_buf  Destination buffer for the username.
- * @param buf_size Maximum size of the destination buffer.
- */
-static void sys_get_identity(char *out_buf, const size_t buf_size);
-
-/**
- * Internal helper to identify the OS distribution name.
- *
- * On Android: Retrieves the version via system property "ro.build.version.release".
- * 
- * On Linux:   Parses /etc/os-release (or /usr/lib/os-release) to find NAME
- *             or PRETTY_NAME keys.
- *
- * Appends the machine architecture to the result.
- *
- * @param out_buf  Destination buffer for the distro string.
- * @param buf_size Maximum size of the destination buffer.
- */
-static void sys_get_distro(char *out_buf, const size_t buf_size);
-
-/**
- * Formats the raw uptime value into a human-readable duration string.
- * Result format: "D days, HH:MM:SS" or "HH:MM:SS".
- * Operates on a local copy of the uptime to preserve the original value.
- *
- * @param out_buffer Destination buffer for the formatted string.
- * @param buf_size   Maximum size of the destination buffer.
- */
-static void sys_format_uptime(char *out_buf, const size_t buf_size);
-
-void system_init(void) {
-    const char *fallback = "unknown";
-
-    memset(&sys_info, 0, sizeof(struct utsname));
-
-    if (uname(&sys_info) != 0) {
-        V_PRINTF("Error: uname failed: %s\n", strerror(errno));
-
-        strncpy(sys_info.sysname,  fallback, sizeof(sys_info.sysname)  - 1);
-        strncpy(sys_info.nodename, fallback, sizeof(sys_info.nodename) - 1);
-        strncpy(sys_info.release,  fallback, sizeof(sys_info.release)  - 1);
-        strncpy(sys_info.machine,  fallback, sizeof(sys_info.machine)  - 1);
-    }
-
-    memset(&sys_stat, 0, sizeof(struct sysinfo));
-
-    if (sysinfo(&sys_stat) != 0) {
-        V_PRINTF("Error: sysinfo failed: %s\n", strerror(errno));
-
-        sys_stat.uptime = 0;
-        sys_stat.procs = 0;
-    }
-}
-
-void system_print_header(void) {
-    char username[LOGIN_NAME_MAX] = {0};
-
-    sys_get_identity(username, LOGIN_NAME_MAX);
-    ui_render_header(username, sys_info.nodename);
-}
-
-void system_print_info(void) {
-    char os_buf[LINE_BUFFER] = {0};
-    sys_get_distro(os_buf, LINE_BUFFER);
-    
-    char uptime_buf[LINE_BUFFER] = {0};
-    sys_format_uptime(uptime_buf, LINE_BUFFER);
-
-    char procs_buf[SMALL_BUFFER] = {0};
-    snprintf(procs_buf, SMALL_BUFFER, "%hu", sys_stat.procs);
-
-    ui_print_info("OS", os_buf);
-    ui_print_info("Kernel", sys_info.release);
-    ui_print_info("Uptime", uptime_buf);
-    ui_print_info("Processes", procs_buf);
-}
-
-static void sys_get_identity(char *out_buf, const size_t buf_size) {
-    struct passwd *pwd;
-    uid_t uid = geteuid();
-
-    if ((pwd = getpwuid(uid)) == NULL) {
-        V_PRINTF("Error: getpwuid failed: %s\n", strerror(errno));
-        snprintf(out_buf, buf_size, "unknown");
-        return ;
-    }
-
-    snprintf(out_buf, buf_size, "%s", pwd->pw_name);
-}
-
-#ifdef __ANDROID__
-static void sys_get_distro(char *out_buf, const size_t buf_size) {
-    char android_version[PROP_VALUE_MAX] = "unknown";
-
-    if (__system_property_get("ro.build.version.release", android_version) <= 0) {
-        V_PRINTF("Warning: Could not read version, using 'unknown'\n");
-    }
-
-    snprintf(out_buf, buf_size, "Android %s %s", android_version, sys_info.machine);
-}
-#else
-static void sys_get_distro(char *out_buf, const size_t buf_size) {
+void sys_get_distro(char *out_buf, const size_t buf_size) {
     FILE *fp = fopen("/etc/os-release", "r");
     if (!fp) {
         fp = fopen("/usr/lib/os-release", "r");
 
         if (!fp) {
             V_PRINTF("Error: open os-release file failed: %s\n", strerror(errno));
-            snprintf(out_buf, buf_size, "%s %s", sys_info.sysname, sys_info.machine);
+            snprintf(out_buf, buf_size, "%s %s", sys_data.sysname, 
+                     sys_data.machine);
             return;
         }
     }
@@ -179,25 +78,55 @@ static void sys_get_distro(char *out_buf, const size_t buf_size) {
     fclose(fp);
 
     size_t len = strlen(out_buf);
-    snprintf(out_buf + len, buf_size - len, " %s", sys_info.machine);
+    snprintf(out_buf + len, buf_size - len, " %s", sys_data.machine);
 }
-#endif
 
-static void sys_format_uptime(char *out_buf, const size_t buf_size) {
-    long uptime = sys_stat.uptime;
+void sys_get_model_name(char *out_buf, const size_t buf_size) {
+    if (!sys_is_portable()) return; 
 
-    long days = uptime / 86400;
-    uptime %= 86400;
+    char vendor_buf[SMALL_BUFFER] = {0};
+    char family_buf[MEDIUM_BUFFER] = {0};
+    char name_buf[MEDIUM_BUFFER] = {0};
 
-    long hours = uptime / 3600;
-    uptime %= 3600;
-    
-    long minutes = uptime / 60;
-    long seconds = uptime % 60;
+    util_read_line("/sys/class/dmi/id/sys_vendor",      vendor_buf,  sizeof(vendor_buf));
+    util_read_line("/sys/class/dmi/id/product_family",  family_buf,  sizeof(family_buf));
+    util_read_line("/sys/class/dmi/id/product_name",    name_buf,    sizeof(name_buf));
 
-    if (days != 0) {
-        snprintf(out_buf, buf_size, "%ld days, %02ld:%02ld:%02ld", days, hours, minutes, seconds);
-    } else {
-        snprintf(out_buf, buf_size, "%02ld:%02ld:%02ld", hours, minutes, seconds);
+    const char *family_trash_values[] = {
+        "00000000", "11111111", "All Series", "BDW", "CFL", "CHASSIS", "CNL",
+        "Default String", "Family", "Generic", "HSW", "ICL", "Invalid", "KBL",
+        "LBG", "None", "Not Specified", "SKL", "System Family", "TGL",
+        "To Be Filled By O.E.M.", "Unknown", "Whiskey Lake", NULL
+    };
+
+    bool is_family_value_garbage = false;
+    for (int i = 0; family_trash_values[i] != NULL; i++) {
+        if (strcasecmp(family_buf, family_trash_values[i]) == 0) {
+            is_family_value_garbage = true;
+            break;
+        }
     }
+
+    const char *final_vendor = (strcasestr(name_buf, vendor_buf)) ? "" : vendor_buf;
+
+    if (is_family_value_garbage) {
+        snprintf(out_buf, buf_size, "%s %s", final_vendor, name_buf);
+    } else {
+        snprintf(out_buf, buf_size, "%s %s %s", final_vendor, 
+                 (strcasestr(name_buf, family_buf)) ? "" : family_buf, name_buf);
+    }
+}
+
+static bool sys_is_portable(void) {
+    uint8_t chassis_value = 0;
+    if (!util_read_uint8("/sys/class/dmi/id/chassis_type", &chassis_value)) return false;
+
+    const uint32_t dmi_portable_chassis_mask[SET_SIZE] = {
+        [0] = BIT(8) | BIT(9) | BIT(10) | BIT(11) | BIT(14) | BIT(30) | BIT(31),
+        [1] = BIT(32)
+    };
+
+    if (set_contains(dmi_portable_chassis_mask, chassis_value)) return true;
+
+    return false;
 }
