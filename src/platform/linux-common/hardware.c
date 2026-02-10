@@ -1,0 +1,153 @@
+/* SPDX-License-Identifier: MIT */
+
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <ctype.h>
+#include <dirent.h>
+#include <errno.h>
+#include <limits.h>
+#include <locale.h>
+#include <mntent.h>
+#include <pwd.h>
+#include <unistd.h>
+
+#include <sys/stat.h>
+#include <sys/statvfs.h>
+#include <sys/sysinfo.h>
+#include <sys/types.h>
+#include <sys/utsname.h>
+#include <sys/wait.h>
+
+#include "hardware.h"
+#include "internal/hardware_os.h"
+#include "hashtable.h"
+#include "ui.h"
+#include "utils.h"
+
+static void hw_print_disk(const char *mnt, const struct statvfs *fs, const struct mntent *ent);
+
+void hw_get_mem_info(void) {
+    mem_info_t node;
+    memset(&node, 0, sizeof(mem_info_t));
+
+    mem_flags_t flags = 0;
+
+    FILE *memory_file = fopen("/proc/meminfo", "r");
+    if (!memory_file) {
+        V_PRINTF("Error: failed to open /proc/meminfo: %s\n", strerror(errno));
+        return;
+    }
+
+    uint64_t ram_free = 0, swap_free = 0;
+
+    char file_line[LINE_BUFFER];
+    while (fgets(file_line, LINE_BUFFER, memory_file)) {
+        char *delimeter_ptr = strstr(file_line, ":");
+        if (!delimeter_ptr) continue;
+
+        *delimeter_ptr = '\0';
+        char *key = file_line;
+        char *value = delimeter_ptr + 1;
+        char *endptr;
+
+        unsigned long long temp_val = strtoull(value, &endptr, 10);
+
+        if (value == endptr) continue;
+
+        if (strcmp(key, "MemTotal") == 0)     node.ram_size  = temp_val * BYTES_PER_KIB;
+        if (strcmp(key, "MemAvailable") == 0) ram_free       = temp_val * BYTES_PER_KIB;
+        if (strcmp(key, "SwapTotal") == 0)    node.swap_size = temp_val * BYTES_PER_KIB;
+        if (strcmp(key, "SwapFree") == 0)     swap_free      = temp_val * BYTES_PER_KIB;
+    }
+
+    if (node.ram_size > 0) {
+        flags |= MEM_RAM;
+        node.ram_used = node.ram_size - ram_free;
+    }
+    
+    if (node.swap_size > 0) {
+        flags |= MEM_SWAP;
+        node.swap_used = node.swap_size - swap_free;
+    }
+
+    fclose(memory_file);
+
+    hw_print_mem_info(flags, &node);
+}
+
+void hw_get_drives_info(void) {
+    struct mntent *mnt_entry;
+    struct statvfs fs;
+    memset(&fs, 0, sizeof(struct statvfs));
+
+    const char *ignore_name[] = {
+        "/.", "/boot", "/mnt/wslg/distro", "/run/user", "/var", 
+        "/apex", "/bootstrap-apex", NULL
+    };
+
+    FILE *mounts_file = fopen("/proc/mounts", "r");
+    if (!mounts_file) {
+        V_PRINTF("Error: failed to open /proc/mounts: %s\n", strerror(errno));
+        return;
+    }
+
+    string_set_t *outputted_partitions = strset_create(INITIAL_CAPACITY);
+
+    while ((mnt_entry = getmntent(mounts_file)) != NULL) {
+        if (strncmp(mnt_entry->mnt_fsname, "/dev/", 5) != 0) continue; 
+        if (strncmp(mnt_entry->mnt_fsname, "/dev/loop", 9) == 0) continue;
+        
+        if (strcmp(mnt_entry->mnt_type, "fuse") == 0 ||
+            strcmp(mnt_entry->mnt_type, "erofs") == 0) continue;
+
+        bool is_ignore = false;
+        for (int i = 0; ignore_name[i] != NULL; i++) {
+            if (strncmp(mnt_entry->mnt_dir, ignore_name[i], 
+                        strlen(ignore_name[i])) == 0) {
+                is_ignore = true;
+            }
+        }
+
+        if (is_ignore) continue;
+
+        if (statvfs(mnt_entry->mnt_dir, &fs) != 0) {
+            V_PRINTF("Error: statvfs failed for %s: %s\n", 
+                    mnt_entry->mnt_dir, strerror(errno));
+            continue;
+        }
+
+        if (fs.f_blocks == 0) continue; 
+
+        if (!strset_contains(outputted_partitions, mnt_entry->mnt_fsname)) {
+            strset_add(outputted_partitions, mnt_entry->mnt_fsname);
+            hw_print_disk(mnt_entry->mnt_dir, &fs, mnt_entry);
+        }
+    }
+
+    strset_destroy(outputted_partitions);
+    fclose(mounts_file);
+}
+
+static void hw_print_disk(const char *mnt, const struct statvfs *fs, const struct mntent *ent) {
+    uint64_t block_size = fs->f_frsize;
+    double total_size   = (uint64_t)fs->f_blocks * block_size;
+    double free_size    = fs->f_bfree * block_size;
+    double used_size    = total_size - free_size;
+
+    char label[LINE_BUFFER];
+    snprintf(label, LINE_BUFFER, "Disk (%s)", mnt);
+
+    char usage_info[LINE_BUFFER];
+    size_t usage_len = sizeof(usage_info);
+
+    util_format_size(total_size, used_size, usage_info, usage_len, UNIT_B);
+
+    size_t len = strlen(usage_info);
+    snprintf(usage_info + len, usage_len - len, " [%s]", ent->mnt_type);
+
+    ui_print_info(label, usage_info);
+}
