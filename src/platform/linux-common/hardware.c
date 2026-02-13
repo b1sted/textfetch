@@ -1,34 +1,26 @@
 /* SPDX-License-Identifier: MIT */
 
 #include <stdbool.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <ctype.h>
-#include <dirent.h>
 #include <errno.h>
-#include <limits.h>
-#include <locale.h>
+
 #include <mntent.h>
-#include <pwd.h>
-#include <unistd.h>
 
-#include <sys/stat.h>
 #include <sys/statvfs.h>
-#include <sys/sysinfo.h>
-#include <sys/types.h>
-#include <sys/utsname.h>
-#include <sys/wait.h>
 
-#include "hardware.h"
-#include "internal/hardware_os.h"
+#include "defs.h"
 #include "hashtable.h"
+#include "sys_utils.h"
 #include "ui.h"
-#include "utils.h"
 
-static void hw_print_disk(const char *mnt, const struct statvfs *fs, const struct mntent *ent);
+#include "pal/hardware_os.h"
+
+static void hw_print_disk(const char *mnt, const struct statvfs *fs, 
+                          const struct mntent *ent);
 
 void hw_get_mem_info(void) {
     mem_info_t node;
@@ -68,7 +60,7 @@ void hw_get_mem_info(void) {
         flags |= MEM_RAM;
         node.ram_used = node.ram_size - ram_free;
     }
-    
+
     if (node.swap_size > 0) {
         flags |= MEM_SWAP;
         node.swap_used = node.swap_size - swap_free;
@@ -85,8 +77,8 @@ void hw_get_drives_info(void) {
     memset(&fs, 0, sizeof(struct statvfs));
 
     const char *ignore_name[] = {
-        "/.", "/boot", "/mnt/wslg/distro", "/run/user", "/var", 
-        "/apex", "/bootstrap-apex", NULL
+        "/.",   "/boot", "/mnt/wslg/distro", "/run/user",
+        "/var", "/apex", "/bootstrap-apex",  NULL
     };
 
     FILE *mounts_file = fopen("/proc/mounts", "r");
@@ -98,16 +90,15 @@ void hw_get_drives_info(void) {
     string_set_t *outputted_partitions = strset_create(INITIAL_CAPACITY);
 
     while ((mnt_entry = getmntent(mounts_file)) != NULL) {
-        if (strncmp(mnt_entry->mnt_fsname, "/dev/", 5) != 0) continue; 
+        if (strncmp(mnt_entry->mnt_fsname, "/dev/", 5) != 0) continue;
         if (strncmp(mnt_entry->mnt_fsname, "/dev/loop", 9) == 0) continue;
-        
+
         if (strcmp(mnt_entry->mnt_type, "fuse") == 0 ||
             strcmp(mnt_entry->mnt_type, "erofs") == 0) continue;
 
         bool is_ignore = false;
         for (int i = 0; ignore_name[i] != NULL; i++) {
-            if (strncmp(mnt_entry->mnt_dir, ignore_name[i], 
-                        strlen(ignore_name[i])) == 0) {
+            if (strncmp(mnt_entry->mnt_dir, ignore_name[i], strlen(ignore_name[i])) == 0) {
                 is_ignore = true;
             }
         }
@@ -116,11 +107,11 @@ void hw_get_drives_info(void) {
 
         if (statvfs(mnt_entry->mnt_dir, &fs) != 0) {
             V_PRINTF("Error: statvfs failed for %s: %s\n", 
-                    mnt_entry->mnt_dir, strerror(errno));
+                     mnt_entry->mnt_dir, strerror(errno));
             continue;
         }
 
-        if (fs.f_blocks == 0) continue; 
+        if (fs.f_blocks == 0) continue;
 
         if (!strset_contains(outputted_partitions, mnt_entry->mnt_fsname)) {
             strset_add(outputted_partitions, mnt_entry->mnt_fsname);

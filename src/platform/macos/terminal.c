@@ -1,27 +1,21 @@
 /* SPDX-License-Identifier: MIT */
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h> 
+#include <string.h>
 
-#include <ctype.h>
 #include <errno.h>
-#include <limits.h>
-#include <locale.h>
-#include <pwd.h>
-#include <spawn.h>
+
 #include <unistd.h>
 
 #include <sys/types.h>
+
 #include <libproc.h>
 
-#include <sys/utsname.h>
-#include <sys/wait.h>
-
 #include "capture.h"
-#include "terminal.h"
-#include "internal/terminal_os.h"
-#include "ui.h"
+#include "defs.h"
+#include "sys_utils.h"
+
+#include "pal/terminal_os.h"
 
 void term_get_shell(char *out_buf, const size_t buf_size) {
     pid_t ppid = getppid();

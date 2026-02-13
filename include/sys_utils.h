@@ -1,10 +1,21 @@
 /* SPDX-License-Identifier: MIT */
 
-#ifndef UTILS_H
-#define UTILS_H
+#ifndef SYS_UTILS_H
+#define SYS_UTILS_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
+
+#include "config.h"
+
+/**
+ * Verbose formatted print wrapper.
+ * Sends output to stderr only if the verbose flag is set.
+ */
+#define V_PRINTF(fmt, ...) \
+    do { if (cfg_is_verbose()) fprintf(stderr, fmt, ##__VA_ARGS__); } while (0)
 
 typedef enum {
     UNIT_B = 0,
@@ -12,7 +23,7 @@ typedef enum {
     UNIT_MIB,
     UNIT_GIB,
     UNIT_TIB,
-    UNIT_PIB
+    UNIT_PIB 
 } data_unit_t;
 
 bool util_read_line(const char *path, char *out_buf, const size_t buf_size);
@@ -28,4 +39,4 @@ bool util_is_file_exist(const char *path);
 void util_format_size(double total_size, double used_size, char *out_buf, 
                       const size_t buf_size, data_unit_t from_unit);
 
-#endif /* UTILS_H */
+#endif /* SYS_UTILS_H */

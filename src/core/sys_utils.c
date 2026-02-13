@@ -1,18 +1,19 @@
 /* SPDX-License-Identifier: MIT */
 
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
-#include <stdbool.h>
 
 #include <errno.h>
+
 #include <fcntl.h>
 #include <unistd.h>
 
+#include "sys_utils.h"
 #include "config.h"
-#include "ui.h"
-#include "utils.h"
+#include "defs.h"
 
 bool util_read_line(const char *path, char *out_buf, const size_t buf_size) {
     if (!out_buf || buf_size == 0) return false;
@@ -21,7 +22,7 @@ bool util_read_line(const char *path, char *out_buf, const size_t buf_size) {
     int fd = open(path, O_RDONLY);
     if (fd != -1) {
         ssize_t bytes_read = read(fd, out_buf, buf_size - 1);
-        if (bytes_read > 0) {          
+        if (bytes_read > 0) {
             out_buf[strcspn(out_buf, "\n")] = '\0';
         } else {
             V_PRINTF("[ERROR] Fail to read %s\n", path);
@@ -80,18 +81,18 @@ bool util_read_hex(const char *path, uint32_t *value) {
 bool util_read_hex16(const char *path, uint16_t *value) {
     uint32_t val32 = 0;
 
-    if (!util_read_hex(path, &val32)) return false;
+    if (!util_read_hex(path, &val32))
+        return false;
 
-    if (val32 > 0xFFFF) return false;
+    if (val32 > 0xFFFF)
+        return false;
 
     *value = (uint16_t)val32;
 
     return true;
 }
 
-bool util_is_file_exist(const char *path) {
-    return access(path, R_OK) == 0;
-}
+bool util_is_file_exist(const char *path) { return access(path, R_OK) == 0; }
 
 void util_format_size(double total_size, double used_size, char *out_buf, 
                       const size_t buf_size, data_unit_t from_unit) {
@@ -116,9 +117,18 @@ void util_format_size(double total_size, double used_size, char *out_buf,
     int8_t forced_unit = -1;
     uint8_t precision = 2;
 
-    if (cfg_is_kib()) { forced_unit = 1; precision = 0; }
-    if (cfg_is_mib()) { forced_unit = 2; precision = 0; }
-    if (cfg_is_gib()) { forced_unit = 3; precision = 2; }
+    if (cfg_is_kib()) {
+        forced_unit = 1;
+        precision = 0;
+    }
+    if (cfg_is_mib()) {
+        forced_unit = 2;
+        precision = 0;
+    }
+    if (cfg_is_gib()) {
+        forced_unit = 3;
+        precision = 2;
+    }
 
     uint8_t total_unit = 0;
     uint8_t used_unit = 0;
@@ -145,7 +155,6 @@ void util_format_size(double total_size, double used_size, char *out_buf,
         }
     }
 
-    snprintf(out_buf, buf_size, "%.*f %s / %.*f %s (%hhu%%)", 
-             precision, used_size, memory_units[used_unit], 
-             precision, total_size, memory_units[total_unit], usage_pct);
+    snprintf(out_buf, buf_size, "%.*f %s / %.*f %s (%hhu%%)", precision, used_size,
+             memory_units[used_unit], precision, total_size, memory_units[total_unit], usage_pct);
 }

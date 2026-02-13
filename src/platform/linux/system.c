@@ -2,32 +2,20 @@
 
 #define _GNU_SOURCE
 
-#include <stdio.h>
+#include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-// #include <strings.h>s
+#include <strings.h>
 
 #include <errno.h>
-#include <limits.h>
-#include <pwd.h>
-#include <unistd.h>
-#include <fcntl.h>
-
-#include <sys/sysinfo.h>
-#include <sys/types.h>
-#include <sys/utsname.h>
-#include <sys/wait.h>
-
-#ifdef __ANDROID__
-    #include <sys/system_properties.h>
-#endif
 
 #include "bitset.h"
-#include "system.h"
-#include "internal/system_os.h"
-#include "ui.h"
-#include "utils.h"
+#include "defs.h"
+#include "sys_utils.h"
+
+#include "pal/system_os.h"
 
 static bool sys_is_portable(void);
 
@@ -38,8 +26,7 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
 
         if (!fp) {
             V_PRINTF("Error: open os-release file failed: %s\n", strerror(errno));
-            snprintf(out_buf, buf_size, "%s %s", sys_data.sysname, 
-                     sys_data.machine);
+            snprintf(out_buf, buf_size, "%s %s", sys_data.sysname, sys_data.machine);
             return;
         }
     }
@@ -82,15 +69,15 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
 }
 
 void sys_get_model_name(char *out_buf, const size_t buf_size) {
-    if (!sys_is_portable()) return; 
+    if (!sys_is_portable()) return;
 
     char vendor_buf[SMALL_BUFFER] = {0};
     char family_buf[MEDIUM_BUFFER] = {0};
     char name_buf[MEDIUM_BUFFER] = {0};
 
-    util_read_line("/sys/class/dmi/id/sys_vendor",      vendor_buf,  sizeof(vendor_buf));
-    util_read_line("/sys/class/dmi/id/product_family",  family_buf,  sizeof(family_buf));
-    util_read_line("/sys/class/dmi/id/product_name",    name_buf,    sizeof(name_buf));
+    util_read_line("/sys/class/dmi/id/sys_vendor", vendor_buf, sizeof(vendor_buf));
+    util_read_line("/sys/class/dmi/id/product_family", family_buf, sizeof(family_buf));
+    util_read_line("/sys/class/dmi/id/product_name", name_buf, sizeof(name_buf));
 
     const char *family_trash_values[] = {
         "00000000", "11111111", "All Series", "BDW", "CFL", "CHASSIS", "CNL",
@@ -112,7 +99,7 @@ void sys_get_model_name(char *out_buf, const size_t buf_size) {
     if (is_family_value_garbage) {
         snprintf(out_buf, buf_size, "%s %s", final_vendor, name_buf);
     } else {
-        snprintf(out_buf, buf_size, "%s %s %s", final_vendor, 
+        snprintf(out_buf, buf_size, "%s %s %s", final_vendor,
                  (strcasestr(name_buf, family_buf)) ? "" : family_buf, name_buf);
     }
 }
@@ -122,7 +109,7 @@ static bool sys_is_portable(void) {
     if (!util_read_uint8("/sys/class/dmi/id/chassis_type", &chassis_value)) return false;
 
     const uint32_t dmi_portable_chassis_mask[SET_SIZE] = {
-        [0] = BIT(8) | BIT(9) | BIT(10) | BIT(11) | BIT(14) | BIT(30) | BIT(31),
+        [0] = BIT(8) | BIT(9) | BIT(10) | BIT(11) | BIT(14) | BIT(30) | BIT(31), 
         [1] = BIT(32)
     };
 

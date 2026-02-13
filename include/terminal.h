@@ -10,4 +10,4 @@
  */
 void terminal_print_info(void);
 
-#endif // TERMINAL_H
+#endif /* TERMINAL_H */

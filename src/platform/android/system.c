@@ -1,27 +1,15 @@
 /* SPDX-License-Identifier: MIT */
 
-#define _POSIX_C_SOURCE 200809L
-
+#include <stdbool.h>
 #include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h> 
-
-#include <errno.h>
-#include <limits.h>
-#include <pwd.h>
-#include <unistd.h>
-
-#include <sys/sysinfo.h>
-#include <sys/types.h>
-#include <sys/utsname.h>
-#include <sys/wait.h>
+#include <string.h>
 
 #include <sys/system_properties.h>
 
-#include "system.h"
-#include "internal/system_os.h"
-#include "ui.h"
+#include "defs.h"
+#include "sys_utils.h"
+
+#include "pal/system_os.h"
 
 void sys_get_distro(char *out_buf, const size_t buf_size) {
     char android_version[PROP_NAME_MAX] = "Unknown";
@@ -69,4 +57,3 @@ void sys_get_model_name(char *out_buf, size_t buf_size) {
         snprintf(out_buf, buf_size, "%s %s (%s)", brand_buf, model_buf, name_buf);
     }
 }
-

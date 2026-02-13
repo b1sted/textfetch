@@ -1,25 +1,19 @@
 /* SPDX-License-Identifier: MIT */
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <string.h> 
+#include <string.h>
 
 #include <errno.h>
-#include <limits.h>
-#include <locale.h>
-#include <pwd.h>
+
 #include <unistd.h>
 
-#include <sys/sysinfo.h>
 #include <sys/types.h>
-#include <sys/utsname.h>
-#include <sys/wait.h>
 
-#include "terminal.h"
-#include "internal/terminal_os.h"
-#include "ui.h"
 #include "capture.h"
+#include "defs.h"
+#include "sys_utils.h"
+
+#include "pal/terminal_os.h"
 
 void term_get_shell(char *out_buf, const size_t buf_size) {
     if (!out_buf || buf_size == 0) return;

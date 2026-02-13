@@ -6,7 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "ui.h"
+#include "defs.h"
 
 #define KHZ_PER_GHZ   1e6
 #define HZ_PER_GHZ    1e9
@@ -50,4 +50,4 @@ void hw_get_drives_info(void);
 
 void hw_get_bat_info(void);
 
-#endif // HARDWARE_OS_H
+#endif /* HARDWARE_OS_H */

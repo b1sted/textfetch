@@ -1,16 +1,16 @@
 /* SPDX-License-Identifier: MIT */
 
-#include <stdio.h>
-#include <string.h>
-
 #include <errno.h>
 #include <spawn.h>
+#include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
+#include <sys/types.h>
 #include <sys/wait.h>
 
 #include "capture.h"
-#include "ui.h"
+#include "sys_utils.h"
 
 /**
  * Pointer to the process environment variables array.
@@ -38,7 +38,7 @@ int capture_line(const char *command, const char *arg, char *out_buf, const size
 
     char *argv[] = {(char *)command, (char *)arg, NULL};
     pid_t pid;
-    
+
     int spawn_status = posix_spawnp(&pid, command, &actions, NULL, argv, environ);
 
     int result = -1;
@@ -61,10 +61,10 @@ int capture_line(const char *command, const char *arg, char *out_buf, const size
         int wait_status;
         waitpid(pid, &wait_status, 0);
 
-        if (WIFEXITED(wait_status) && WEXITSTATUS(wait_status) == 0 && out_buf[0] != '\0') {
+        if (WIFEXITED(wait_status) && WEXITSTATUS(wait_status) == 0
+            && out_buf[0] != '\0') {
             result = 0;
         }
-        
     } else {
         close(pipefd[0]);
         close(pipefd[1]);
@@ -72,6 +72,6 @@ int capture_line(const char *command, const char *arg, char *out_buf, const size
     }
 
     posix_spawn_file_actions_destroy(&actions);
-    
-    return result; 
+
+    return result;
 }

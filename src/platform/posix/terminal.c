@@ -2,21 +2,15 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h> 
+#include <string.h>
 
-#include <errno.h>
-#include <limits.h>
 #include <locale.h>
-#include <pwd.h>
-#include <unistd.h>
 
-#include <sys/types.h>
-#include <sys/utsname.h>
-#include <sys/wait.h>
-
-#include "terminal.h"
-#include "internal/terminal_os.h"
+#include "defs.h"
+#include "sys_utils.h"
 #include "ui.h"
+
+#include "pal/terminal_os.h"
 
 void terminal_print_info(void) {
     char shell_buf[LINE_BUFFER] = {0};

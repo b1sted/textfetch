@@ -1,55 +1,59 @@
 /* SPDX-License-Identifier: MIT */
 
-#include <ctype.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include <ctype.h>
+#include <errno.h>
+#include <inttypes.h>
+
 #include <sys/mount.h>
 #include <sys/sysctl.h>
-#include <unistd.h>
 
 #include <mach/mach_host.h>
 #include <mach/mach_init.h>
 #include <mach/mach_types.h>
 #include <mach/vm_statistics.h>
 
-#include <TargetConditionals.h>
-
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
 #include <IOKit/ps/IOPSKeys.h>
 #include <IOKit/ps/IOPowerSources.h>
+#include <TargetConditionals.h>
 
+#include "defs.h"
 #include "hashtable.h"
-#include "internal/hardware_os.h"
-#include "hardware.h"
+#include "sys_utils.h"
 #include "ui.h"
-#include "utils.h"
+
+#include "pal/hardware_os.h"
 
 /**
  * Compatibility shim for kIOMainPortDefault.
- * 
+ *
  * macOS 12.0 renamed kIOMasterPortDefault to kIOMainPortDefault.
- * This definition ensures the code compiles on older SDKs (like Mavericks/Mojave)
- * while avoiding deprecation warnings on modern macOS versions.
+ * This definition ensures the code compiles on older SDKs (like
+ * Mavericks/Mojave) while avoiding deprecation warnings on modern macOS
+ * versions.
  */
 #ifndef kIOMainPortDefault
-    #define kIOMainPortDefault ((mach_port_t)0)
+#define kIOMainPortDefault ((mach_port_t)0)
 #endif
 
 #if TARGET_CPU_ARM64
 /**
  * Static lookup entry for mapping SoC brand strings to peak P-core frequencies.
- * 
+ *
  * Used as a stable alternative to querying undocumented IOKit PMGR nodes,
- * which are subject to format changes across different Apple Silicon generations.
+ * which are subject to format changes across different Apple Silicon
+ * generations.
  */
 typedef struct {
     double p_frequency; /* Peak Performance-core clock speed in GHz */
-    double e_frequecny; /* Peak Efficiency-core clock speed in GHz */
+    double e_frequency; /* Peak Efficiency-core clock speed in GHz */
     const char *model;
 } dvfs_entry_t;
 #endif
@@ -67,7 +71,7 @@ static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *node);
 static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *node);
 
 static uint8_t hw_get_bat_percentage(const CFDictionaryRef power_source);
-static const char* hw_get_bat_status(const CFDictionaryRef power_source, 
+static const char *hw_get_bat_status(const CFDictionaryRef power_source,
                                      uint8_t battery_percentage);
 
 void hw_get_cpu_model(cpu_info_t *node) {
@@ -112,10 +116,9 @@ void hw_get_cpu_cores(cpu_info_t *node) {
         V_PRINTF("[Error] sysctlbyname(hw.physicalcpu) failed: %s\n", strerror(errno));
     }
 
-    size_t current_len = strlen(out_buf) - 1;
-    snprintf(out_buf + current_len, core_size - current_len, 
-             "-core: %" PRIu64 "P + %" PRIu64 "E)", 
-             p_cores, e_cores);
+    size_t current_len = strlen(node->cores) - 1;
+    snprintf(node->cores + current_len, core_size - current_len,
+             "-core: %" PRIu64 "P + %" PRIu64 "E)", p_cores, e_cores);
 #endif
 }
 
@@ -126,11 +129,11 @@ void hw_get_cpu_freq(cpu_info_t *node) {
     /**
      * Friendship ended with IOKIT
      * Now HARDCODED TABLE is my best friend
-     * 
-     * PMGR and IOKit nodes for frequency scaling are undocumented and change 
-     * frequently across macOS versions. A static lookup table indexed by SoC 
+     *
+     * PMGR and IOKit nodes for frequency scaling are undocumented and change
+     * frequently across macOS versions. A static lookup table indexed by SoC
      * brand strings provides a more reliable and stable frequency report.
-     * 
+     *
      * Note: Search order is crucial (e.g., "M1 Max" must be checked before "M1").
      */
     static const dvfs_entry_t m_series[] = {
@@ -155,7 +158,7 @@ void hw_get_cpu_freq(cpu_info_t *node) {
 
     for (uint8_t i = 0; m_series[i].model != NULL; i++) {
         if (strstr(node->model, m_series[i].model) != NULL) {
-            snprintf(node->frequency, sizeof(node->frequency), " @ %.2f / %.2f GHz", 
+            snprintf(node->frequency, sizeof(node->frequency), " @ %.2f / %.2f GHz",
                      m_series[i].p_frequency, m_series[i].e_frequency);
             return;
         }
@@ -214,9 +217,11 @@ void hw_get_gpu_info(void) {
     io_registry_entry_t entry;
     while ((entry = IOIteratorNext(it))) {
         CFMutableDictionaryRef props;
-        if (IORegistryEntryCreateCFProperties(entry, &props, kCFAllocatorDefault, kNilOptions) == kIOReturnSuccess) {
+        if (IORegistryEntryCreateCFProperties(entry, &props, kCFAllocatorDefault,
+                                              kNilOptions) == kIOReturnSuccess) {
             CFDataRef class_data = (CFDataRef)CFDictionaryGetValue(props, CFSTR("class-code"));
-            if (class_data && CFGetTypeID(class_data) == CFDataGetTypeID() && CFDataGetLength(class_data) >= 4) {
+            if (class_data && CFGetTypeID(class_data) == CFDataGetTypeID() &&
+                CFDataGetLength(class_data) >= 4) {
                 const uint8_t *code = CFDataGetBytePtr(class_data);
                 if (code[2] != 0x03) {
                     CFRelease(props);
@@ -242,8 +247,8 @@ void hw_get_gpu_info(void) {
                 }
 
                 if (current_len < model_size) {
-                    snprintf(model_buf + current_len, model_size - current_len, "%.*s", 
-                             (int)model_len, model_ptr);
+                    snprintf(model_buf + current_len, model_size - current_len, 
+                             "%.*s", (int)model_len, model_ptr);
                 }
             }
 
@@ -328,7 +333,7 @@ static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *node) {
 
     *flags |= MEM_SWAP;
 
-    node->swap_size = xsw.xsu_total; 
+    node->swap_size = xsw.xsu_total;
     node->swap_used = xsw.xsu_used;
 }
 
@@ -341,7 +346,8 @@ void hw_get_drives_info(void) {
 
     struct statfs *st = malloc(sizeof(struct statfs) * n);
     if (!st) {
-        V_PRINTF("[Error] malloc(%zu) for statfs failed: %s\n", sizeof(struct statfs) * n, strerror(errno));
+        V_PRINTF("[Error] malloc(%zu) for statfs failed: %s\n", 
+                 sizeof(struct statfs) * n, strerror(errno));
         return;
     }
 
@@ -356,7 +362,7 @@ void hw_get_drives_info(void) {
 
     for (int i = 0; i < n; i++) {
         if ((strcmp(st[i].f_mntonname, "/") != 0 &&
-            strncmp(st[i].f_mntonname, "/Volumes/", 9) != 0)) continue;
+             strncmp(st[i].f_mntonname, "/Volumes/", 9) != 0)) continue;
 
         if (strset_contains(outputted_disks, st[i].f_mntfromname)) continue;
 
@@ -392,7 +398,7 @@ void hw_get_bat_info(void) {
         return;
     }
 
-    CFDictionaryRef dict = IOPSGetPowerSourceDescription(info, 
+    CFDictionaryRef dict = IOPSGetPowerSourceDescription(info,
                                                          CFArrayGetValueAtIndex(list, 0));
 
     char model[SMALL_BUFFER] = "Unknown";
@@ -404,13 +410,13 @@ void hw_get_bat_info(void) {
     }
 
     if (model_ref && CFGetTypeID(model_ref) == CFStringGetTypeID()) {
-         CFStringGetCString(model_ref, model, sizeof(model), kCFStringEncodingUTF8);
+        CFStringGetCString(model_ref, model, sizeof(model), kCFStringEncodingUTF8);
     }
 
     char health[SMALL_BUFFER] = "Unknown";
     CFStringRef health_ref = CFDictionaryGetValue(dict, CFSTR(kIOPSBatteryHealthKey));
     if (health_ref) {
-         CFStringGetCString(health_ref, health, sizeof(health), kCFStringEncodingUTF8);
+        CFStringGetCString(health_ref, health, sizeof(health), kCFStringEncodingUTF8);
     }
 
     uint8_t pct = hw_get_bat_percentage(dict);
@@ -431,7 +437,7 @@ static uint8_t hw_get_bat_percentage(const CFDictionaryRef power_source) {
 
     CFNumberRef cur_ref = CFDictionaryGetValue(power_source, CFSTR(kIOPSCurrentCapacityKey));
     CFNumberRef max_ref = CFDictionaryGetValue(power_source, CFSTR(kIOPSMaxCapacityKey));
-    
+
     if (cur_ref) CFNumberGetValue(cur_ref, kCFNumberIntType, &cur_cap);
     if (max_ref) CFNumberGetValue(max_ref, kCFNumberIntType, &max_cap);
 
@@ -439,13 +445,14 @@ static uint8_t hw_get_bat_percentage(const CFDictionaryRef power_source) {
     return (max_cap > 0) ? (uint8_t)((double)cur_cap / max_cap * 100) : 0;
 }
 
-static const char* hw_get_bat_status(const CFDictionaryRef power_source, 
+static const char *hw_get_bat_status(const CFDictionaryRef power_source,
                                      uint8_t battery_percentage) {
     uint8_t status = 0;
     CFStringRef state = CFDictionaryGetValue(power_source, CFSTR(kIOPSPowerSourceStateKey));
     CFBooleanRef charging = CFDictionaryGetValue(power_source, CFSTR(kIOPSIsChargingKey));
 
-    if (state && CFStringCompare(state, CFSTR(kIOPSACPowerValue), 0) == kCFCompareEqualTo) {
+    if (state && 
+        CFStringCompare(state, CFSTR(kIOPSACPowerValue), 0) == kCFCompareEqualTo) {
         status |= FLAG_AC;
     }
     if (charging && CFBooleanGetValue(charging)) status |= FLAG_CHARGING;

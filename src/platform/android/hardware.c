@@ -1,21 +1,21 @@
 /* SPDX-License-Identifier: MIT */
 
-#include <stdbool.h>
-#include <stdio.h>
 #include <stdint.h>
-#include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
-#include <inttypes.h>
-#include <unistd.h>
 #include <errno.h>
+#include <inttypes.h>
+
+#include <unistd.h>
 
 #include <sys/system_properties.h>
 
-#include "hardware.h"
-#include "internal/hardware_os.h"
+#include "defs.h"
+#include "sys_utils.h"
 #include "ui.h"
-#include "utils.h"
+
+#include "pal/hardware_os.h"
 
 void hw_get_cpu_model(cpu_info_t *node) {
     if (__system_property_get("ro.soc.model", node->model) <= 0) {
@@ -46,20 +46,21 @@ void hw_get_cpu_freq(cpu_info_t *node) {
 
 void hw_get_gpu_info(void) {
     /* TO:DO: Become a ninja Shaolin and learn the secret of obtaining a GPU model */
-    
+
     return;
 }
 
 /*
  * NOTE: Battery parsing is skipped on non-rooted Android systems.
- * 1. Direct access to /sys/class/power_supply/ is blocked by Google since Android 10+
- *    to prevent battery-based fingerprinting (privacy protection).
+ * 1. Direct access to /sys/class/power_supply/ is blocked by Google since
+ * Android 10+ to prevent battery-based fingerprinting (privacy protection).
  * 2. 'termux-api' bridge is too slow (~300-500ms overhead) for a utility
  *    aiming for sub-50ms execution time.
  * 3. 'dumpsys' requires android.permission.DUMP (not available by default).
  */
 void hw_get_bat_info(void) {
-    if (!util_is_file_exist("/sys/class/power_supply/battery/present")) return;
+    if (!util_is_file_exist("/sys/class/power_supply/battery/present"))
+        return;
 
     uint8_t capacity = 0;
     char status[MINI_BUFFER] = {0};
@@ -70,7 +71,7 @@ void hw_get_bat_info(void) {
     util_read_line("/sys/class/power_supply/battery/health", health, sizeof(health));
 
     char information[LINE_BUFFER] = {0};
-    snprintf(information, sizeof(information), "%" PRIu8 "(%s, Health: %s)", 
-             capacity, status, health);
+    snprintf(information, sizeof(information), "%" PRIu8 "(%s, Health: %s)", capacity, status,
+             health);
     ui_print_info("Battery", information);
 }

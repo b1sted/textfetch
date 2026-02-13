@@ -9,4 +9,4 @@ void term_get_shell(char *out_buf, const size_t buf_size);
 void term_fallback_shell(char *out_buf, const size_t buf_size);
 void term_sanitize_name(char *out_buf);
 
-#endif // TERMINAL_OS_H
+#endif /* TERMINAL_OS_H */

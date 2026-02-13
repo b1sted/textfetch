@@ -3,15 +3,17 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
-#include <fcntl.h>
-#include <sys/wait.h>
+
 #include <errno.h>
 
+#include <fcntl.h>
+#include <unistd.h>
+
+#include <sys/wait.h>
+
 #include "capture.h"
-#include "ui.h"
+#include "sys_utils.h"
 
 int capture_line(const char *command, const char *arg, char *out_buf, const size_t buf_size) {
     if (!command || !out_buf || buf_size == 0) return -1;
@@ -26,7 +28,7 @@ int capture_line(const char *command, const char *arg, char *out_buf, const size
     }
 
     pid_t pid = fork();
-    
+
     if (pid == -1) {
         V_PRINTF("Error: fork failed: %s\n", strerror(errno));
         return -1;
@@ -48,12 +50,12 @@ int capture_line(const char *command, const char *arg, char *out_buf, const size
         } else {
             execlp(command, command, (char *)NULL);
         }
-        
+
         V_PRINTF("Error: exec failed for %s: %s\n", command, strerror(errno));
-        _exit(1); 
+        _exit(1);
     } else {
         close(pipefd[1]);
-        
+
         FILE *pipe_stream = fdopen(pipefd[0], "r");
         if (pipe_stream) {
             fgets(out_buf, (int)buf_size, pipe_stream);

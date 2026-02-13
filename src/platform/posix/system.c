@@ -1,19 +1,21 @@
 /* SPDX-License-Identifier: MIT */
 
-#include <stdio.h>
 #include <stdint.h>
-#include <inttypes.h>
-#include <stdlib.h>
-#include <string.h> 
+#include <stdio.h>
+#include <string.h>
 
 #include <errno.h>
+#include <inttypes.h>
+
 #include <pwd.h>
 #include <unistd.h>
+
 #include <sys/types.h>
 
-#include "system.h"
-#include "internal/system_os.h"
-#include "ui.h"
+#include "defs.h"
+#include "sys_utils.h"
+
+#include "pal/system_os.h"
 
 void sys_get_identity(char *out_buf, const size_t buf_size) {
     if (!out_buf || buf_size == 0) {
@@ -41,17 +43,15 @@ void sys_format_uptime(char *out_buf, const size_t buf_size) {
 
     uint64_t hours = t / 3600;
     t %= 3600;
-    
+
     uint64_t minutes = t / 60;
     uint64_t seconds = t % 60;
 
     if (days != 0) {
-        snprintf(out_buf, buf_size, 
-                 "%" PRIu64 " days, %02" PRIu64 ":%02" PRIu64 ":%02" PRIu64, 
-                 days, hours, minutes, seconds);
+        snprintf(out_buf, buf_size, "%" PRIu64 " days, %02" PRIu64 ":%02" PRIu64
+                 ":%02" PRIu64, days, hours, minutes, seconds);
     } else {
-        snprintf(out_buf, buf_size, 
-                 "%02" PRIu64 ":%02" PRIu64 ":%02" PRIu64, 
+        snprintf(out_buf, buf_size, "%02" PRIu64 ":%02" PRIu64 ":%02" PRIu64, 
                  hours, minutes, seconds);
     }
 }

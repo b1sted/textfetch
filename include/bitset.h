@@ -3,6 +3,7 @@
 #ifndef BITSET_H
 #define BITSET_H
 
+#include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -53,13 +54,13 @@ void set_remove(uint32_t *set, int num);
 
 /**
  * Calculates the total number of elements in the bitset.
- * Iterates through the array blocks and sums up the population count 
+ * Iterates through the array blocks and sums up the population count
  * (number of set bits) using a compiler builtin for efficiency.
  *
  * @param set Pointer to the bitset array.
  * @param blocks Number of uint32_t blocks in the array (e.g., SET_SIZE).
  * @return The total count of bits set to 1.
  */
-uint32_t count_set_bits(uint32_t *set, size_t blocks);
+uint32_t count_set_bits(const uint32_t *set, size_t blocks);
 
-#endif // BITSET_H
+#endif /* BITSET_H */

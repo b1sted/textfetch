@@ -4,8 +4,11 @@
 #include <string.h>
 
 #include "system.h"
-#include "internal/system_os.h"
+#include "defs.h"
+#include "sys_utils.h"
 #include "ui.h"
+
+#include "pal/system_os.h"
 
 sys_internal_data_t sys_data;
 
@@ -19,7 +22,7 @@ void system_print_header(void) {
 void system_print_info(void) {
     char os_buf[LINE_BUFFER] = {0};
     sys_get_distro(os_buf, LINE_BUFFER);
-    
+
     char device_buf[LINE_BUFFER] = {0};
     sys_get_model_name(device_buf, LINE_BUFFER);
 
@@ -30,7 +33,7 @@ void system_print_info(void) {
     snprintf(procs_buf, SMALL_BUFFER, "%hu", sys_data.procs);
 
     ui_print_info("OS", os_buf);
-    if (strlen(device_buf) > 0) ui_print_info("Device", device_buf);
+    if (device_buf[0] != '\0') ui_print_info("Device", device_buf);
     ui_print_info("Kernel", sys_data.release);
     ui_print_info("Uptime", uptime_buf);
     ui_print_info("Processes", procs_buf);

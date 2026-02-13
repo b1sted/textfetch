@@ -3,50 +3,44 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <stdbool.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(__x86_64__) || defined(__i386__)
-    #include <cpuid.h>
-#endif
-
 #include <ctype.h>
-#include <dirent.h>
 #include <errno.h>
+
+#include <dirent.h>
 #include <inttypes.h>
 #include <limits.h>
-#include <locale.h>
-#include <mntent.h>
-#include <pwd.h>
 #include <unistd.h>
 
 #include <sys/stat.h>
-#include <sys/statvfs.h>
-#include <sys/sysinfo.h>
 #include <sys/types.h>
-#include <sys/utsname.h>
-#include <sys/wait.h>
+
+#if defined(__x86_64__) || defined(__i386__)
+#include <cpuid.h>
+#endif
 
 #include "bitset.h"
-#include "hardware.h"
-#include "internal/hardware_os.h"
-#include "hashtable.h"
+#include "defs.h"
+#include "sys_utils.h"
 #include "ui.h"
-#include "utils.h"
 
-typedef struct bat_info {
+#include "pal/hardware_os.h"
+
+typedef struct hw_node {
     char name[SMALL_BUFFER];
-    struct bat_info *next;
-} bat_info_t;
+    struct hw_node *next;
+} hw_node_t;
 
-static bat_info_t* hw_get_all_gpus(void);
+static hw_node_t *hw_get_all_gpus(void);
 
-static bat_info_t* hw_get_all_batteries(void);
+static hw_node_t *hw_get_all_batteries(void);
 
-static bat_info_t* add_element(bat_info_t *head, const char *name);
-static void free_data_list(bat_info_t *head);
+static hw_node_t *add_element(hw_node_t *head, const char *name);
+static void free_data_list(hw_node_t *head);
 
 #if defined(__x86_64__) || defined(__i386__)
 void hw_get_cpu_model(cpu_info_t *node) {
@@ -78,7 +72,7 @@ void hw_get_cpu_model(cpu_info_t *node) {
     const char *path = "/sys/devices/system/cpu/cpu0/regs/identification/midr_el1";
 
     uint32_t midr = 0;
-    if (util_read_hex(path, &midr)) {        
+    if (util_read_hex(path, &midr)) {
         uint8_t implementer = (midr >> 24) & 0xFF;
         uint16_t partnum = (midr >> 4) & 0xFFF;
 
@@ -160,7 +154,7 @@ void hw_get_cpu_cores(cpu_info_t *node) {
         }
 
         fclose(core_file);
-        
+
         if (!set_contains(unique_cores, core_id)) set_add(unique_cores, core_id);
     }
 
@@ -177,7 +171,7 @@ void hw_get_cpu_freq(cpu_info_t *node) {
 }
 
 void hw_get_gpu_info(void) {
-    bat_info_t *list = hw_get_all_gpus();
+    hw_node_t *list = hw_get_all_gpus();
     if (list == NULL) {
         V_PRINTF("[WARNING] No GPU's found in system (might be VM?)\n");
         return;
@@ -190,7 +184,7 @@ void hw_get_gpu_info(void) {
     memcpy(full_path, base_path, base_len);
 
     char info_buf[MEDIUM_BUFFER] = {0};
-    for (bat_info_t *curr = list; curr != NULL; curr = curr->next) {
+    for (hw_node_t *curr = list; curr != NULL; curr = curr->next) {
         size_t name_len = strlen(curr->name);
         memcpy(full_path + base_len, curr->name, name_len);
 
@@ -232,7 +226,7 @@ void hw_get_gpu_info(void) {
     ui_print_info("GPU", info_buf);
 }
 
-static bat_info_t* hw_get_all_gpus(void) {
+static hw_node_t *hw_get_all_gpus(void) {
     const char *gpu_directory = "/sys/class/drm/";
     const char *prefix = "card";
     size_t prefix_len = strlen("card");
@@ -244,7 +238,7 @@ static bat_info_t* hw_get_all_gpus(void) {
         return NULL;
     }
 
-    bat_info_t *head = NULL;
+    hw_node_t *head = NULL;
     struct dirent *entry;
 
     while ((entry = readdir(dir)) != NULL) {
@@ -275,16 +269,16 @@ static bat_info_t* hw_get_all_gpus(void) {
 }
 
 void hw_get_bat_info(void) {
-    bat_info_t *list = hw_get_all_batteries();
+    hw_node_t *list = hw_get_all_batteries();
     if (list == NULL) return;
 
-	const char *base_path = "/sys/class/power_supply/";
+    const char *base_path = "/sys/class/power_supply/";
     size_t base_len = strlen(base_path);
 
     char full_path[PATH_BUFFER] = {0};
     memcpy(full_path, base_path, base_len);
 
-    for (bat_info_t *curr = list; curr != NULL; curr = curr->next) {
+    for (hw_node_t *curr = list; curr != NULL; curr = curr->next) {
         char attr_buf[SMALL_BUFFER] = {0};
         char label_buf[MEDIUM_BUFFER] = {0};
         char info_buf[MEDIUM_BUFFER] = {0};
@@ -308,7 +302,7 @@ void hw_get_bat_info(void) {
 
         size_t current_len = strlen(info_buf);
         snprintf(info_buf + current_len, sizeof(info_buf) - current_len, 
-                 " (%s)", attr_buf[0] ? attr_buf : "Unknown"); 
+                 " (%s)", attr_buf[0] ? attr_buf : "Unknown");
 
         ui_print_info(label_buf, info_buf);
     }
@@ -316,16 +310,16 @@ void hw_get_bat_info(void) {
     free_data_list(list);
 }
 
-static bat_info_t* hw_get_all_batteries(void) {
+static hw_node_t *hw_get_all_batteries(void) {
     const char *power_path = "/sys/class/power_supply/";
     DIR *dir = opendir(power_path);
     if (!dir) return NULL;
 
-    bat_info_t *head = NULL;
+    hw_node_t *head = NULL;
     struct dirent *entry;
-    
+
     while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_name[0] == '.') continue; 
+        if (entry->d_name[0] == '.') continue;
 
         char type_path[PATH_MAX];
         snprintf(type_path, sizeof(type_path), "%s%s/type", power_path, entry->d_name);
@@ -346,11 +340,11 @@ static bat_info_t* hw_get_all_batteries(void) {
     return head;
 }
 
-static bat_info_t* add_element(bat_info_t *head, const char *name) {
-    bat_info_t *new_node = malloc(sizeof(bat_info_t));
+static hw_node_t *add_element(hw_node_t *head, const char *name) {
+    hw_node_t *new_node = malloc(sizeof(hw_node_t));
     if (!new_node) return head;
 
-    memset(new_node, 0, sizeof(bat_info_t));
+    memset(new_node, 0, sizeof(hw_node_t));
 
     size_t name_len = strlen(name);
     size_t to_copy = (name_len >= sizeof(new_node->name)) 
@@ -363,9 +357,9 @@ static bat_info_t* add_element(bat_info_t *head, const char *name) {
     return new_node;
 }
 
-static void free_data_list(bat_info_t *head) {
+static void free_data_list(hw_node_t *head) {
     while (head) {
-        bat_info_t *temp = head;
+        hw_node_t *temp = head;
         head = head->next;
         free(temp);
     }

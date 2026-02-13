@@ -3,29 +3,6 @@
 #ifndef UI_H
 #define UI_H
 
-#include "config.h"
-
-#define TINY_BUFFER   16
-#define MINI_BUFFER   32
-#define SMALL_BUFFER  64
-#define MEDIUM_BUFFER 128
-#define LINE_BUFFER   256
-#define PATH_BUFFER   512
-
-/**
- * Verbose perror wrapper.
- * Only prints the system error message if the verbose flag is set.
- */
-#define V_PERROR(msg) \
-    do { if (cfg_is_verbose()) perror(msg); } while (0)
-
-/**
- * Verbose formatted print wrapper.
- * Sends output to stderr only if the verbose flag is set.
- */
-#define V_PRINTF(fmt, ...) \
-    do { if (cfg_is_verbose()) fprintf(stderr, fmt, ##__VA_ARGS__); } while (0)
-
 /**
  * Renders the user@hostname header with an underline separator.
  * Colors are applied only if the output is a TTY.
@@ -59,4 +36,4 @@ void ui_print_help(const char *prog_name);
  */
 void ui_print_version(const char *app_version);
 
-#endif // UI_H
+#endif /* UI_H */

@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: MIT */
 
-#include <stdio.h>
-#include <string.h>
-
 #include "hardware.h"
-#include "internal/hardware_os.h"
+#include "defs.h"
+#include "sys_utils.h"
 #include "ui.h"
+
+#include "pal/hardware_os.h"
 
 void hardware_print_info(void) {
     char cpu_buf[LINE_BUFFER] = {0};

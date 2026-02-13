@@ -1,41 +1,38 @@
 /* SPDX-License-Identifier: MIT */
 
-#include <stdio.h>
+#include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
-#include <string.h> 
+#include <string.h>
 
 #include <errno.h>
-#include <limits.h>
-#include <pwd.h>
+#include <time.h>
+
 #include <fcntl.h>
 #include <unistd.h>
 
-#include <sys/param.h>
 #include <sys/mman.h>
-#include <sys/sysctl.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
 
-#include <mach/mach_time.h>
-
-#include <TargetConditionals.h>
-
 #include <CoreFoundation/CoreFoundation.h>
 
 #include "capture.h"
-#include "system.h"
-#include "internal/system_os.h"
-#include "ui.h"
+#include "defs.h"
+#include "sys_utils.h"
+
+#include "pal/system_os.h"
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_VERSION_11_0
-    #define NANOSECONDS_IN_SECONDS 1000000000ULL
+#define NANOSECONDS_IN_SECONDS 1000000000ULL
 #endif
 
 /**
- * Mapping structure to associate Darwin kernel major versions 
+ * Mapping structure to associate Darwin kernel major versions
  * with macOS marketing/release names.
  */
 typedef struct {
@@ -75,21 +72,22 @@ static const macos_name_map_t darwin_map[] = {
 
 /**
  * Maps the current Darwin release version to a macOS marketing name.
- * 
+ *
  * @return Pointer to a static string containing the OS name.
  */
-static const char* sys_get_os_name(void);
+static const char *sys_get_os_name(void);
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_9
 /**
  * Fast plist parser using memory mapping.
- * Opens a file, maps it to the process address space, and creates a 
+ * Opens a file, maps it to the process address space, and creates a
  * CFPropertyListRef without copying the underlying data.
  *
  * @param path Path to the .plist file.
- * @return A CFPropertyListRef object, or NULL if the file cannot be read or parsed.
+ * @return A CFPropertyListRef object, or NULL if the file cannot be read or
+ * parsed.
  */
-static CFPropertyListRef create_plist_from_file(const char* path);
+static CFPropertyListRef create_plist_from_file(const char *path);
 #endif
 
 /**
@@ -117,10 +115,14 @@ void system_init(void) {
     bool uname_ok = (uname(&uts) == 0);
     if (!uname_ok) V_PRINTF("Error: uname failed: %s\n", strerror(errno));
 
-    snprintf(sys_data.sysname, sizeof(sys_data.sysname), "%s", uname_ok ? uts.sysname : fallback);
-    snprintf(sys_data.nodename, sizeof(sys_data.nodename), "%s", uname_ok ? uts.nodename : fallback);
-    snprintf(sys_data.release, sizeof(sys_data.release), "%s", uname_ok ? uts.release : fallback);
-    snprintf(sys_data.machine, sizeof(sys_data.machine), "%s", uname_ok ? uts.machine : fallback);
+    snprintf(sys_data.sysname, sizeof(sys_data.sysname), 
+             "%s", uname_ok ? uts.sysname : fallback);
+    snprintf(sys_data.nodename, sizeof(sys_data.nodename), 
+             "%s", uname_ok ? uts.nodename : fallback);
+    snprintf(sys_data.release, sizeof(sys_data.release), 
+             "%s", uname_ok ? uts.release : fallback);
+    snprintf(sys_data.machine, sizeof(sys_data.machine), 
+             "%s", uname_ok ? uts.machine : fallback);
 
     sys_get_uptime();
     sys_get_procs_count();
@@ -140,8 +142,8 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
 
     /* Try modern sysctl first (macOS 10.13.4+) */
     if (sysctlbyname("kern.osproductversion", product_version, &size, NULL, 0) == 0) {
-        snprintf(out_buf + current_len, buf_size - current_len, "%s (%s)", 
-                 product_version, sys_data.machine);
+        snprintf(out_buf + current_len, buf_size - current_len, 
+                 "%s (%s)", product_version, sys_data.machine);
         return;
     }
 
@@ -151,11 +153,11 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
         strncpy(product_version, "unknown", sizeof(product_version) - 1);
     }
 
-    snprintf(out_buf + current_len, buf_size - current_len, "%s (%s)", 
-             product_version, sys_data.machine);
-} 
+    snprintf(out_buf + current_len, buf_size - current_len, 
+             "%s (%s)", product_version, sys_data.machine);
+}
 
-static const char* sys_get_os_name(void) {
+static const char *sys_get_os_name(void) {
     int kern_major_number = atoi(sys_data.release);
 
     for (int i = 0; darwin_map[i].name != NULL; i++) {
@@ -181,45 +183,56 @@ void sys_get_model_name(char *out_buf, size_t buf_size) {
     }
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_9
-    const char* path = "/System/Library/PrivateFrameworks/ServerInformation.framework/Versions/A/Resources/en.lproj/SIMachineAttributes.plist";
-    
+    const char *path = "/System/Library/PrivateFrameworks/ServerInformation.framework/"
+                       "Versions/A/Resources/en.lproj/SIMachineAttributes.plist";
+
     CFPropertyListRef plist = create_plist_from_file(path);
-    
+
     if (!plist) {
         /* Fallback for different localized folder naming conventions */
-        path = "/System/Library/PrivateFrameworks/ServerInformation.framework/Versions/A/Resources/English.lproj/SIMachineAttributes.plist";
+        path = "/System/Library/PrivateFrameworks/ServerInformation.framework/"
+               "Versions/A/Resources/English.lproj/SIMachineAttributes.plist";
         V_PRINTF("[Info] %s: trying fallback path: %s\n", __func__, path);
         plist = create_plist_from_file(path);
     }
 
     if (!plist) {
-        V_PRINTF("[Error] %s: SIMachineAttributes.plist not found or failed to parse\n", __func__);
-        return; 
+        V_PRINTF("[Error] %s: SIMachineAttributes.plist not found or failed to parse\n",
+                 __func__);
+        return;
     }
 
     if (CFGetTypeID(plist) == CFDictionaryGetTypeID()) {
         CFDictionaryRef main_dict = (CFDictionaryRef)plist;
 
-        CFStringRef model_key = CFStringCreateWithCString(kCFAllocatorDefault, out_buf, kCFStringEncodingUTF8);
+        CFStringRef model_key =
+            CFStringCreateWithCString(kCFAllocatorDefault, out_buf, kCFStringEncodingUTF8);
         if (model_key) {
             CFDictionaryRef model_dict = CFDictionaryGetValue(main_dict, model_key);
 
             if (model_dict && CFGetTypeID(model_dict) == CFDictionaryGetTypeID()) {
-                CFDictionaryRef local_dict = CFDictionaryGetValue(model_dict, CFSTR("_LOCALIZABLE_"));
-                
-                if (local_dict && CFGetTypeID(local_dict) == CFDictionaryGetTypeID()) {
-                    CFStringRef marketing_name = CFDictionaryGetValue(local_dict, CFSTR("marketingModel"));
+                CFDictionaryRef local_dict =
+                    CFDictionaryGetValue(model_dict, CFSTR("_LOCALIZABLE_"));
 
-                    if (marketing_name && CFGetTypeID(marketing_name) == CFStringGetTypeID()) {
-                        CFStringGetCString(marketing_name, out_buf, buf_size, kCFStringEncodingUTF8);
+                if (local_dict && CFGetTypeID(local_dict) == CFDictionaryGetTypeID()) {
+                    CFStringRef marketing_name =
+                        CFDictionaryGetValue(local_dict, CFSTR("marketingModel"));
+
+                    if (marketing_name && 
+                        CFGetTypeID(marketing_name) == CFStringGetTypeID()) {
+                        CFStringGetCString(marketing_name, out_buf, buf_size,
+                                           kCFStringEncodingUTF8);
                     } else {
-                        V_PRINTF("[Warning] %s: 'marketingModel' key missing for %s\n", __func__, out_buf);
+                        V_PRINTF("[Warning] %s: 'marketingModel' key missing for %s\n",
+                                 __func__, out_buf);
                     }
                 } else {
-                    V_PRINTF("[Warning] %s: '_LOCALIZABLE_' dictionary missing for %s\n", __func__, out_buf);
+                    V_PRINTF("[Warning] %s: '_LOCALIZABLE_' dictionary missing for %s\n",
+                             __func__, out_buf);
                 }
             } else {
-                V_PRINTF("[Warning] %s: Model ID %s not found in attributes database\n", __func__, out_buf);
+                V_PRINTF("[Warning] %s: Model ID %s not found in attributes database\n",
+                         __func__, out_buf);
             }
 
             CFRelease(model_key);
@@ -233,7 +246,7 @@ void sys_get_model_name(char *out_buf, size_t buf_size) {
 }
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_9
-static CFPropertyListRef create_plist_from_file(const char* path) {
+static CFPropertyListRef create_plist_from_file(const char *path) {
     int fd = open(path, O_RDONLY);
     if (fd < 0) return NULL;
 
@@ -255,15 +268,12 @@ static CFPropertyListRef create_plist_from_file(const char* path) {
         return NULL;
     }
 
-    CFDataRef data_ref = CFDataCreateWithBytesNoCopy(kCFAllocatorDefault, 
-                                                    ptr, 
-                                                    sb.st_size, 
-                                                    kCFAllocatorNull);
+    CFDataRef data_ref =
+        CFDataCreateWithBytesNoCopy(kCFAllocatorDefault, ptr, sb.st_size,
+                                    kCFAllocatorNull);
 
-    CFPropertyListRef plist = CFPropertyListCreateWithData(kCFAllocatorDefault, 
-                                                           data_ref, 
-                                                           kCFPropertyListImmutable, 
-                                                           NULL, 
+    CFPropertyListRef plist = CFPropertyListCreateWithData(kCFAllocatorDefault, data_ref,
+                                                           kCFPropertyListImmutable, NULL, 
                                                            NULL);
 
     CFRelease(data_ref);
@@ -280,7 +290,8 @@ static void sys_get_uptime() {
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_VERSION_11_0
     uint64_t uptime_ns = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW);
     if (uptime_ns == 0) {
-        V_PRINTF("[ERROR] clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW) failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW) failed: %s\n",
+                 strerror(errno));
         return;
     }
 
