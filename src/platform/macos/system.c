@@ -146,7 +146,7 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
     }
 
     /* Fallback to sw_vers for older systems */
-    if (capture_line("sw_vers -productVersion", product_version, sizeof(product_version)) != 0) {
+    if (capture_line("sw_vers", "-productVersion", product_version, sizeof(product_version)) != 0) {
         V_PRINTF("[Error] failed to capture sw_vers output\n");
         strncpy(product_version, "unknown", sizeof(product_version) - 1);
     }
