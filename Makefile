@@ -22,6 +22,7 @@ else ifneq (,$(filter $(UNAME_S),Linux Android))
     
     ifeq ($(UNAME_O), Android)
         PLATFORM_SUBDIRS += android
+        override LDFLAGS += -lEGL -lGLESv2
     else
         PLATFORM_SUBDIRS += linux
     endif

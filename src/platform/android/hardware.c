@@ -11,6 +11,9 @@
 
 #include <sys/system_properties.h>
 
+#include <EGL/egl.h>
+#include <GLES2/gl2.h>
+
 #include "defs.h"
 #include "sys_utils.h"
 #include "ui.h"
@@ -45,9 +48,71 @@ void hw_get_cpu_freq(cpu_info_t *node) {
 }
 
 void hw_get_gpu_info(void) {
-    /* TO:DO: Become a ninja Shaolin and learn the secret of obtaining a GPU model */
+    EGLDisplay egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    EGLint major_version, minor_version;
 
-    return;
+    if (!eglInitialize(egl_display, &major_version, &minor_version)) {
+        return;
+    }
+
+    const EGLint config_attributes[] = {
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+        EGL_SURFACE_TYPE,    EGL_PBUFFER_BIT,
+        EGL_RED_SIZE,        8,
+        EGL_GREEN_SIZE,      8,
+        EGL_BLUE_SIZE,       8,
+        EGL_ALPHA_SIZE,      8,
+        EGL_NONE
+    };
+
+    eglBindAPI(EGL_OPENGL_ES_API);
+
+    EGLint num_configs;
+    EGLConfig egl_config;
+
+    if (!eglChooseConfig(egl_display, config_attributes, &egl_config, 1, &num_configs) 
+        || !num_configs) {
+        V_PRINTF("[ERROR]: Failed to choose EGL config: %04x\n", eglGetError());
+        eglTerminate(egl_display);
+        return;
+    }
+
+    const EGLint context_attributes[] = {
+        EGL_CONTEXT_CLIENT_VERSION, 2,
+        EGL_NONE
+    };
+
+    EGLContext egl_context = eglCreateContext(egl_display, egl_config,
+                                              EGL_NO_CONTEXT, context_attributes);
+    if (egl_context == EGL_NO_CONTEXT) {
+        V_PRINTF("[ERROR]: Failed to create EGL context: %04x\n", eglGetError());
+        eglTerminate(egl_display);
+        return;
+    }
+
+    const EGLint surface_attributes[] = {
+        EGL_WIDTH,  1,
+        EGL_HEIGHT, 1,
+        EGL_NONE
+    };
+
+    EGLSurface egl_surface = eglCreatePbufferSurface(egl_display, egl_config,
+                                                     surface_attributes);
+    if (egl_surface == EGL_NO_SURFACE) {
+        V_PRINTF("[ERROR]: Failed to create pbuffer surface: %04x\n", eglGetError());
+        eglDestroyContext(egl_display, egl_context);
+        eglTerminate(egl_display);
+        return;
+    }
+
+    eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context);
+
+    ui_print_info("GPU", (const char *)glGetString(GL_RENDERER));
+
+    eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    eglDestroySurface(egl_display, egl_surface);
+    eglDestroyContext(egl_display, egl_context);
+    eglTerminate(egl_display);
 }
 
 /*
