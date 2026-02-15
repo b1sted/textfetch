@@ -67,6 +67,9 @@ typedef enum {
     FLAG_FULL     = 1 << 2
 } power_flags;
 
+static void hw_get_gpu_acclerator(char *out_buf, const size_t buf_size);
+static void hw_get_gpu_pci(char *out_buf, const size_t buf_size);
+
 static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *node);
 static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *node);
 
@@ -74,14 +77,33 @@ static uint8_t hw_get_bat_percentage(const CFDictionaryRef power_source);
 static const char *hw_get_bat_status(const CFDictionaryRef power_source,
                                      uint8_t battery_percentage);
 
+io_iterator_t get_matching_iterator(const char *class_name);
+                                     
 void hw_get_cpu_model(cpu_info_t *node) {
-    size_t size = sizeof(node->model);
+    uint32_t packages = 0;
+    size_t packages_size = sizeof(packages);
+    size_t model_size = sizeof(node->model);
 
-    if (sysctlbyname("machdep.cpu.brand_string", node->model, &size, NULL, 0) != 0) {
-        V_PRINTF("[Error] sysctlbyname(machdep.cpu.brand_string) failed: %s\n", 
-                 strerror(errno));
-        memcpy(node->model, "Unknown", strlen("Unknown"));
+    if (sysctlbyname("hw.packages", &packages, &packages_size, NULL, 0) != 0) {
+        V_PRINTF("[Error] sysctlbyname(hw.packages) failed: %s\n", strerror(errno));
+    }
+
+    if (sysctlbyname("machdep.cpu.brand_string", node->model, &model_size, NULL, 0) != 0) {
+        V_PRINTF("[Error] sysctlbyname(machdep.cpu.brand_string) failed: %s\n", strerror(errno));
+    }
+
+    if (node->model[0] == '\0') {
+        snprintf(node->model, model_size, "Unknown"); 
         return;
+    }
+
+    if (packages > 1) {
+        char prefix[TINY_BUFFER] = {0};
+        snprintf(prefix, sizeof(prefix), "%" PRIu32 " x ", packages);
+        size_t prefix_len = strlen(prefix);
+
+        memmove(node->model + prefix_len, node->model, strlen(prefix) + 1);
+        memcpy(node->model, prefix, prefix_len);
     }
 
     size_t len = strlen(node->model);
@@ -179,94 +201,82 @@ void hw_get_cpu_freq(cpu_info_t *node) {
 #endif
 
 void hw_get_gpu_info(void) {
-    char model_buf[GPU_BUFFER] = {0};
-    size_t model_size = sizeof(model_buf);
+    char gpu_buf[GPU_BUFFER] = {0};
+    size_t gpu_size = sizeof(gpu_buf);
+    
+    hw_get_gpu_acclerator(gpu_buf, gpu_size);
 
-#if TARGET_CPU_ARM64
-    char *delim = strchr(node->model, '(');
-    if (delim) {
-        size_t count = delim - node->model;
-        memcpy(model_buf, node->model, count);
+    if (gpu_buf[0] == '\0') hw_get_gpu_pci(gpu_buf, gpu_size);
 
-        if (count == 0) {
-            memcpy(model_buf, "Unknown", model_size);
-            ui_print_info(model_buf);
-            return;
-        }
+    if (gpu_buf[0] != '\0') ui_print_info("GPU", gpu_buf);
+}
 
-        model_buf[count] = '\0';
-
-        if (count > 0 && model_buf[count - 1] == ' ') model_buf[count - 1] = '\0';
-    }
-#else
-    CFMutableDictionaryRef match = IOServiceMatching("IOPCIDevice");
-    io_iterator_t it;
-
-    if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) != kIOReturnSuccess) {
-        V_PRINTF("[Error] IOServiceGetMatchingServices failed to find IOPCIDevice\n");
-        return;
-    }
-
-    /**
-     * PCI class-code struct (Little Endian):
-     * code[0] - Prog IF
-     * code[1] - Sub-class
-     * code[2] - Base Class (0x03 = Display Controller)
-     * code[3] - 0x00
-     */
-    io_registry_entry_t entry;
-    while ((entry = IOIteratorNext(it))) {
-        CFMutableDictionaryRef props;
-        if (IORegistryEntryCreateCFProperties(entry, &props, kCFAllocatorDefault,
-                                              kNilOptions) == kIOReturnSuccess) {
-            CFDataRef class_data = (CFDataRef)CFDictionaryGetValue(props, CFSTR("class-code"));
-            if (class_data && CFGetTypeID(class_data) == CFDataGetTypeID() &&
-                CFDataGetLength(class_data) >= 4) {
-                const uint8_t *code = CFDataGetBytePtr(class_data);
-                if (code[2] != 0x03) {
-                    CFRelease(props);
-                    IOObjectRelease(entry);
-                    continue;
-                }
-            } else {
-                CFRelease(props);
-                IOObjectRelease(entry);
-                continue;
-            }
-
-            CFDataRef model = (CFDataRef)CFDictionaryGetValue(props, CFSTR("model"));
-            if (model && CFGetTypeID(model) == CFDataGetTypeID()) {
-                const char *model_ptr = (const char *)CFDataGetBytePtr(model);
-                size_t model_len = CFDataGetLength(model);
-                if (model_len > 0 && model_ptr[model_len - 1] == '\0') model_len--;
-
-                size_t current_len = strlen(model_buf);
-                if (current_len > 0) {
-                    strlcat(model_buf, "\n    ", model_size);
-                    current_len = strlen(model_buf);
-                }
-
-                if (current_len < model_size) {
-                    snprintf(model_buf + current_len, model_size - current_len, 
-                             "%.*s", (int)model_len, model_ptr);
+static void hw_get_gpu_acclerator(char *out_buf, const size_t buf_size) {
+    io_iterator_t iterator = get_matching_iterator("IOAccelerator");
+    if (iterator != IO_OBJECT_NULL) {
+        io_service_t service;
+        while ((service = IOIteratorNext(iterator))) {
+            CFTypeRef model = IORegistryEntryCreateCFProperty(service, CFSTR("model"), kCFAllocatorDefault, 0);
+            
+            if (!model) {
+                io_registry_entry_t parent;
+                if (IORegistryEntryGetParentEntry(service, kIOServicePlane, &parent) == kIOReturnSuccess) {
+                    model = IORegistryEntryCreateCFProperty(parent, CFSTR("model"), kCFAllocatorDefault, 0);
+                    IOObjectRelease(parent);
                 }
             }
 
-            CFRelease(props);
+            if (model) {
+                char name[MEDIUM_BUFFER] = {0};
+
+                if (CFGetTypeID(model) == CFDataGetTypeID()) {
+                    snprintf(name, sizeof(name), "%s", (const char *)CFDataGetBytePtr((CFDataRef)model));
+                } else if (CFGetTypeID(model) == CFStringGetTypeID()) {
+                    CFStringGetCString((CFStringRef)model, name, sizeof(name), kCFStringEncodingUTF8);
+                }
+
+                if (name[0] != '\0') {
+                    if (out_buf[0] != '\0') strlcat(out_buf, "\n     ", buf_size);
+                    strlcat(out_buf, name, buf_size);
+                }
+
+                CFRelease(model);
+            }
+
+            IOObjectRelease(service);
         }
 
-        IOObjectRelease(entry);
+        IOObjectRelease(iterator);
     }
+}
 
-    if (strlen(model_buf) == 0) {
-        V_PRINTF("[WARNING] No PCI GPU found (might be VM)\n");
-        snprintf(model_buf, model_size, "Unknown");
+static void hw_get_gpu_pci(char *out_buf, const size_t buf_size) {
+    io_iterator_t iterator = get_matching_iterator("IOPCIDevice");
+    if (iterator != IO_OBJECT_NULL) {
+        io_registry_entry_t entry;
+        while ((entry = IOIteratorNext(iterator))) {
+            CFTypeRef class_code = IORegistryEntryCreateCFProperty(entry, CFSTR("class-code"), kCFAllocatorDefault, 0);
+            if (class_code) {
+                const uint8_t *code = CFDataGetBytePtr((CFDataRef)class_code);
+                if (code[2] == 0x03) {
+                    CFTypeRef model = IORegistryEntryCreateCFProperty(entry, CFSTR("model"), kCFAllocatorDefault, 0);
+                    if (model) {
+                        const char *m_ptr = (const char *)CFDataGetBytePtr((CFDataRef)model);
+
+                        if (out_buf[0] != '\0') strlcat(out_buf, "\n     ", buf_size);
+                        strlcat(out_buf, m_ptr, buf_size);
+                        CFRelease(model);
+                    }
+                }
+
+                CFRelease(class_code);
+            }
+
+            IOObjectRelease(entry);
+        }
+
+        IOObjectRelease(iterator);
     }
-
-    IOObjectRelease(it);
-#endif
-
-    ui_print_info("GPU", model_buf);
 }
 
 void hw_get_mem_info(void) {
@@ -462,4 +472,18 @@ static const char *hw_get_bat_status(const CFDictionaryRef power_source,
     if (status & FLAG_CHARGING) return "Charging";
     if (status & FLAG_AC) return "Not Charging";
     return "Discharging";
+}
+
+io_iterator_t get_matching_iterator(const char *class_name) {
+    CFMutableDictionaryRef matching_dict = IOServiceMatching(class_name);
+    if (!matching_dict) return IO_OBJECT_NULL;
+
+    io_iterator_t iterator;
+    if (IOServiceGetMatchingServices(kIOMainPortDefault, matching_dict, 
+                                     &iterator) != kIOReturnSuccess) {
+        V_PRINTF("[Error] IOServiceGetMatchingServices failed to find %s\n", class_name);
+        return IO_OBJECT_NULL;
+    }
+
+    return iterator;    
 }
