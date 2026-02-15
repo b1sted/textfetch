@@ -17,7 +17,9 @@
 
 #include "pal/system_os.h"
 
+#if !(defined(__arm__) || defined(__aarch64__) || defined(__riscv) || defined(__powerpc__))
 static bool sys_is_portable(void);
+#endif
 
 void sys_get_distro(char *out_buf, const size_t buf_size) {
     FILE *fp = fopen("/etc/os-release", "r");
@@ -68,6 +70,15 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
     snprintf(out_buf + len, buf_size - len, " %s", sys_data.machine);
 }
 
+#if defined(__arm__) || defined(__aarch64__) || defined(__riscv) || defined(__powerpc__)
+void sys_get_model_name(char *out_buf, const size_t buf_size) {
+    if (!util_read_line("/proc/device-tree/model", out_buf, buf_size)) {
+        if (!util_read_line("/sys/firmware/devicetree/base/model", out_buf, buf_size)) {
+            V_PRINTF("[ERROR] Failed to obtain model name from Device Tree\n");
+        }
+    }
+}
+#else
 void sys_get_model_name(char *out_buf, const size_t buf_size) {
     if (!sys_is_portable()) return;
 
@@ -117,3 +128,4 @@ static bool sys_is_portable(void) {
 
     return false;
 }
+#endif
