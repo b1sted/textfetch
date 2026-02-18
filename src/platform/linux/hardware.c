@@ -23,6 +23,7 @@
 #include <cpuid.h>
 #endif
 
+#include "binary_trees.h"
 #include "bitset.h"
 #include "defs.h"
 #include "sys_utils.h"
@@ -35,7 +36,19 @@ typedef struct hw_node {
     struct hw_node *next;
 } hw_node_t;
 
-static hw_node_t *hw_get_all_gpus(void);
+typedef struct gpu_node {
+    uint16_t impl_id;
+    uint16_t part_id;
+    struct gpu_node *next;
+} gpu_node_t;
+
+static gpu_node_t *hw_get_all_gpus(void);
+static forest* hw_pci_forest_create(void);
+static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size,
+                                forest *pci_forest, gpu_node_t *gpu_list);
+
+static gpu_node_t *add_gpu(gpu_node_t *head, const uint16_t impl_id, const uint16_t part_id);
+static void free_gpu_list(gpu_node_t *head);
 
 static hw_node_t *hw_get_all_batteries(void);
 
@@ -171,62 +184,29 @@ void hw_get_cpu_freq(cpu_info_t *node) {
 }
 
 void hw_get_gpu_info(void) {
-    hw_node_t *list = hw_get_all_gpus();
-    if (list == NULL) {
+    gpu_node_t *gpu_list = hw_get_all_gpus();
+    if (gpu_list == NULL) {
+#if defined(__i386__) || defined(__x86_64__) || defined(__ia64__) || defined(__powerpc64__)
         V_PRINTF("[WARNING] No GPU's found in system (might be VM?)\n");
+#endif
         return;
     }
 
-    const char *base_path = "/sys/class/drm/";
-    size_t base_len = strlen(base_path);
+    char info_buf[GPU_BUFFER] = {0};
 
-    char full_path[PATH_BUFFER] = {0};
-    memcpy(full_path, base_path, base_len);
-
-    char info_buf[MEDIUM_BUFFER] = {0};
-    for (hw_node_t *curr = list; curr != NULL; curr = curr->next) {
-        size_t name_len = strlen(curr->name);
-        memcpy(full_path + base_len, curr->name, name_len);
-
-        size_t file_offset = base_len + name_len;
-        full_path[file_offset] = '\0';
-
-        uint16_t vendor_id = 0, device_id = 0;
-
-        memcpy(full_path + file_offset, "/device/vendor", strlen("/device/vendor"));
-        util_read_hex16(full_path, &vendor_id);
-
-        memcpy(full_path + file_offset, "/device/device", strlen("/device/device"));
-        util_read_hex16(full_path, &device_id);
-
-        /* TODO: TODO: write a pci.ids parser */
-        const char *vendor_name = "Unknown";
-        char hex_vendor[16];
-
-        switch (vendor_id) {
-            case 0x1002: vendor_name = "AMD"; break;
-            case 0x106b: vendor_name = "Apple"; break;
-            case 0x10de: vendor_name = "Nvidia"; break;
-            case 0x8086: vendor_name = "Intel"; break;
-            default:
-                snprintf(hex_vendor, sizeof(hex_vendor), "0x%04X", vendor_id);
-                vendor_name = hex_vendor;
-                break;
-        }
-
-        size_t current_len = strlen(info_buf);
-        if (current_len > 0) {
-            snprintf(info_buf + current_len, sizeof(info_buf) - current_len, 
-                     "\n     %s [0x%04X]", vendor_name, device_id);
-        } else {
-            snprintf(info_buf, sizeof(info_buf), "%s [0x%04X]", vendor_name, device_id);
-        }
+    forest *pci_forest = hw_pci_forest_create();
+    if (pci_forest == NULL) {
+        V_PRINTF("[WARNING] Fail to build a PCI forest. Using a raw values\n");
     }
 
-    ui_print_info("GPU", info_buf);
+    hw_gpu_lookup_names(info_buf, sizeof(info_buf), pci_forest, gpu_list);
+
+    free_gpu_list(gpu_list);
+
+    if (info_buf[0] != '\0') ui_print_info("GPU", info_buf);
 }
 
-static hw_node_t *hw_get_all_gpus(void) {
+static gpu_node_t *hw_get_all_gpus(void) {
     const char *gpu_directory = "/sys/class/drm/";
     const char *prefix = "card";
     size_t prefix_len = strlen("card");
@@ -238,7 +218,7 @@ static hw_node_t *hw_get_all_gpus(void) {
         return NULL;
     }
 
-    hw_node_t *head = NULL;
+    gpu_node_t *head = NULL;
     struct dirent *entry;
 
     while ((entry = readdir(dir)) != NULL) {
@@ -260,12 +240,119 @@ static hw_node_t *hw_get_all_gpus(void) {
 
         if (!valid_name) continue;
 
-        head = add_element(head, entry->d_name);
+        uint16_t vendor_id = 0, device_id = 0;
+        char full_path[PATH_BUFFER] = {0};
+
+        snprintf(full_path, sizeof(full_path), "%s%s/device/vendor", gpu_directory, entry->d_name);
+        util_read_hex16(full_path, &vendor_id);
+
+        snprintf(full_path, sizeof(full_path), "%s%s/device/device", gpu_directory, entry->d_name);
+        util_read_hex16(full_path, &device_id);
+
+        head = add_gpu(head, vendor_id, device_id);
     }
 
     closedir(dir);
 
     return head;
+}
+
+static forest* hw_pci_forest_create(void) {
+    const char *search_paths[] = {
+        "/var/lib/pciutils/pci.ids", "/usr/share/hwdata/pci.ids",
+        "/usr/share/misc/pci.ids", "/usr/share/pci.ids",
+        "/opt/homebrew/share/pci.ids", "pci.ids", NULL
+    };
+
+    FILE *fp = NULL;
+    for (uint8_t i = 0; search_paths[i] != NULL; i++) {
+        fp = fopen(search_paths[i], "rb");
+        if (fp) break;
+    }
+
+    if (!fp) {
+        V_PRINTF("[ERROR] Fail to open pci.ids file: %s\n", strerror(errno));
+        return NULL;
+    }
+
+    forest *pci_forest = create_forest(3000);
+
+    char line[LINE_BUFFER] = {0};
+    node *branch = NULL;
+    while (fgets(line, sizeof(line), fp)) {
+        if (line[0] == '#' || line[0] == '\n' || line[1] == '\t') continue;
+
+        if (isalnum((unsigned char)line[0])) {
+            char *vendor_name;
+            uint16_t vendor_id = (uint16_t)strtoul(line, &vendor_name, 16);
+            
+            line[strcspn(line, "\r\n")] = '\0';
+
+            while (*vendor_name == ' ') vendor_name++;
+
+            branch = create_node(vendor_id, vendor_name);
+            add_tree_to_forest(pci_forest, branch);
+        }
+
+        else if (line[0] == '\t') {
+            char *device_name;
+            uint16_t device_id = (uint16_t)strtoul(line, &device_name, 16);
+
+            line[strcspn(line, "\r\n")] = '\0';
+
+            while (*device_name == ' ') device_name++;
+
+            device_name[strcspn(device_name, "\n")] = '\0';
+            add_child(branch, device_id, device_name);
+        }
+    }
+
+    fclose(fp);
+
+    return pci_forest;
+}
+
+static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size,
+                                forest *pci_forest, gpu_node_t *gpu_list) {
+    if (!out_buf || buf_size == 0) {
+        V_PRINTF("[ERROR] hw_gpu_lookup_names: incorrect arguments (buf = %p, size = %zu)\n", 
+                 (void*)out_buf, buf_size);
+        
+        if (pci_forest) destroy_forest(pci_forest);
+        return;
+    }
+
+    for (gpu_node_t *curr = gpu_list; curr != NULL; curr = curr->next) {
+        const char *vendor_name = "Generic GPU";
+        const char *device_name = "";
+        const char *separator = "";
+
+        if (pci_forest) {
+            node *vendor = find_in_forest(pci_forest, curr->impl_id);
+            node *device = find_in_tree(vendor, curr->part_id);
+
+            if (vendor) {
+                vendor_name = vendor->name;
+            }
+
+            if (device) {
+                device_name = device->name;
+                separator = " ";
+            }
+        }
+        
+        size_t offset = strlen(out_buf);
+        if (offset >= buf_size) {
+            V_PRINTF("[WARNING] hw_gpu_lookup_names: buffer overflow, truncating list\n");
+            break;
+        }
+
+        snprintf(out_buf + offset, buf_size - offset,
+                 "%s%s%s%s [0x%04X]", (out_buf[0] == '\0') ? "" : "\n     ",
+                 vendor_name, separator, device_name, curr->part_id);
+    }
+
+    if (pci_forest) destroy_forest(pci_forest);
 }
 
 void hw_get_bat_info(void) {
@@ -338,6 +425,27 @@ static hw_node_t *hw_get_all_batteries(void) {
     closedir(dir);
 
     return head;
+}
+
+static gpu_node_t *add_gpu(gpu_node_t *head, const uint16_t impl_id, const uint16_t part_id) {
+    gpu_node_t *new_node = malloc(sizeof(gpu_node_t));
+    if (!new_node) return head;
+
+    memset(new_node, 0, sizeof(gpu_node_t));
+
+    new_node->impl_id = impl_id;
+    new_node->part_id = part_id;
+    new_node->next = head;
+
+    return new_node;
+}
+
+static void free_gpu_list(gpu_node_t *head) {
+    while (head) {
+        gpu_node_t *temp = head;
+        head = head->next;
+        free(temp);
+    }
 }
 
 static hw_node_t *add_element(hw_node_t *head, const char *name) {
