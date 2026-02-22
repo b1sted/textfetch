@@ -9,17 +9,6 @@
 
 #include "pal/hardware_os.h"
 
-void hw_get_cpu_info(char *out_buf, const size_t buf_size) {
-    cpu_info_t node;
-    memset(&node, 0, sizeof(cpu_info_t));
-
-    hw_get_cpu_model(&node);
-    hw_get_cpu_cores(&node);
-    hw_get_cpu_freq(&node);
-
-    snprintf(out_buf, buf_size, "%s%s%s", node.model, node.cores, node.frequency);
-}
-
 void hw_print_mem_info(const mem_flags_t flags, const mem_info_t *node) {
     if (flags & MEM_RAM) {
         char ram_info[SMALL_BUFFER] = {0};

@@ -67,6 +67,11 @@ typedef enum {
     FLAG_FULL     = 1 << 2
 } power_flags;
 
+static void hw_get_cpu_package(cpu_info_t *node);
+static void hw_get_cpu_model(cpu_info_t *node);
+static void hw_get_cpu_cores(cpu_info_t *node);
+static void hw_get_cpu_freq(cpu_info_t *node);
+
 static void hw_get_gpu_acclerator(char *out_buf, const size_t buf_size);
 static void hw_get_gpu_pci(char *out_buf, const size_t buf_size);
 
@@ -78,15 +83,35 @@ static const char *hw_get_bat_status(const CFDictionaryRef power_source,
                                      uint8_t battery_percentage);
 
 io_iterator_t get_matching_iterator(const char *class_name);
-                                     
-void hw_get_cpu_model(cpu_info_t *node) {
+         
+void hw_get_cpu_info(void) {
+    cpu_info_t node;
+    memset(&node, 0, sizeof(cpu_info_t));
+
+    hw_get_cpu_package(&node);
+    hw_get_cpu_model(&node);
+    hw_get_cpu_cores(&node);
+    hw_get_cpu_freq(&node);
+
+    char cpu_info[LINE_BUFFER] = {0};
+    snprintf(cpu_info, sizeof(cpu_info), "%s%s%s", node.model, node.cores, node.frequency);
+
+    ui_print_info("CPU", cpu_info);
+}
+
+static void hw_get_cpu_package(cpu_info_t *node) {
     uint32_t packages = 0;
     size_t packages_size = sizeof(packages);
-    size_t model_size = sizeof(node->model);
 
     if (sysctlbyname("hw.packages", &packages, &packages_size, NULL, 0) != 0) {
         V_PRINTF("[Error] sysctlbyname(hw.packages) failed: %s\n", strerror(errno));
     }
+
+    node->packages = (packages) ? (uint8_t)packages : 1;
+}
+
+static void hw_get_cpu_model(cpu_info_t *node) {
+    size_t model_size = sizeof(node->model);
 
     if (sysctlbyname("machdep.cpu.brand_string", node->model, &model_size, NULL, 0) != 0) {
         V_PRINTF("[Error] sysctlbyname(machdep.cpu.brand_string) failed: %s\n", strerror(errno));
@@ -97,9 +122,9 @@ void hw_get_cpu_model(cpu_info_t *node) {
         return;
     }
 
-    if (packages > 1) {
+    if (node->packages > 1) {
         char prefix[TINY_BUFFER] = {0};
-        snprintf(prefix, sizeof(prefix), "%" PRIu32 " x ", packages);
+        snprintf(prefix, sizeof(prefix), "%" PRIu32 " x ", node->packages);
         size_t prefix_len = strlen(prefix);
 
         memmove(node->model + prefix_len, node->model, strlen(prefix) + 1);
@@ -112,7 +137,7 @@ void hw_get_cpu_model(cpu_info_t *node) {
     }
 }
 
-void hw_get_cpu_cores(cpu_info_t *node) {
+static void hw_get_cpu_cores(cpu_info_t *node) {
     uint64_t common_cores = 0;
     size_t common_size = sizeof(common_cores);
 
@@ -145,7 +170,7 @@ void hw_get_cpu_cores(cpu_info_t *node) {
 }
 
 #if TARGET_CPU_ARM64
-void hw_get_cpu_freq(cpu_info_t *node) {
+static void hw_get_cpu_freq(cpu_info_t *node) {
     if (model == NULL) return 0.0;
 
     /**
@@ -187,7 +212,7 @@ void hw_get_cpu_freq(cpu_info_t *node) {
     }
 }
 #else
-void hw_get_cpu_freq(cpu_info_t *node) {
+static void hw_get_cpu_freq(cpu_info_t *node) {
     uint64_t hz = 0;
     size_t size = sizeof(hz);
 

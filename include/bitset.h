@@ -3,22 +3,18 @@
 #ifndef BITSET_H
 #define BITSET_H
 
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
-/**
- * Maximum number of unique elements (IDs) the bitset can handle.
- * Determines the valid range of input integers: [0, MAX_ELEMENTS - 1].
- */
-#define MAX_ELEMENTS 256
+typedef struct {
+    uint32_t *bits;
+    size_t capacity;
+} bitset_t;
 
-/**
- * Size of the underlying array buffer in 32-bit blocks.
- * Calculated to ensure enough storage for MAX_ELEMENTS bits.
- * Division by 32 corresponds to sizeof(uint32_t) in bits.
- */
-#define SET_SIZE (MAX_ELEMENTS / 32 + 1)
+#define BITS_PER_BLOCK 32
+
+#define SET_SIZE(MAX_ELEMENTS) (MAX_ELEMENTS + (BITS_PER_BLOCK - 1)) / BITS_PER_BLOCK
 
 #define BIT(n) (1U << ((n) % 32))
 
@@ -30,7 +26,7 @@
  * @param set Pointer to the bitset array.
  * @param num The non-negative integer element to add.
  */
-void set_add(uint32_t *set, int num);
+void set_add(bitset_t *set, size_t num);
 
 /**
  * Checks if an element exists in the bitset.
@@ -40,7 +36,7 @@ void set_add(uint32_t *set, int num);
  * @param num The non-negative integer element to check.
  * @return true if the element is present, false otherwise or if out of bounds.
  */
-bool set_contains(const uint32_t *set, int num);
+bool set_contains(const bitset_t *set, size_t num);
 
 /**
  * Removes an element from the bitset.
@@ -50,7 +46,7 @@ bool set_contains(const uint32_t *set, int num);
  * @param set Pointer to the bitset array.
  * @param num The non-negative integer element to remove.
  */
-void set_remove(uint32_t *set, int num);
+void set_remove(bitset_t *set, size_t num);
 
 /**
  * Calculates the total number of elements in the bitset.
@@ -61,6 +57,6 @@ void set_remove(uint32_t *set, int num);
  * @param blocks Number of uint32_t blocks in the array (e.g., SET_SIZE).
  * @return The total count of bits set to 1.
  */
-uint32_t count_set_bits(const uint32_t *set, size_t blocks);
+uint32_t count_set_bits(bitset_t *set, size_t blocks);
 
 #endif /* BITSET_H */

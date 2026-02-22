@@ -20,7 +20,25 @@
 
 #include "pal/hardware_os.h"
 
-void hw_get_cpu_model(cpu_info_t *node) {
+static void hw_get_cpu_model(cpu_info_t *node);
+static void hw_get_cpu_cores(cpu_info_t *node);
+static void hw_get_cpu_freq(cpu_info_t *node);
+
+void hw_get_cpu_info(void) {
+    cpu_info_t node;
+    memset(&node, 0, sizeof(cpu_info_t));
+
+    hw_get_cpu_model(&node);
+    hw_get_cpu_cores(&node);
+    hw_get_cpu_freq(&node);
+
+    char cpu_info[LINE_BUFFER] = {0};
+    snprintf(cpu_info, sizeof(cpu_info), "%s%s%s", node.model, node.cores, node.frequency);
+
+    ui_print_info("CPU", cpu_info);
+}
+
+static void hw_get_cpu_model(cpu_info_t *node) {
     if (__system_property_get("ro.soc.model", node->model) <= 0) {
         if (__system_property_get("ro.board.platform", node->model) <= 0) {
             V_PRINTF("[WARNING] Could not read cpu name, using 'Unknown'\n");
@@ -29,7 +47,7 @@ void hw_get_cpu_model(cpu_info_t *node) {
     }
 }
 
-void hw_get_cpu_cores(cpu_info_t *node) {
+static void hw_get_cpu_cores(cpu_info_t *node) {
     long cores = sysconf(_SC_NPROCESSORS_CONF);
     if (cores == -1) {
         V_PRINTF("[WARNING] Could not get cpu cores number: %s\n", strerror(errno));
@@ -39,7 +57,7 @@ void hw_get_cpu_cores(cpu_info_t *node) {
     snprintf(node->cores, sizeof(node->cores), " (%ld)", cores);
 }
 
-void hw_get_cpu_freq(cpu_info_t *node) {
+static void hw_get_cpu_freq(cpu_info_t *node) {
     uint32_t freq_khz = 0;
     util_read_uint32("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq", &freq_khz);
 

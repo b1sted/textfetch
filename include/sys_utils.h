@@ -17,6 +17,8 @@
 #define V_PRINTF(fmt, ...) \
     do { if (cfg_is_verbose()) fprintf(stderr, fmt, ##__VA_ARGS__); } while (0)
 
+#define min(a, b) (((a) < (b)) ? (a) : (b))
+
 typedef enum {
     UNIT_B = 0,
     UNIT_KIB,
@@ -29,7 +31,10 @@ typedef enum {
 bool util_read_line(const char *path, char *out_buf, const size_t buf_size);
 
 bool util_read_uint8(const char *path, uint8_t *value);
+bool util_read_uint16(const char *path, uint16_t *value);
 bool util_read_uint32(const char *path, uint32_t *value);
+
+bool util_read_int16(const char *path, int16_t *value);
 
 bool util_read_hex16(const char *path, uint16_t *value);
 bool util_read_hex(const char *path, uint32_t *value);

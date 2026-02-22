@@ -97,6 +97,10 @@ bool strset_contains(string_set_t *set, const char *key) {
     return false;
 }
 
+size_t strset_get_count(const string_set_t *set) {
+    return set ? set->count : 0;
+}
+
 void strset_destroy(string_set_t *set) {
     if (!set) return;
 

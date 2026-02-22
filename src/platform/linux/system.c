@@ -17,6 +17,9 @@
 
 #include "pal/system_os.h"
 
+#define CHASSIS_MASK_ELEMENTS 64
+#define CHASSIS_MASK_BLOCKS   (CHASSIS_MASK_ELEMENTS / BITS_PER_BLOCK)
+
 #if !(defined(__arm__) || defined(__aarch64__) || defined(__riscv) || defined(__powerpc__))
 static bool sys_is_portable(void);
 #endif
@@ -119,12 +122,17 @@ static bool sys_is_portable(void) {
     uint8_t chassis_value = 0;
     if (!util_read_uint8("/sys/class/dmi/id/chassis_type", &chassis_value)) return false;
 
-    const uint32_t dmi_portable_chassis_mask[SET_SIZE] = {
+    uint32_t dmi_portable_chassis_bits[CHASSIS_MASK_BLOCKS] = {
         [0] = BIT(8) | BIT(9) | BIT(10) | BIT(11) | BIT(14) | BIT(30) | BIT(31), 
         [1] = BIT(32)
     };
 
-    if (set_contains(dmi_portable_chassis_mask, chassis_value)) return true;
+    bitset_t chassis_set = {
+        .bits = dmi_portable_chassis_bits,
+        .capacity = CHASSIS_MASK_ELEMENTS
+    };
+
+    if (set_contains(&chassis_set, chassis_value)) return true;
 
     return false;
 }

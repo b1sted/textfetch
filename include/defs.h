@@ -11,6 +11,7 @@
 #define SMALL_BUFFER  64
 #define MINI_BUFFER   32
 #define TINY_BUFFER   16
+#define HEX_BUFFER    8
 
 /*
  * IO Limits

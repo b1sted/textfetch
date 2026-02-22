@@ -57,6 +57,8 @@ bool strset_add(string_set_t *set, const char *key);
  */
 bool strset_contains(string_set_t *set, const char *key);
 
+size_t strset_get_count(const string_set_t *set);
+
 /**
  * Deep-cleans the set and all its stored strings.
  *

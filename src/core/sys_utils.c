@@ -47,6 +47,16 @@ bool util_read_uint8(const char *path, uint8_t *value) {
     return true;
 }
 
+bool util_read_uint16(const char *path, uint16_t *value) {
+    char buf[TINY_BUFFER] = {0};
+    util_read_line(path, buf, sizeof(buf));
+
+    if (buf[0] == '\0') return false;
+
+    *value = (uint16_t)strtoul(buf, NULL, 10);
+    return true;
+}
+
 bool util_read_uint32(const char *path, uint32_t *value) {
     char buf[TINY_BUFFER] = {0};
     util_read_line(path, buf, sizeof(buf));
@@ -54,6 +64,16 @@ bool util_read_uint32(const char *path, uint32_t *value) {
     if (buf[0] == '\0') return false;
 
     *value = (uint32_t)strtoul(buf, NULL, 10);
+    return true;
+}
+
+bool util_read_int16(const char *path, int16_t *value) {
+    char buf[TINY_BUFFER] = {0};
+    util_read_line(path, buf, sizeof(buf));
+
+    if (buf[0] == '\0') return false;
+
+    *value = (int16_t)strtoul(buf, NULL, 10);
     return true;
 }
 
