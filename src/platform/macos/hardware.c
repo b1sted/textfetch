@@ -83,7 +83,7 @@ static const char *hw_get_bat_status(const CFDictionaryRef power_source,
                                      uint8_t battery_percentage);
 
 io_iterator_t get_matching_iterator(const char *class_name);
-         
+
 void hw_get_cpu_info(void) {
     cpu_info_t node;
     memset(&node, 0, sizeof(cpu_info_t));
@@ -118,7 +118,7 @@ static void hw_get_cpu_model(cpu_info_t *node) {
     }
 
     if (node->model[0] == '\0') {
-        snprintf(node->model, model_size, "Unknown"); 
+        snprintf(node->model, model_size, "Unknown");
         return;
     }
 
@@ -205,8 +205,9 @@ static void hw_get_cpu_freq(cpu_info_t *node) {
 
     for (uint8_t i = 0; m_series[i].model != NULL; i++) {
         if (strstr(node->model, m_series[i].model) != NULL) {
-            snprintf(node->frequency, sizeof(node->frequency), " @ %.2f / %.2f GHz",
-                     m_series[i].p_frequency, m_series[i].e_frequency);
+            snprintf(node->frequency, sizeof(node->frequency),
+                     " @ %.2f / %.2f GHz", m_series[i].p_frequency,
+                     m_series[i].e_frequency);
             return;
         }
     }
@@ -228,7 +229,7 @@ static void hw_get_cpu_freq(cpu_info_t *node) {
 void hw_get_gpu_info(void) {
     char gpu_buf[GPU_BUFFER] = {0};
     size_t gpu_size = sizeof(gpu_buf);
-    
+
     hw_get_gpu_acclerator(gpu_buf, gpu_size);
 
     if (gpu_buf[0] == '\0') hw_get_gpu_pci(gpu_buf, gpu_size);
@@ -242,7 +243,7 @@ static void hw_get_gpu_acclerator(char *out_buf, const size_t buf_size) {
         io_service_t service;
         while ((service = IOIteratorNext(iterator))) {
             CFTypeRef model = IORegistryEntryCreateCFProperty(service, CFSTR("model"), kCFAllocatorDefault, 0);
-            
+
             if (!model) {
                 io_registry_entry_t parent;
                 if (IORegistryEntryGetParentEntry(service, kIOServicePlane, &parent) == kIOReturnSuccess) {
@@ -381,7 +382,7 @@ void hw_get_drives_info(void) {
 
     struct statfs *st = malloc(sizeof(struct statfs) * n);
     if (!st) {
-        V_PRINTF("[Error] malloc(%zu) for statfs failed: %s\n", 
+        V_PRINTF("[Error] malloc(%zu) for statfs failed: %s\n",
                  sizeof(struct statfs) * n, strerror(errno));
         return;
     }
@@ -396,8 +397,8 @@ void hw_get_drives_info(void) {
     string_set_t *outputted_disks = strset_create(INITIAL_CAPACITY);
 
     for (int i = 0; i < n; i++) {
-        if ((strcmp(st[i].f_mntonname, "/") != 0 &&
-             strncmp(st[i].f_mntonname, "/Volumes/", 9) != 0)) continue;
+        if (strcmp(st[i].f_mntonname, "/") != 0 &&
+            strncmp(st[i].f_mntonname, "/Volumes/", 9) != 0) continue;
 
         if (strset_contains(outputted_disks, st[i].f_mntfromname)) continue;
 
@@ -486,16 +487,21 @@ static const char *hw_get_bat_status(const CFDictionaryRef power_source,
     CFStringRef state = CFDictionaryGetValue(power_source, CFSTR(kIOPSPowerSourceStateKey));
     CFBooleanRef charging = CFDictionaryGetValue(power_source, CFSTR(kIOPSIsChargingKey));
 
-    if (state && 
+    if (state &&
         CFStringCompare(state, CFSTR(kIOPSACPowerValue), 0) == kCFCompareEqualTo) {
         status |= FLAG_AC;
     }
-    if (charging && CFBooleanGetValue(charging)) status |= FLAG_CHARGING;
-    if (battery_percentage >= 100) status |= FLAG_FULL;
+    if (charging && CFBooleanGetValue(charging))
+        status |= FLAG_CHARGING;
+    if (battery_percentage >= 100)
+        status |= FLAG_FULL;
 
-    if (status & FLAG_FULL && status & FLAG_AC) return "Full";
-    if (status & FLAG_CHARGING) return "Charging";
-    if (status & FLAG_AC) return "Not Charging";
+    if (status & FLAG_FULL && status & FLAG_AC)
+        return "Full";
+    if (status & FLAG_CHARGING)
+        return "Charging";
+    if (status & FLAG_AC)
+        return "Not Charging";
     return "Discharging";
 }
 
@@ -504,11 +510,11 @@ io_iterator_t get_matching_iterator(const char *class_name) {
     if (!matching_dict) return IO_OBJECT_NULL;
 
     io_iterator_t iterator;
-    if (IOServiceGetMatchingServices(kIOMainPortDefault, matching_dict, 
-                                     &iterator) != kIOReturnSuccess) {
+    if (IOServiceGetMatchingServices(kIOMainPortDefault,
+                                     matching_dict, &iterator) != kIOReturnSuccess) {
         V_PRINTF("[Error] IOServiceGetMatchingServices failed to find %s\n", class_name);
         return IO_OBJECT_NULL;
     }
 
-    return iterator;    
+    return iterator;
 }

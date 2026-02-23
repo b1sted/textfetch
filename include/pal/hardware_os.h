@@ -8,11 +8,11 @@
 
 #include "defs.h"
 
-#define KHZ_PER_GHZ 1e6
-#define HZ_PER_GHZ 1e9
+#define KHZ_PER_GHZ   1e6
+#define HZ_PER_GHZ    1e9
 
-#define MAX_GPUS 16
-#define GPU_BUFFER (256 * MAX_GPUS)
+#define MAX_GPUS      16
+#define GPU_BUFFER    (LINE_BUFFER * MAX_GPUS)
 
 #define BYTES_PER_KIB 1024
 #define BYTES_PER_MIB (1024.0 * 1024.0)
@@ -20,7 +20,7 @@
 
 #if defined(__ANDROID__) || defined(__APPLE__)
 typedef struct cpu_info {
-    uint16_t packages;    
+    uint16_t packages;
     char model[MEDIUM_BUFFER];
     char cores[MINI_BUFFER];
     char frequency[MINI_BUFFER];

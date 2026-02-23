@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "bitset.h"
@@ -12,7 +12,7 @@ void set_add(bitset_t *set, size_t num) {
         set->bits[num / 32] |= (1U << (num % 32));
         return;
     }
-    
+
     V_PRINTF("[ERROR] Bitset add overflow: value %zu exceeds uint32_t limit\n", num);
 }
 

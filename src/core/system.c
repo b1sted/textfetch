@@ -3,9 +3,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "system.h"
 #include "defs.h"
 #include "sys_utils.h"
+#include "system.h"
 #include "ui.h"
 
 #include "pal/system_os.h"

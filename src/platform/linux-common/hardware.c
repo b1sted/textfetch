@@ -19,7 +19,21 @@
 
 #include "pal/hardware_os.h"
 
-static void hw_print_disk(const char *mnt, const struct statvfs *fs, 
+#define MEMINFO_PATH        "/proc/meminfo"
+#define MOUNTS_PATH         "/proc/mounts"
+
+#define IGNORE_MOUNT_POINTS { \
+    "/.",                     \
+    "/boot",                  \
+    "/mnt/wslg/distro",       \
+    "/run/user",              \
+    "/var",                   \
+    "/apex",                  \
+    "/bootstrap-apex",        \
+    NULL                      \
+}
+
+static void hw_print_disk(const char *mnt, const struct statvfs *fs,
                           const struct mntent *ent);
 
 void hw_get_mem_info(void) {
@@ -28,9 +42,9 @@ void hw_get_mem_info(void) {
 
     mem_flags_t flags = 0;
 
-    FILE *memory_file = fopen("/proc/meminfo", "r");
+    FILE *memory_file = fopen(MEMINFO_PATH, "r");
     if (!memory_file) {
-        V_PRINTF("Error: failed to open /proc/meminfo: %s\n", strerror(errno));
+        V_PRINTF("Error: failed to open %s: %s\n", MEMINFO_PATH, strerror(errno));
         return;
     }
 
@@ -76,14 +90,11 @@ void hw_get_drives_info(void) {
     struct statvfs fs;
     memset(&fs, 0, sizeof(struct statvfs));
 
-    const char *ignore_name[] = {
-        "/.",   "/boot", "/mnt/wslg/distro", "/run/user",
-        "/var", "/apex", "/bootstrap-apex",  NULL
-    };
+    const char *ignore_mount_points[] = IGNORE_MOUNT_POINTS;
 
-    FILE *mounts_file = fopen("/proc/mounts", "r");
+    FILE *mounts_file = fopen(MOUNTS_PATH, "r");
     if (!mounts_file) {
-        V_PRINTF("Error: failed to open /proc/mounts: %s\n", strerror(errno));
+        V_PRINTF("Error: failed to open %s: %s\n", MOUNTS_PATH, strerror(errno));
         return;
     }
 
@@ -97,8 +108,9 @@ void hw_get_drives_info(void) {
             strcmp(mnt_entry->mnt_type, "erofs") == 0) continue;
 
         bool is_ignore = false;
-        for (int i = 0; ignore_name[i] != NULL; i++) {
-            if (strncmp(mnt_entry->mnt_dir, ignore_name[i], strlen(ignore_name[i])) == 0) {
+        for (int i = 0; ignore_mount_points[i] != NULL; i++) {
+            if (strncmp(mnt_entry->mnt_dir, ignore_mount_points[i],
+                        strlen(ignore_mount_points[i])) == 0) {
                 is_ignore = true;
             }
         }
@@ -106,7 +118,7 @@ void hw_get_drives_info(void) {
         if (is_ignore) continue;
 
         if (statvfs(mnt_entry->mnt_dir, &fs) != 0) {
-            V_PRINTF("Error: statvfs failed for %s: %s\n", 
+            V_PRINTF("Error: statvfs failed for %s: %s\n",
                      mnt_entry->mnt_dir, strerror(errno));
             continue;
         }
@@ -123,7 +135,8 @@ void hw_get_drives_info(void) {
     fclose(mounts_file);
 }
 
-static void hw_print_disk(const char *mnt, const struct statvfs *fs, const struct mntent *ent) {
+static void hw_print_disk(const char *mnt, const struct statvfs *fs,
+                          const struct mntent *ent) {
     uint64_t block_size = fs->f_frsize;
     double total_size   = (uint64_t)fs->f_blocks * block_size;
     double free_size    = fs->f_bfree * block_size;

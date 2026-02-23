@@ -48,10 +48,12 @@ void sys_format_uptime(char *out_buf, const size_t buf_size) {
     uint64_t seconds = t % 60;
 
     if (days != 0) {
-        snprintf(out_buf, buf_size, "%" PRIu64 " days, %02" PRIu64 ":%02" PRIu64
-                 ":%02" PRIu64, days, hours, minutes, seconds);
+        snprintf(out_buf, buf_size,
+                 "%" PRIu64 " days, %02" PRIu64 ":%02" PRIu64 ":%02" PRIu64,
+                 days, hours, minutes, seconds);
     } else {
-        snprintf(out_buf, buf_size, "%02" PRIu64 ":%02" PRIu64 ":%02" PRIu64, 
+        snprintf(out_buf, buf_size,
+                 "%02" PRIu64 ":%02" PRIu64 ":%02" PRIu64,
                  hours, minutes, seconds);
     }
 }

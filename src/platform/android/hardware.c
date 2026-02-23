@@ -88,8 +88,8 @@ void hw_get_gpu_info(void) {
     EGLint num_configs;
     EGLConfig egl_config;
 
-    if (!eglChooseConfig(egl_display, config_attributes, &egl_config, 1, &num_configs) 
-        || !num_configs) {
+    if (!eglChooseConfig(egl_display, config_attributes, &egl_config, 1, &num_configs) ||
+        !num_configs) {
         V_PRINTF("[ERROR]: Failed to choose EGL config: %04x\n", eglGetError());
         eglTerminate(egl_display);
         return;
@@ -154,7 +154,7 @@ void hw_get_bat_info(void) {
     util_read_line("/sys/class/power_supply/battery/health", health, sizeof(health));
 
     char information[LINE_BUFFER] = {0};
-    snprintf(information, sizeof(information), "%" PRIu8 "(%s, Health: %s)", capacity, status,
-             health);
+    snprintf(information, sizeof(information),
+             "%" PRIu8 "(%s, Health: %s)", capacity, status, health);
     ui_print_info("Battery", information);
 }

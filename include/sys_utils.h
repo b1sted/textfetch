@@ -14,8 +14,11 @@
  * Verbose formatted print wrapper.
  * Sends output to stderr only if the verbose flag is set.
  */
-#define V_PRINTF(fmt, ...) \
-    do { if (cfg_is_verbose()) fprintf(stderr, fmt, ##__VA_ARGS__); } while (0)
+#define V_PRINTF(fmt, ...)                       \
+    do {                                         \
+        if (cfg_is_verbose())                    \
+            fprintf(stderr, fmt, ##__VA_ARGS__); \
+    } while (0)
 
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 
@@ -25,7 +28,7 @@ typedef enum {
     UNIT_MIB,
     UNIT_GIB,
     UNIT_TIB,
-    UNIT_PIB 
+    UNIT_PIB
 } data_unit_t;
 
 bool util_read_line(const char *path, char *out_buf, const size_t buf_size);

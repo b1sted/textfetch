@@ -15,7 +15,8 @@
 #include "capture.h"
 #include "sys_utils.h"
 
-int capture_line(const char *command, const char *arg, char *out_buf, const size_t buf_size) {
+int capture_line(const char *command, const char *arg,
+                 char *out_buf, const size_t buf_size) {
     if (!command || !out_buf || buf_size == 0) return -1;
 
     out_buf[0] = '\0';
@@ -70,6 +71,8 @@ int capture_line(const char *command, const char *arg, char *out_buf, const size
 
         out_buf[strcspn(out_buf, "\r\n")] = '\0';
 
-        return (WIFEXITED(status) && WEXITSTATUS(status) == 0 && out_buf[0] != '\0') ? 0 : 1;
+        return (WIFEXITED(status) &&
+                WEXITSTATUS(status) == 0 &&
+                out_buf[0] != '\0') ? 0 : 1;
     }
 }

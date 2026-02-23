@@ -7,8 +7,8 @@
 
 #include <sys/utsname.h>
 
-#include "ui.h"
 #include "sys_utils.h"
+#include "ui.h"
 
 #define COLOR_BOLD "\x1b[1m"
 #define COLOR_RESET "\x1b[0m"
@@ -16,8 +16,8 @@
 static const char *get_color(const char *ansi_code);
 
 void ui_render_header(const char *username, const char *nodename) {
-    printf("%s%s@%s%s\n", get_color(COLOR_BOLD), username, nodename, 
-           get_color(COLOR_RESET));
+    printf("%s%s@%s%s\n",
+           get_color(COLOR_BOLD), username, nodename, get_color(COLOR_RESET));
 
     int print_len = strlen(username) + strlen(nodename) + 1;
 
@@ -26,13 +26,13 @@ void ui_render_header(const char *username, const char *nodename) {
 }
 
 void ui_print_info(const char *label, const char *information) {
-    printf("%s%s%s: %s\n", get_color(COLOR_BOLD), label, get_color(COLOR_RESET), 
-           information);
+    printf("%s%s%s: %s\n",
+           get_color(COLOR_BOLD), label, get_color(COLOR_RESET), information);
 }
 
 void ui_print_help(const char *prog_name) {
-    printf("%sUsage:%s %s [OPTIONS]\n\n", get_color(COLOR_BOLD), get_color(COLOR_RESET), 
-           prog_name);
+    printf("%sUsage:%s %s [OPTIONS]\n\n", 
+           get_color(COLOR_BOLD), get_color(COLOR_RESET), prog_name);
     printf("%sOutput Formatting:%s\n", get_color(COLOR_BOLD), get_color(COLOR_RESET));
     printf("  -h, --human-readable   print sizes in human readable format "
            "(default)\n");
@@ -62,6 +62,6 @@ void ui_print_version(const char *app_version) {
     }
 }
 
-static const char *get_color(const char *ansi_code) { 
-    return cfg_is_color() ? ansi_code : ""; 
+static const char *get_color(const char *ansi_code) {
+    return cfg_is_color() ? ansi_code : "";
 }

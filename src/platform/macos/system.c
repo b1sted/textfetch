@@ -62,12 +62,12 @@ static const macos_name_map_t darwin_map[] = {
     {12, "OS X Mountain Lion"},    /* 10.8 */
     {11, "Mac OS X Lion"},         /* 10.7 */
     {10, "Mac OS X Snow Leopard"}, /* 10.6 */
-    {9,  "Mac OS X Leopard"},      /* 10.5 */
-    {8,  "Mac OS X Tiger"},        /* 10.4 */
-    {7,  "Mac OS X Panther"},      /* 10.3 */
-    {6,  "Mac OS X Jaguar"},       /* 10.2 */
-    {5,  "Mac OS X Puma"},         /* 10.1 */
-    {0,  NULL}
+    {9, "Mac OS X Leopard"},       /* 10.5 */
+    {8, "Mac OS X Tiger"},         /* 10.4 */
+    {7, "Mac OS X Panther"},       /* 10.3 */
+    {6, "Mac OS X Jaguar"},        /* 10.2 */
+    {5, "Mac OS X Puma"},          /* 10.1 */
+    {0, NULL}
 };
 
 /**
@@ -115,13 +115,13 @@ void system_init(void) {
     bool uname_ok = (uname(&uts) == 0);
     if (!uname_ok) V_PRINTF("Error: uname failed: %s\n", strerror(errno));
 
-    snprintf(sys_data.sysname, sizeof(sys_data.sysname), 
+    snprintf(sys_data.sysname, sizeof(sys_data.sysname),
              "%s", uname_ok ? uts.sysname : fallback);
-    snprintf(sys_data.nodename, sizeof(sys_data.nodename), 
+    snprintf(sys_data.nodename, sizeof(sys_data.nodename),
              "%s", uname_ok ? uts.nodename : fallback);
-    snprintf(sys_data.release, sizeof(sys_data.release), 
+    snprintf(sys_data.release, sizeof(sys_data.release),
              "%s", uname_ok ? uts.release : fallback);
-    snprintf(sys_data.machine, sizeof(sys_data.machine), 
+    snprintf(sys_data.machine, sizeof(sys_data.machine),
              "%s", uname_ok ? uts.machine : fallback);
 
     sys_get_uptime();
@@ -142,7 +142,7 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
 
     /* Try modern sysctl first (macOS 10.13.4+) */
     if (sysctlbyname("kern.osproductversion", product_version, &size, NULL, 0) == 0) {
-        snprintf(out_buf + current_len, buf_size - current_len, 
+        snprintf(out_buf + current_len, buf_size - current_len,
                  "%s (%s)", product_version, sys_data.machine);
         return;
     }
@@ -153,7 +153,7 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
         strncpy(product_version, "unknown", sizeof(product_version) - 1);
     }
 
-    snprintf(out_buf + current_len, buf_size - current_len, 
+    snprintf(out_buf + current_len, buf_size - current_len,
              "%s (%s)", product_version, sys_data.machine);
 }
 
@@ -205,23 +205,21 @@ void sys_get_model_name(char *out_buf, size_t buf_size) {
     if (CFGetTypeID(plist) == CFDictionaryGetTypeID()) {
         CFDictionaryRef main_dict = (CFDictionaryRef)plist;
 
-        CFStringRef model_key =
-            CFStringCreateWithCString(kCFAllocatorDefault, out_buf, kCFStringEncodingUTF8);
+        CFStringRef model_key = CFStringCreateWithCString(kCFAllocatorDefault,
+                                                          out_buf, kCFStringEncodingUTF8);
         if (model_key) {
             CFDictionaryRef model_dict = CFDictionaryGetValue(main_dict, model_key);
 
             if (model_dict && CFGetTypeID(model_dict) == CFDictionaryGetTypeID()) {
-                CFDictionaryRef local_dict =
-                    CFDictionaryGetValue(model_dict, CFSTR("_LOCALIZABLE_"));
+                CFDictionaryRef local_dict = CFDictionaryGetValue(model_dict,
+                                                                  CFSTR("_LOCALIZABLE_"));
 
                 if (local_dict && CFGetTypeID(local_dict) == CFDictionaryGetTypeID()) {
-                    CFStringRef marketing_name =
-                        CFDictionaryGetValue(local_dict, CFSTR("marketingModel"));
+                    CFStringRef marketing_name = CFDictionaryGetValue(local_dict,
+                                                                      CFSTR("marketingModel"));
 
-                    if (marketing_name && 
-                        CFGetTypeID(marketing_name) == CFStringGetTypeID()) {
-                        CFStringGetCString(marketing_name, out_buf, buf_size,
-                                           kCFStringEncodingUTF8);
+                    if (marketing_name && CFGetTypeID(marketing_name) == CFStringGetTypeID()) {
+                        CFStringGetCString(marketing_name, out_buf, buf_size, kCFStringEncodingUTF8);
                     } else {
                         V_PRINTF("[Warning] %s: 'marketingModel' key missing for %s\n",
                                  __func__, out_buf);
@@ -268,12 +266,11 @@ static CFPropertyListRef create_plist_from_file(const char *path) {
         return NULL;
     }
 
-    CFDataRef data_ref =
-        CFDataCreateWithBytesNoCopy(kCFAllocatorDefault, ptr, sb.st_size,
-                                    kCFAllocatorNull);
+    CFDataRef data_ref = CFDataCreateWithBytesNoCopy(kCFAllocatorDefault, ptr,
+                                                     sb.st_size, kCFAllocatorNull);
 
     CFPropertyListRef plist = CFPropertyListCreateWithData(kCFAllocatorDefault, data_ref,
-                                                           kCFPropertyListImmutable, NULL, 
+                                                           kCFPropertyListImmutable, NULL,
                                                            NULL);
 
     CFRelease(data_ref);

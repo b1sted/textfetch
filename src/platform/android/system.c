@@ -44,7 +44,7 @@ void sys_get_model_name(char *out_buf, size_t buf_size) {
     }
 
     bool brand_in_model = (strstr(model_buf, brand_buf) != NULL);
-    bool model_is_name = (strcmp(model_buf, name_buf) == 0);
+    bool model_is_name  = (strcmp(model_buf, name_buf) == 0);
     bool brand_is_model = (strcmp(brand_buf, model_buf) == 0);
 
     if ((brand_is_model || brand_in_model) && brand_is_model) {

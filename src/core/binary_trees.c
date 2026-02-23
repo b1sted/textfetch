@@ -30,7 +30,7 @@ forest *create_forest(int initial_capacity) {
     f->count = 0;
     f->capacity = initial_capacity;
     f->roots = malloc(f->capacity * sizeof(node *));
-    
+
     return f;
 }
 

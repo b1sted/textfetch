@@ -11,9 +11,27 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include "sys_utils.h"
 #include "config.h"
 #include "defs.h"
+#include "sys_utils.h"
+
+#define MEMORY_UNITS {           \
+    "B",                         \
+    "KiB",                       \
+    "MiB",                       \
+    "GiB",                       \
+    "TiB",                       \
+    "PiB",                       \
+}
+
+#define MEMORY_DIVISORS {        \
+    1.0,               /* B */   \
+    1024.0,            /* KiB */ \
+    1048576.0,         /* MiB */ \
+    1073741824.0,      /* GiB */ \
+    1099511627776.0,   /* TiB */ \
+    1125899906842624.0 /* PiB */ \
+}
 
 bool util_read_line(const char *path, char *out_buf, const size_t buf_size) {
     if (!out_buf || buf_size == 0) return false;
@@ -101,31 +119,23 @@ bool util_read_hex(const char *path, uint32_t *value) {
 bool util_read_hex16(const char *path, uint16_t *value) {
     uint32_t val32 = 0;
 
-    if (!util_read_hex(path, &val32))
-        return false;
+    if (!util_read_hex(path, &val32)) return false;
 
-    if (val32 > 0xFFFF)
-        return false;
+    if (val32 > 0xFFFF) return false;
 
     *value = (uint16_t)val32;
 
     return true;
 }
 
-bool util_is_file_exist(const char *path) { return access(path, R_OK) == 0; }
+bool util_is_file_exist(const char *path) {
+    return access(path, R_OK) == 0;
+}
 
-void util_format_size(double total_size, double used_size, char *out_buf, 
+void util_format_size(double total_size, double used_size, char *out_buf,
                       const size_t buf_size, data_unit_t from_unit) {
-    static const char *memory_units[] = {"B", "KiB", "MiB", "GiB", "TiB", "PiB"};
-
-    static const double divisors[] = {
-        1.0,               /* B */
-        1024.0,            /* KiB */
-        1048576.0,         /* MiB */
-        1073741824.0,      /* GiB */
-        1099511627776.0,   /* TiB */
-        1125899906842624.0 /* PiB */
-    };
+    static const char *memory_units[] = MEMORY_UNITS;
+    static const double divisors[] = MEMORY_DIVISORS;
 
     const uint8_t num_units = sizeof(divisors) / sizeof(divisors[0]);
 
@@ -153,7 +163,8 @@ void util_format_size(double total_size, double used_size, char *out_buf,
     uint8_t total_unit = 0;
     uint8_t used_unit = 0;
 
-    const uint8_t usage_pct = (total_size > 1e-9) ? (uint8_t)((used_size / total_size) * 100) : 0;
+    const uint8_t usage_pct = (total_size > 1e-9) 
+                              ? (uint8_t)((used_size / total_size) * 100) : 0;
 
     if (forced_unit != -1) {
         total_unit = forced_unit;
@@ -175,6 +186,7 @@ void util_format_size(double total_size, double used_size, char *out_buf,
         }
     }
 
-    snprintf(out_buf, buf_size, "%.*f %s / %.*f %s (%hhu%%)", precision, used_size,
-             memory_units[used_unit], precision, total_size, memory_units[total_unit], usage_pct);
+    snprintf(out_buf, buf_size, "%.*f %s / %.*f %s (%hhu%%)",
+             precision, used_size,  memory_units[used_unit],
+             precision, total_size, memory_units[total_unit], usage_pct);
 }

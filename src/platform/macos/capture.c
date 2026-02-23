@@ -18,7 +18,8 @@
  */
 extern char **environ;
 
-int capture_line(const char *command, const char *arg, char *out_buf, const size_t buf_size) {
+int capture_line(const char *command, const char *arg,
+                 char *out_buf, const size_t buf_size) {
     if (!command || !out_buf || buf_size < 2) return -1;
 
     out_buf[0] = '\0';
@@ -61,8 +62,9 @@ int capture_line(const char *command, const char *arg, char *out_buf, const size
         int wait_status;
         waitpid(pid, &wait_status, 0);
 
-        if (WIFEXITED(wait_status) && WEXITSTATUS(wait_status) == 0
-            && out_buf[0] != '\0') {
+        if (WIFEXITED(wait_status) &&
+            WEXITSTATUS(wait_status) == 0 &&
+            out_buf[0] != '\0') {
             result = 0;
         }
     } else {
