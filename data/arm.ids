@@ -1,0 +1,262 @@
+# List of ARM implementer and part IDs
+# Optimized for clean program output: "Vendor + Part Name"
+# Version: 2026.02
+
+41  ARM
+	810	ARM810
+	920	ARM920T
+	922	ARM922T
+	926	ARM926EJ-S
+	940	ARM940T
+	946	ARM946E-S
+	966	ARM966E-S
+	a20	ARM1020E
+	a22	ARM1022E
+	a26	ARM1026EJ-S
+	b02	ARM11-MPCore
+	b36	ARM1136
+	b56	ARM1156
+	b76	ARM1176
+	c05	Cortex-A5
+	c07	Cortex-A7
+	c08	Cortex-A8
+	c09	Cortex-A9
+	c0d	Cortex-A17
+	c0e	Cortex-A17
+	c0f	Cortex-A15
+	c14	Cortex-R4
+	c15	Cortex-R5
+	c17	Cortex-R7
+	c18	Cortex-R8
+	c20	Cortex-M0
+	c21	Cortex-M1
+	c23	Cortex-M3
+	c24	Cortex-M4
+	c27	Cortex-M7
+	c60	Cortex-M0+
+	d01	Cortex-A32
+	d02	Cortex-A34
+	d03	Cortex-A53
+	d04	Cortex-A35
+	d05	Cortex-A55
+	d06	Cortex-A65
+	d07	Cortex-A57
+	d08	Cortex-A72
+	d09	Cortex-A73
+	d0a	Cortex-A75
+	d0b	Cortex-A76
+	d0c	Neoverse-N1
+	d0d	Cortex-A77
+	d0e	Cortex-A76AE
+	d13	Cortex-R52
+	d14	Cortex-R82AE
+	d15	Cortex-R82
+	d16	Cortex-R52+
+	d20	Cortex-M23
+	d21	Cortex-M33
+	d22	Cortex-M55
+	d23	Cortex-M85
+	d24	Cortex-M52
+	d40	Neoverse-V1
+	d41	Cortex-A78
+	d42	Cortex-A78AE
+	d43	Cortex-A65AE
+	d44	Cortex-X1
+	d46	Cortex-A510
+	d47	Cortex-A710
+	d48	Cortex-X2
+	d49	Neoverse-N2
+	d4a	Neoverse-E1
+	d4b	Cortex-A78C
+	d4c	Cortex-X1C
+	d4d	Cortex-A715
+	d4e	Cortex-X3
+	d4f	Neoverse-V2
+	d80	Cortex-A520
+	d81	Cortex-A720
+	d82	Cortex-X4
+	d83	Neoverse-V3AE
+	d84	Neoverse-V3
+	d85	Cortex-X925
+	d87	Cortex-A725
+	d88	Cortex-A520AE
+	d89	Cortex-A720AE
+	d8a	C1-Nano
+	d8b	C1-Pro
+	d8c	C1-Ultra
+	d8e	Neoverse-N3
+	d8f	Cortex-A320
+	d90	C1-Premium
+
+1d  Amazon
+	000	Graviton
+	001	Graviton 2
+	002	Graviton 3
+	003	Graviton 4
+
+42  Broadcom
+	00f	Brahma-B15
+	100	Brahma-B53
+	516	ThunderX2
+
+43  Cavium
+	0a0	ThunderX
+	0a1	ThunderX-88XX
+	0a2	ThunderX-81XX
+	0a3	ThunderX-83XX
+	0af	ThunderX2-99XX
+	0b0	OcteonTX2
+	0b1	OcteonTX2-98XX
+	0b2	OcteonTX2-96XX
+	0b3	OcteonTX2-95XX
+	0b4	OcteonTX2-95XXN
+	0b5	OcteonTX2-95XXMM
+	0b6	OcteonTX2-95XXO
+	0b8	ThunderX3-T110
+
+44  DEC
+	a10	SA110
+	a11	SA1100
+
+46  Fujitsu
+	001	A64FX
+	003	Monaka
+
+48  HiSilicon
+	d01	TaiShan-v110 (Kunpeng 920)
+	d02	TaiShan-v120 (Kirin 9000S / Kunpeng 930)
+	d40	Cortex-A76
+	d41	Cortex-A77
+
+49  Infineon
+
+4d  Motorola/Freescale
+
+4e  NVIDIA
+	000	Denver (Tegra K1 / X1)
+	003	Denver 2 (Tegra X2)
+	004	Carmel (Tegra Xavier)
+	010	Olympus
+
+50  APM
+	000	X-Gene
+
+51  Qualcomm
+	001	Oryon (Snapdragon X / 8 Elite)
+	00f	Scorpion (Snapdragon S1)
+	02d	Scorpion (Snapdragon S2/S3)
+	04d	Krait (Snapdragon S4 Pro / 600)
+	06f	Krait (Snapdragon 800 / 801)
+	201	Kryo (Snapdragon 820 / 821)
+	205	Kryo (Snapdragon 835, Silver/E-core)
+	211	Kryo (Snapdragon 835, Gold/P-core)
+	800	Falkor-V1/Kryo (Snapdragon 835)
+	801	Kryo-V2
+	802	Kryo-3XX-Gold (Snapdragon 845, P-core)
+	803	Kryo-3XX-Silver (Snapdragon 845, E-core)
+	804	Kryo-4XX-Gold (Snapdragon 855, P-core)
+	805	Kryo-4XX-Silver (Snapdragon 855, E-core)
+	c00	Falkor (Centriq 2400)
+	c01	Saphira
+
+53  Samsung
+	001	Exynos-M1 (Mongoose / Exynos 8890)
+	002	Exynos-M3 (Meerkat / Exynos 8895)
+	003	Exynos-M4 (Cheetah / Exynos 9810)
+	004	Exynos-M5 (Lion / Exynos 990)
+
+56  Marvell
+	131	Feroceon-88FR131
+	581	PJ4/PJ4B
+	584	PJ4B-MP
+
+61  Apple
+	000	Swift (A6)
+	001	Cyclone (A7)
+	002	Typhoon (A8)
+	003	Typhoon/Capri (A8X)
+	004	Twister (A9)
+	005	Twister/Elba/Malta (A9X)
+	006	Hurricane (A10 Fusion)
+	007	Hurricane/Myst (A10X Fusion)
+	008	Monsoon (A11 Bionic, P-core)
+	009	Mistral (A11 Bionic, E-core)
+	00b	Vortex (A12 Bionic, P-core)
+	00c	Tempest (A12 Bionic, E-core)
+	00f	Tempest-M9 (S4 / S5, E-core)
+	010	Vortex/Aruba (A12X/Z Bionic, P-core)
+	011	Tempest/Aruba (A12X/Z Bionic, E-core)
+	012	Lightning (A13 Bionic, P-core)
+	013	Thunder (A13 Bionic, E-core)
+	020	Icestorm (A14 Bionic, E-core)
+	021	Firestorm (A14 Bionic, P-core)
+	022	Icestorm (M1, E-core)
+	023	Firestorm (M1, P-core)
+	024	Icestorm (M1 Pro, E-core)
+	025	Firestorm (M1 Pro, P-core)
+	026	Thunder (M10, E-core)
+	028	Icestorm (M1 Max, E-core)
+	029	Firestorm (M1 Max, P-core)
+	030	Blizzard (A15 Bionic, E-core)
+	031	Avalanche (A15 Bionic, P-core)
+	032	Blizzard (M2, E-core)
+	033	Avalanche (M2, P-core)
+	034	Blizzard (M2 Pro, E-core)
+	035	Avalanche (M2 Pro, P-core)
+	036	Sawtooth (A16 Bionic, E-core)
+	037	Everest (A16 Bionic, P-core)
+	038	Blizzard (M2 Max, E-core)
+	039	Avalanche (M2 Max, P-core)
+
+66  Faraday
+	526	FA526
+	626	FA626
+
+67  Google
+	001	Tensor G1 (Pixel 6)
+	002	Tensor G2 (Pixel 7)
+	003	Tensor G3 (Pixel 8)
+	004	Tensor G4 (Pixel 9)
+	005	Axion (Google Cloud)
+
+69  Intel
+	200	i80200
+	210	PXA250A
+	212	PXA210A
+	242	i80321-400
+	243	i80321-600
+	290	PXA250B/PXA26x
+	292	PXA210B
+	2c2	i80321-400-B0
+	2c3	i80321-600-B0
+	2d0	PXA250C/PXA255/PXA26x
+	2d2	PXA210C
+	411	PXA27x
+	41c	IPX425-533
+	41d	IPX425-400
+	41f	IPX425-266
+	682	PXA32x
+	683	PXA930/PXA935
+	688	PXA30x
+	689	PXA31x
+	b11	SA1110
+	c12	IPX1200
+
+6d  Microsoft
+	d49	Azure Cobalt 100
+
+70  Phytium
+	303	FTC310
+	660	FTC660
+	661	FTC661
+	662	FTC662
+	663	FTC663
+	664	FTC664
+	862	FTC862
+
+7a  Alibaba
+	001	Yitian-710
+
+c0  Ampere
+	ac3	AmpereOne
+	ac4	AmpereOne A1a
