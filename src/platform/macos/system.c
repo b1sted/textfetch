@@ -28,6 +28,7 @@
 #include "pal/system_os.h"
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_VERSION_11_0
+/* Multiplier to convert clock_gettime_nsec_np nanosecond ticks into seconds. */
 #define NANOSECONDS_IN_SECONDS 1000000000ULL
 #endif
 

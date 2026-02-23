@@ -10,6 +10,7 @@
 
 #include "pal/system_os.h"
 
+/* Definition of the global system data instance with cached system stats. */
 sys_internal_data_t sys_data;
 
 void system_print_header(void) {

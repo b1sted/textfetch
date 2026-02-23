@@ -7,16 +7,20 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* Bitset array block width (typically 32 for uint32_t). */
+#define BITS_PER_BLOCK         32
+
+/* Computes block array size, rounding up for remainders. */
+#define SET_SIZE(MAX_ELEMENTS) ((MAX_ELEMENTS) + (BITS_PER_BLOCK - 1)) / BITS_PER_BLOCK
+
+/* Generates a bitmask with a single bit set. */
+#define BIT(n)                 (1U << ((n) % 32))
+
+/* Array-backed bitset used to track specific IDs or flag presence. */
 typedef struct {
     uint32_t *bits;
     size_t capacity;
 } bitset_t;
-
-#define BITS_PER_BLOCK 32
-
-#define SET_SIZE(MAX_ELEMENTS) (MAX_ELEMENTS + (BITS_PER_BLOCK - 1)) / BITS_PER_BLOCK
-
-#define BIT(n) (1U << ((n) % 32))
 
 /**
  * Adds an element to the bitset.

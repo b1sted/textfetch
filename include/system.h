@@ -5,6 +5,7 @@
 
 #include <limits.h>
 
+/* Maximum acceptable length for a system username, falling back to 256. */
 #ifdef LOGIN_NAME_MAX
 #define SYS_USER_MAX LOGIN_NAME_MAX
 #elif defined(MAXLOGNAME)

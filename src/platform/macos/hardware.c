@@ -58,31 +58,107 @@ typedef struct {
 } dvfs_entry_t;
 #endif
 
-/**
- * System power status bitmask flags.
- */
+/* System power status bitmask flags indicating charging state. */
 typedef enum {
     FLAG_AC       = 1 << 0,
     FLAG_CHARGING = 1 << 1,
     FLAG_FULL     = 1 << 2
 } power_flags;
 
+/**
+ * Retrieves the total count of physical CPU packages via sysctl.
+ *
+ * @param node Pointer to the CPU info structure.
+ */
 static void hw_get_cpu_package(cpu_info_t *node);
+
+/**
+ * Retrieves the CPU model name string via sysctl.
+ *
+ * @param node Pointer to the CPU info structure.
+ */
 static void hw_get_cpu_model(cpu_info_t *node);
+
+/**
+ * Retrieves the physical core counts, separated by P and E cores on ARM64.
+ *
+ * @param node Pointer to the CPU info structure.
+ */
 static void hw_get_cpu_cores(cpu_info_t *node);
+
+/**
+ * Retrieves the maximum CPU frequency (hardcoded lookup for ARM64, sysctl for x86).
+ *
+ * @param node Pointer to the CPU info structure.
+ */
 static void hw_get_cpu_freq(cpu_info_t *node);
 
+/**
+ * Queries IOKit for GPUs handled by the IOAccelerator subsystem (typically Apple GPUs).
+ *
+ * @param out_buf Buffer to format the found GPUs into.
+ * @param buf_size Size of the buffer.
+ */
 static void hw_get_gpu_acclerator(char *out_buf, const size_t buf_size);
+
+/**
+ * Queries IOKit for discrete GPUs using the IOPCIDevice subsystem class codes.
+ *
+ * @param out_buf Buffer to format the found GPUs into.
+ * @param buf_size Size of the buffer.
+ */
 static void hw_get_gpu_pci(char *out_buf, const size_t buf_size);
 
+/**
+ * Queries IOKit for discrete GPUs using the IOPCIDevice subsystem class codes.
+ *
+ * @param out_buf Buffer to format the found GPUs into.
+ * @param buf_size Size of the buffer.
+ */
+static void hw_get_gpu_pci(char *out_buf, const size_t buf_size);
+
+/**
+ * Evaluates the current RAM capacity and usage using Mach host statistics.
+ *
+ * @param flags Bitmask storing the detected memory types.
+ * @param node Pointer to the memory info block.
+ */
 static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *node);
+
+/**
+ * Evaluates swap usage using sysctl vm.swapusage.
+ *
+ * @param flags Bitmask storing the detected memory types.
+ * @param node Pointer to the memory info block.
+ */
 static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *node);
 
+/**
+ * Calculates current battery percentage from an IOPowerSources dictionary.
+ *
+ * @param power_source Pointer to the battery details dictionary.
+ * @return Remaining battery capacity in percent.
+ */
 static uint8_t hw_get_bat_percentage(const CFDictionaryRef power_source);
+
+/**
+ * Resolves the string representing the charging state of the battery.
+ *
+ * @param power_source Pointer to the battery details dictionary.
+ * @param battery_percentage The computed battery percentage.
+ * @return Constant string representing the charging state.
+ */
 static const char *hw_get_bat_status(const CFDictionaryRef power_source,
                                      uint8_t battery_percentage);
 
-io_iterator_t get_matching_iterator(const char *class_name);
+/**
+ * Resolves the string representing the charging state of the battery.
+ *
+ * @param power_source Pointer to the battery details dictionary.
+ * @param battery_percentage The computed battery percentage.
+ * @return Constant string representing the charging state.
+ */
+static io_iterator_t get_matching_iterator(const char *class_name);
 
 void hw_get_cpu_info(void) {
     cpu_info_t node;
@@ -505,7 +581,7 @@ static const char *hw_get_bat_status(const CFDictionaryRef power_source,
     return "Discharging";
 }
 
-io_iterator_t get_matching_iterator(const char *class_name) {
+static io_iterator_t get_matching_iterator(const char *class_name) {
     CFMutableDictionaryRef matching_dict = IOServiceMatching(class_name);
     if (!matching_dict) return IO_OBJECT_NULL;
 

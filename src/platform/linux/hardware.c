@@ -36,6 +36,7 @@
 
 #include "pal/hardware_os.h"
 
+/* Array of paths to search for the pci.ids database file. */
 #define PCI_IDS_PATHS {            \
     "/var/lib/pciutils/pci.ids",   \
     "/usr/share/hwdata/pci.ids",   \
@@ -46,16 +47,20 @@
     NULL                           \
 }
 
+/* Base directories in sysfs and procfs for hardware enumeration. */
 #define SYS_CPU_DIR      "/sys/devices/system/cpu/"
 #define CPUINFO_PATH     "/proc/cpuinfo"
 #define SYS_GPU_DIR      "/sys/class/drm/"
 #define SYS_BATTERY_DIR  "/sys/class/power_supply/"
 
+/* Maximum supported limits for CPU discovery. */
 #define MAX_CPU_PACKAGES 16
 #define MAX_CPU_CORES    256
 
+/* Number of blocks needed for the CPU cores bitset. */
 #define CORES_SET_BLOCKS (MAX_CPU_CORES / BITS_PER_BLOCK)
 
+/* Internal structure to store CPU parsing progress per socket. */
 typedef struct {
     char model[MEDIUM_BUFFER];
     double frequency;
@@ -63,47 +68,141 @@ typedef struct {
     bool exists;
 } cpu_data_t;
 
+/* Generic linked list node for hardware enumeration. */
 typedef struct hw_node {
     char name[SMALL_BUFFER];
     struct hw_node *next;
 } hw_node_t;
 
+/* Linked list node representing a raw PCI GPU device format. */
 typedef struct gpu_node {
     uint16_t impl_id;
     uint16_t part_id;
     struct gpu_node *next;
 } gpu_node_t;
 
+/* Internal structure for grouping similar GPU models. */
 typedef struct {
     char name[LINE_BUFFER];
 } gpu_data_t;
 
+/**
+ * Enumerates all CPU cores and packages from sysfs.
+ *
+ * @param cpus Array of CPU data structures to populate.
+ * @param cpu_map Array mapping logical CPU IDs to physical sockets.
+ * @param packages Pointer to store the total number of CPU packages found.
+ */
 static void hw_get_cpu_cores(cpu_data_t *cpus, uint16_t *cpu_map, uint8_t *packages);
+
+/**
+ * Parses /proc/cpuinfo to determine the CPU model name.
+ *
+ * @param cpus Array of CPU data structures to update.
+ * @param cpu_map Array mapping logical CPU IDs to physical sockets.
+ * @param packages Total number of CPU packages.
+ */
 static void hw_get_cpu_model(cpu_data_t *cpus, uint16_t *cpu_map, const uint8_t packages);
 
-#if defined(__arm__) || defined(__aarch64__)
-static forest *hw_arm_forest_create(void);
-static void hw_arm_lookup_name(forest *arm_forest, char *out_buf, const size_t buf_size);
-#endif
-
 #if defined(__i386__) || defined(__x86_64__)
+/**
+ * Parses out unnecessary marketing jargon from an x86 CPU model string.
+ *
+ * @param out_buf Buffer containing the CPU model string to sanitize.
+ */
 static void hw_sanitize_cpu_name(char *out_buf);
 #endif
 
+#if defined(__arm__) || defined(__aarch64__)
+/**
+ * Creates a binary tree forest of ARM vendor and part IDs from an internal database.
+ *
+ * @return A pointer to the populated forest, or NULL on failure.
+ */
+static forest *hw_arm_forest_create(void);
+
+/**
+ * Looks up human-readable names for ARM chips based on implementer and part IDs.
+ *
+ * @param arm_forest The forest containing ARM ID mappings.
+ * @param out_buf Buffer containing the raw IDs, replaced with the readable name.
+ * @param buf_size Size of the output buffer.
+ */
+static void hw_arm_lookup_name(forest *arm_forest, char *out_buf, const size_t buf_size);
+#endif
+
+/**
+ * Reads the current scaling frequency for a given CPU package.
+ *
+ * @param cpus Array of CPU data structures.
+ * @param package The physical package ID.
+ * @param cpu_suffix The string identifying the CPU node in sysfs.
+ */
 static void hw_get_cpu_freq(cpu_data_t *cpus, const int16_t package, const char *cpu_suffix);
 
+/**
+ * Enumerates all GPU devices present in sysfs DRM subsystem.
+ *
+ * @return A linked list of raw GPU nodes, or NULL if none found.
+ */
 static gpu_node_t *hw_get_all_gpus(void);
+
+/**
+ * Parses the pci.ids database file into a binary tree forest.
+ *
+ * @return A tree containing PCI vendors and sub-devices, or NULL on failure.
+ */
 static forest *hw_pci_forest_create(void);
+
+/**
+ * Maps raw GPU PCI IDs to human-readable names and groups duplicates.
+ *
+ * @param out_buf Buffer to store the formatted GPU string.
+ * @param buf_size Maximum size of the output buffer.
+ * @param pci_forest The parsed PCI IDs tree.
+ * @param gpu_list Linked list of detected GPUs.
+ */
 static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size,
                                 forest *pci_forest, gpu_node_t *gpu_list);
 
-static gpu_node_t *add_gpu(gpu_node_t *head, const uint16_t impl_id,
-                           const uint16_t part_id);
+/**
+ * Appends a new GPU to the enumeration list.
+ *
+ * @param head Pointer to the head of the GPU list.
+ * @param impl_id The vendor PCI ID.
+ * @param part_id The device PCI ID.
+ * @return Pointer to the new head of the list.
+ */
+static gpu_node_t *add_gpu(gpu_node_t *head, const uint16_t impl_id, const uint16_t part_id);
+
+/**
+ * Frees a linked list of GPU nodes.
+ *
+ * @param head Pointer to the head of the GPU list.
+ */
 static void free_gpu_list(gpu_node_t *head);
 
+/**
+ * Enumerates all power supplies in sysfs to find actual batteries.
+ *
+ * @return A linked list of battery nodes, or NULL on failure.
+ */
 static hw_node_t *hw_get_all_batteries(void);
 
+/**
+ * Appends a new generic hardware element to a list.
+ *
+ * @param head Pointer to the head of the list.
+ * @param name The node name/identifier to store.
+ * @return Pointer to the new head of the list.
+ */
 static hw_node_t *add_element(hw_node_t *head, const char *name);
+
+/**
+ * Frees a linked list of generic hardware nodes.
+ *
+ * @param head Pointer to the head of the list.
+ */
 static void free_data_list(hw_node_t *head);
 
 void hw_get_cpu_info(void) {
@@ -300,6 +399,47 @@ static void hw_get_cpu_model(cpu_data_t *cpus, uint16_t *cpu_map, const uint8_t 
 #endif
 }
 
+#if defined(__i386__) || defined(__x86_64__)
+static void hw_sanitize_cpu_name(char *out_buf) {
+    if (!out_buf || !*out_buf) return;
+
+    /* Fucking piece of shit that needs its own fucking line */
+    char *garbage = strstr(out_buf, "Gen");
+    if (garbage) {
+        while (*garbage != ' ') garbage++;
+        garbage++;
+        uint8_t offset = garbage - out_buf;
+        memmove(out_buf, out_buf + offset, strlen(garbage) + 1);
+    }
+
+    const char *prefix_garbage[] = {"(R)", "(TM)", "(tm)", NULL};
+
+    int i = 0;
+    while (prefix_garbage[i] != NULL) {
+        char *garbage = strstr(out_buf, prefix_garbage[i]);
+        if (garbage) {
+            char *src = garbage + strlen(prefix_garbage[i]);
+            size_t len = strlen(src) + 1;
+
+            memmove(garbage, src, len);
+        } else {
+            i++;
+        }
+    }
+
+    const char *suffix_garbage[] = {"CPU", "APU", "with", "-Core", "Processor", NULL};
+
+    for (uint8_t i = 0; suffix_garbage[i] != NULL; i++) {
+        char *garbage = strstr(out_buf, suffix_garbage[i]);
+        if (garbage) {
+            while (garbage[0] != ' ') garbage--;
+            *garbage = '\0';
+            break;
+        }
+    }
+}
+#endif
+
 #if defined(__arm__) || defined(__aarch64__)
 static forest *hw_arm_forest_create(void) {
     FILE *fp = fmemopen(arm_ids, arm_ids_len, "r");
@@ -371,47 +511,6 @@ static void hw_arm_lookup_name(forest *arm_forest, char *out_buf, const size_t b
     }
 
     snprintf(out_buf, buf_size, "Generic ARM CPU [0x%04X 0x%04X]", vendor_id, impl_id);
-}
-#endif
-
-#if defined(__i386__) || defined(__x86_64__)
-static void hw_sanitize_cpu_name(char *out_buf) {
-    if (!out_buf || !*out_buf) return;
-
-    /* Fucking piece of shit that needs its own fucking line */
-    char *garbage = strstr(out_buf, "Gen");
-    if (garbage) {
-        while (*garbage != ' ') garbage++;
-        garbage++;
-        uint8_t offset = garbage - out_buf;
-        memmove(out_buf, out_buf + offset, strlen(garbage) + 1);
-    }
-
-    const char *prefix_garbage[] = {"(R)", "(TM)", "(tm)", NULL};
-
-    int i = 0;
-    while (prefix_garbage[i] != NULL) {
-        char *garbage = strstr(out_buf, prefix_garbage[i]);
-        if (garbage) {
-            char *src = garbage + strlen(prefix_garbage[i]);
-            size_t len = strlen(src) + 1;
-
-            memmove(garbage, src, len);
-        } else {
-            i++;
-        }
-    }
-
-    const char *suffix_garbage[] = {"CPU", "APU", "with", "-Core", "Processor", NULL};
-
-    for (uint8_t i = 0; suffix_garbage[i] != NULL; i++) {
-        char *garbage = strstr(out_buf, suffix_garbage[i]);
-        if (garbage) {
-            while (garbage[0] != ' ') garbage--;
-            *garbage = '\0';
-            break;
-        }
-    }
 }
 #endif
 
@@ -627,9 +726,13 @@ static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size,
         size_t offset = strlen(out_buf);
         if (offset >= buf_size) break;
 
-        snprintf(out_buf + offset, buf_size - offset,
-                "%s%s%s", (out_buf[0] == '\0') ? "" : "\n     ",
-                prefix, gpus[i].name);
+        int written = snprintf(out_buf + offset, buf_size - offset,
+                       "%s%s%s", (out_buf[0] == '\0') ? "" : "\n     ",
+                       prefix, gpus[i].name);
+
+        if (written < 0 || (size_t)written >= buf_size - offset) {
+            break;
+        }
     }
 
     if (pci_forest) destroy_forest(pci_forest);

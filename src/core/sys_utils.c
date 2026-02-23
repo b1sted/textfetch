@@ -15,6 +15,7 @@
 #include "defs.h"
 #include "sys_utils.h"
 
+/* Human-readable unit suffixes for formatting byte sizes. */
 #define MEMORY_UNITS {           \
     "B",                         \
     "KiB",                       \
@@ -24,6 +25,7 @@
     "PiB",                       \
 }
 
+/* Divisors used to convert raw bytes into larger capacities. */
 #define MEMORY_DIVISORS {        \
     1.0,               /* B */   \
     1024.0,            /* KiB */ \

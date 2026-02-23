@@ -20,8 +20,25 @@
 
 #include "pal/hardware_os.h"
 
+/**
+ * Determines the SoC model name using Android system properties.
+ *
+ * @param node Pointer to the CPU info structure.
+ */
 static void hw_get_cpu_model(cpu_info_t *node);
+
+/**
+ * Checks the OS sysconf limits to find the active processor count.
+ *
+ * @param node Pointer to the CPU info structure.
+ */
 static void hw_get_cpu_cores(cpu_info_t *node);
+
+/**
+ * Reads scaling frequency from sysfs for CPU0.
+ *
+ * @param node Pointer to the CPU info structure.
+ */
 static void hw_get_cpu_freq(cpu_info_t *node);
 
 void hw_get_cpu_info(void) {

@@ -6,10 +6,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/**
- * Default starting capacity.
- * Must be a power of two for efficient bitwise indexing.
- */
+/* Default starting capacity for string sets (must be a power of two). */
 #define INITIAL_CAPACITY 256
 
 /**
@@ -57,6 +54,12 @@ bool strset_add(string_set_t *set, const char *key);
  */
 bool strset_contains(string_set_t *set, const char *key);
 
+/**
+ * Retrieves the total number of items currently in the set.
+ *
+ * @param set Pointer to the set.
+ * @return Number of active elements.
+ */
 size_t strset_get_count(const string_set_t *set);
 
 /**

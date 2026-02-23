@@ -19,9 +19,13 @@
 
 #include "pal/hardware_os.h"
 
+/* Path for reading virtual memory usage. */
 #define MEMINFO_PATH        "/proc/meminfo"
+
+/* Path for reading currently mounted filesystems. */
 #define MOUNTS_PATH         "/proc/mounts"
 
+/* Temporary or pseudo-filesystems to ignore when summarizing disk space. */
 #define IGNORE_MOUNT_POINTS { \
     "/.",                     \
     "/boot",                  \
@@ -33,6 +37,13 @@
     NULL                      \
 }
 
+/**
+ * Formats and prints disk usage information for a specific mount point.
+ *
+ * @param mnt The mount point path.
+ * @param fs Pointer to the filesystem statistics structure.
+ * @param ent Pointer to the mount entity structure.
+ */
 static void hw_print_disk(const char *mnt, const struct statvfs *fs,
                           const struct mntent *ent);
 

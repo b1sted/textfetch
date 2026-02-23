@@ -29,6 +29,7 @@
 #define VERSION_SECTION ".app_version"
 #endif
 
+/* Global constant containing the compiled application version string. */
 extern const char version_string[];
 
 /**

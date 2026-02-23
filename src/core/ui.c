@@ -10,9 +10,15 @@
 #include "sys_utils.h"
 #include "ui.h"
 
-#define COLOR_BOLD "\x1b[1m"
+#define COLOR_BOLD  "\x1b[1m"
 #define COLOR_RESET "\x1b[0m"
 
+/**
+ * Resolves the ANSI escape sequence based on the current color configuration.
+ *
+ * @param ansi_code The raw ANSI color string (e.g., "\033[31m").
+ * @return The ANSI sequence if colors are enabled, or an empty string otherwise.
+ */
 static const char *get_color(const char *ansi_code);
 
 void ui_render_header(const char *username, const char *nodename) {

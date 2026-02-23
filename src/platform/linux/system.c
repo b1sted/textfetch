@@ -17,18 +17,21 @@
 
 #include "pal/system_os.h"
 
+/* Standard paths for accessing OS release information. */
 #define OS_RELEASE_PATH {                  \
     "/etc/os-release",                     \
     "/usr/lib/os-release",                 \
     NULL                                   \
 }
 
+/* Paths corresponding to the device tree model string on ARM platforms. */
 #define DEVICE_MODEL_FILE {                \
     "/proc/device-tree/model",             \
     "/sys/firmware/devicetree/base/model", \
     NULL                                   \
 }
 
+/* Placeholder or garbage DMI product family strings to ignore in the final output. */
 #define IGNORE_SYS_PRODUCT_FAMILY {        \
     "00000000",                            \
     "11111111",                            \
@@ -56,15 +59,22 @@
     NULL                                   \
 }
 
+/* Sysfs DMI tables used to construct the full hardware marketing model name. */
 #define SYS_VENDOR_PATH         "/sys/class/dmi/id/sys_vendor"
 #define SYS_PRODUCT_FAMILY_PATH "/sys/class/dmi/id/product_family"
 #define SYS_PRODUCT_NAME_PATH   "/sys/class/dmi/id/product_name"
 #define PATH_DMI_CHASSIS        "/sys/class/dmi/id/chassis_type"
 
+/* DMI chassis type bitmask parameters used to identifying portable devices (laptops). */
 #define CHASSIS_MASK_ELEMENTS 64
 #define CHASSIS_MASK_BLOCKS   (CHASSIS_MASK_ELEMENTS / BITS_PER_BLOCK)
 
 #if !(defined(__arm__) || defined(__aarch64__) || defined(__riscv) || defined(__powerpc__))
+/**
+ * Determines if the system is a portable device (laptop) using DMI chassis type.
+ *
+ * @return true if the system chassis identifies as portable.
+ */
 static bool sys_is_portable(void);
 #endif
 
