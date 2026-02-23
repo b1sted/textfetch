@@ -74,6 +74,10 @@ typedef struct gpu_node {
     struct gpu_node *next;
 } gpu_node_t;
 
+typedef struct {
+    char name[LINE_BUFFER];
+} gpu_data_t;
+
 static void hw_get_cpu_cores(cpu_data_t *cpus, uint16_t *cpu_map, uint8_t *packages);
 static void hw_get_cpu_model(cpu_data_t *cpus, uint16_t *cpu_map, const uint8_t packages);
 
@@ -562,7 +566,11 @@ static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size,
         return;
     }
 
-    for (gpu_node_t *curr = gpu_list; curr != NULL; curr = curr->next) {
+    gpu_data_t gpus[MAX_GPUS] = {0};
+    uint8_t gpu_count = 0;
+
+    for (gpu_node_t *curr = gpu_list; curr != NULL && gpu_count < MAX_GPUS;
+         curr = curr->next) {
         const char *vendor_name = "Generic GPU";
         const char *device_name = "";
         const char *separator = "";
@@ -587,9 +595,41 @@ static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size,
             break;
         }
 
+        snprintf(gpus[gpu_count].name, sizeof(gpus[gpu_count].name), 
+                 "%s%s%s [0x%04X]", vendor_name, separator, device_name, curr->part_id);
+        gpu_count++;
+    }
+
+    for (uint8_t i = 0; i < gpu_count; i++) {
+        bool already_printed = false;
+
+        for (uint8_t j = 0; j < i; j++) {
+            if (strcmp(gpus[i].name, gpus[j].name) == 0) {
+                already_printed = true;
+                break;
+            }
+        }
+
+        if (already_printed) continue;
+
+        uint8_t count = 1;
+        for (uint8_t k = i + 1; k < gpu_count; k++) {
+            if (strcmp(gpus[i].name, gpus[k].name) == 0) {
+                count++;
+            }
+        }
+
+        char prefix[HEX_BUFFER] = "";
+        if (count > 1) {
+            snprintf(prefix, sizeof(prefix), "%" PRIu8 " x ", count);
+        }
+
+        size_t offset = strlen(out_buf);
+        if (offset >= buf_size) break;
+
         snprintf(out_buf + offset, buf_size - offset,
-                 "%s%s%s%s [0x%04X]", (out_buf[0] == '\0') ? "" : "\n     ",
-                 vendor_name, separator, device_name, curr->part_id);
+                "%s%s%s", (out_buf[0] == '\0') ? "" : "\n     ",
+                prefix, gpus[i].name);
     }
 
     if (pci_forest) destroy_forest(pci_forest);
