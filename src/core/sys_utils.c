@@ -45,14 +45,14 @@ bool util_read_line(const char *path, char *out_buf, const size_t buf_size) {
         if (bytes_read > 0) {
             out_buf[strcspn(out_buf, "\n")] = '\0';
         } else {
-            V_PRINTF("[ERROR] Fail to read %s\n", path);
+            V_PRINTF("[ERROR] Failed to read %s\n", path);
             return false;
         }
 
         close(fd);
         return true;
     } else {
-        V_PRINTF("[ERROR] Fail to open %s file\n", path);
+        V_PRINTF("[ERROR] Failed to open %s file\n", path);
         return false;
     }
 }

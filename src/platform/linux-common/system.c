@@ -21,7 +21,7 @@ void system_init(void) {
     struct sysinfo si;
 
     bool uname_ok = (uname(&uts) == 0);
-    if (!uname_ok) V_PRINTF("Error: uname failed: %s\n", strerror(errno));
+    if (!uname_ok) V_PRINTF("[ERROR] uname failed: %s\n", strerror(errno));
 
     snprintf(sys_data.sysname, sizeof(sys_data.sysname),
              "%s", uname_ok ? uts.sysname : fallback);
@@ -33,7 +33,7 @@ void system_init(void) {
              "%s", uname_ok ? uts.machine : fallback);
 
     bool sysinfo_ok = (sysinfo(&si) == 0);
-    if (!sysinfo_ok) V_PRINTF("Error: sysinfo failed: %s\n", strerror(errno));
+    if (!sysinfo_ok) V_PRINTF("[ERROR] sysinfo failed: %s\n", strerror(errno));
 
     sys_data.uptime = sysinfo_ok ? si.uptime : 0;
     sys_data.procs = sysinfo_ok ? (uint16_t)si.procs : 0;

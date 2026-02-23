@@ -72,7 +72,9 @@ void cfg_init(int argc, char *argv[]) {
             ui_print_version(APP_VERSION);
             exit(EXIT_SUCCESS);
         default:
-            fprintf(stderr, "Try '%s --help' for more information\n", argv[0]);
+            fprintf(stderr, 
+                    "[ERROR] Unknown option. Try '%s --help' for more information\n",
+                    argv[0]);
             exit(EXIT_FAILURE);
         }
     }

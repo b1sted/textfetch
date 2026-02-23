@@ -319,14 +319,14 @@ static void hw_get_cpu_cores(cpu_data_t *cpus, uint16_t *cpu_map, uint8_t *packa
 static void hw_get_cpu_model(cpu_data_t *cpus, uint16_t *cpu_map, const uint8_t packages) {
     FILE *fp = fopen(CPUINFO_PATH, "r");
     if (!fp) {
-        V_PRINTF("[ERROR] Fail to open CPU info file: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] Failed to open CPU info file: %s\n", strerror(errno));
         return;
     }
 
 #if defined(__arm__) || defined(__aarch64__)
     forest *arm_forest = hw_arm_forest_create();
     if (arm_forest == NULL) {
-        V_PRINTF("[WARNING] Fail to build a ARM forest. Using a raw values\n");
+        V_PRINTF("[WARNING] Failed to build an ARM forest. Using raw values\n");
     }
 
     char arm_model[TINY_BUFFER] = {0};
@@ -444,7 +444,7 @@ static void hw_sanitize_cpu_name(char *out_buf) {
 static forest *hw_arm_forest_create(void) {
     FILE *fp = fmemopen(arm_ids, arm_ids_len, "r");
     if (!fp) {
-        V_PRINTF("[ERROR] Fail to open arm.ids file: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] Failed to open arm.ids file: %s\n", strerror(errno));
         return NULL;
     }
 
@@ -488,7 +488,7 @@ static forest *hw_arm_forest_create(void) {
 
 static void hw_arm_lookup_name(forest *arm_forest, char *out_buf, const size_t buf_size) {
     if (!out_buf || buf_size == 0) {
-        V_PRINTF("[ERROR] hw_gpu_lookup_names: incorrect arguments "
+        V_PRINTF("[ERROR] hw_arm_lookup_name: incorrect arguments "
                  "(buf = %p, size = %zu)\n", (void *)out_buf, buf_size);
         return;
     }
@@ -535,7 +535,7 @@ void hw_get_gpu_info(void) {
     gpu_node_t *gpu_list = hw_get_all_gpus();
     if (gpu_list == NULL) {
 #if defined(__i386__) || defined(__x86_64__) || defined(__ia64__) || defined(__powerpc64__)
-        V_PRINTF("[WARNING] No GPU's found in system (might be VM?)\n");
+        V_PRINTF("[WARNING] No GPUs found in system (might be VM?)\n");
 #endif
         return;
     }
@@ -544,7 +544,7 @@ void hw_get_gpu_info(void) {
 
     forest *pci_forest = hw_pci_forest_create();
     if (pci_forest == NULL) {
-        V_PRINTF("[WARNING] Fail to build a PCI forest. Using a raw values\n");
+        V_PRINTF("[WARNING] Failed to build a PCI forest. Using raw values\n");
     }
 
     hw_gpu_lookup_names(info_buf, sizeof(info_buf), pci_forest, gpu_list);
@@ -560,7 +560,7 @@ static gpu_node_t *hw_get_all_gpus(void) {
 
     DIR *dir = opendir(SYS_GPU_DIR);
     if (!dir) {
-        V_PRINTF("Error: failed to open GPU directory %s: %s\n",
+        V_PRINTF("[ERROR] Failed to open GPU directory %s: %s\n",
                  SYS_GPU_DIR, strerror(errno));
         return NULL;
     }
@@ -614,7 +614,7 @@ static forest *hw_pci_forest_create(void) {
     }
 
     if (!fp) {
-        V_PRINTF("[ERROR] Fail to open pci.ids file: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] Failed to open pci.ids file: %s\n", strerror(errno));
         return NULL;
     }
 

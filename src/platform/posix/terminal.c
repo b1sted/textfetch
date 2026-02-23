@@ -18,7 +18,7 @@ void terminal_print_info(void) {
 
     char *locale = setlocale(LC_ALL, "");
     if (!locale) {
-        V_PRINTF("[Error] setlocale(LC_ALL, \"\") failed\n");
+        V_PRINTF("[ERROR] setlocale(LC_ALL, \"\") failed\n");
         locale = "-";
     }
 

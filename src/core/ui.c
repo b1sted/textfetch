@@ -58,7 +58,7 @@ void ui_print_version(const char *app_version) {
     memset(&sys_info, 0, sizeof(struct utsname));
 
     if (uname(&sys_info) != 0) {
-        V_PRINTF("Error: uname failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] uname failed: %s\n", strerror(errno));
     }
 
     if (strlen(sys_info.machine) > 0) {

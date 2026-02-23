@@ -42,7 +42,7 @@
  *
  * @param mnt The mount point path.
  * @param fs Pointer to the filesystem statistics structure.
- * @param ent Pointer to the mount entity structure.
+ * @param ent Pointer to the mount entry structure.
  */
 static void hw_print_disk(const char *mnt, const struct statvfs *fs,
                           const struct mntent *ent);
@@ -55,7 +55,7 @@ void hw_get_mem_info(void) {
 
     FILE *memory_file = fopen(MEMINFO_PATH, "r");
     if (!memory_file) {
-        V_PRINTF("Error: failed to open %s: %s\n", MEMINFO_PATH, strerror(errno));
+        V_PRINTF("[ERROR] Failed to open %s: %s\n", MEMINFO_PATH, strerror(errno));
         return;
     }
 
@@ -63,12 +63,12 @@ void hw_get_mem_info(void) {
 
     char file_line[LINE_BUFFER];
     while (fgets(file_line, LINE_BUFFER, memory_file)) {
-        char *delimeter_ptr = strstr(file_line, ":");
-        if (!delimeter_ptr) continue;
+        char *delimiter_ptr = strstr(file_line, ":");
+        if (!delimiter_ptr) continue;
 
-        *delimeter_ptr = '\0';
+        *delimiter_ptr = '\0';
         char *key = file_line;
-        char *value = delimeter_ptr + 1;
+        char *value = delimiter_ptr + 1;
         char *endptr;
 
         unsigned long long temp_val = strtoull(value, &endptr, 10);
@@ -105,7 +105,7 @@ void hw_get_drives_info(void) {
 
     FILE *mounts_file = fopen(MOUNTS_PATH, "r");
     if (!mounts_file) {
-        V_PRINTF("Error: failed to open %s: %s\n", MOUNTS_PATH, strerror(errno));
+        V_PRINTF("[ERROR] Failed to open %s: %s\n", MOUNTS_PATH, strerror(errno));
         return;
     }
 
@@ -129,7 +129,7 @@ void hw_get_drives_info(void) {
         if (is_ignore) continue;
 
         if (statvfs(mnt_entry->mnt_dir, &fs) != 0) {
-            V_PRINTF("Error: statvfs failed for %s: %s\n",
+            V_PRINTF("[ERROR] statvfs failed for %s: %s\n",
                      mnt_entry->mnt_dir, strerror(errno));
             continue;
         }

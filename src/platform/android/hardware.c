@@ -58,7 +58,7 @@ void hw_get_cpu_info(void) {
 static void hw_get_cpu_model(cpu_info_t *node) {
     if (__system_property_get("ro.soc.model", node->model) <= 0) {
         if (__system_property_get("ro.board.platform", node->model) <= 0) {
-            V_PRINTF("[WARNING] Could not read cpu name, using 'Unknown'\n");
+            V_PRINTF("[WARNING] Could not read CPU name, using 'Unknown'\n");
             snprintf(node->model, sizeof(node->model), "Unknown");
         }
     }
@@ -67,7 +67,7 @@ static void hw_get_cpu_model(cpu_info_t *node) {
 static void hw_get_cpu_cores(cpu_info_t *node) {
     long cores = sysconf(_SC_NPROCESSORS_CONF);
     if (cores == -1) {
-        V_PRINTF("[WARNING] Could not get cpu cores number: %s\n", strerror(errno));
+        V_PRINTF("[WARNING] Could not get CPU cores number: %s\n", strerror(errno));
         cores = 0;
     }
 
@@ -107,7 +107,7 @@ void hw_get_gpu_info(void) {
 
     if (!eglChooseConfig(egl_display, config_attributes, &egl_config, 1, &num_configs) ||
         !num_configs) {
-        V_PRINTF("[ERROR]: Failed to choose EGL config: %04x\n", eglGetError());
+        V_PRINTF("[ERROR] Failed to choose EGL config: %04x\n", eglGetError());
         eglTerminate(egl_display);
         return;
     }
@@ -120,7 +120,7 @@ void hw_get_gpu_info(void) {
     EGLContext egl_context = eglCreateContext(egl_display, egl_config,
                                               EGL_NO_CONTEXT, context_attributes);
     if (egl_context == EGL_NO_CONTEXT) {
-        V_PRINTF("[ERROR]: Failed to create EGL context: %04x\n", eglGetError());
+        V_PRINTF("[ERROR] Failed to create EGL context: %04x\n", eglGetError());
         eglTerminate(egl_display);
         return;
     }
@@ -134,7 +134,7 @@ void hw_get_gpu_info(void) {
     EGLSurface egl_surface = eglCreatePbufferSurface(egl_display, egl_config,
                                                      surface_attributes);
     if (egl_surface == EGL_NO_SURFACE) {
-        V_PRINTF("[ERROR]: Failed to create pbuffer surface: %04x\n", eglGetError());
+        V_PRINTF("[ERROR] Failed to create pbuffer surface: %04x\n", eglGetError());
         eglDestroyContext(egl_display, egl_context);
         eglTerminate(egl_display);
         return;
@@ -142,7 +142,13 @@ void hw_get_gpu_info(void) {
 
     eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context);
 
-    ui_print_info("GPU", (const char *)glGetString(GL_RENDERER));
+    const char *gl_renderer = (const char *)glGetString(GL_RENDERER);
+    if (!gl_renderer) {
+        V_PRINTF("[WARNING] Could not get GPU name, using 'Unknown'\n");
+        gl_renderer = "Unknown";
+    }
+
+    ui_print_info("GPU", (char *)gl_renderer);
 
     eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     eglDestroySurface(egl_display, egl_surface);

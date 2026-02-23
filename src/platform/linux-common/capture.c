@@ -24,14 +24,14 @@ int capture_line(const char *command, const char *arg,
     int pipefd[2]; /* [0] - read, [1] - write */
 
     if (pipe(pipefd) == -1) {
-        V_PRINTF("Error: pipe failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] pipe failed: %s\n", strerror(errno));
         return -1;
     }
 
     pid_t pid = fork();
 
     if (pid == -1) {
-        V_PRINTF("Error: fork failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] fork failed: %s\n", strerror(errno));
         return -1;
     } else if (pid == 0) {
         close(pipefd[0]);
@@ -52,7 +52,7 @@ int capture_line(const char *command, const char *arg,
             execlp(command, command, (char *)NULL);
         }
 
-        V_PRINTF("Error: exec failed for %s: %s\n", command, strerror(errno));
+        V_PRINTF("[ERROR] exec failed for %s: %s\n", command, strerror(errno));
         _exit(1);
     } else {
         close(pipefd[1]);
@@ -62,7 +62,7 @@ int capture_line(const char *command, const char *arg,
             fgets(out_buf, (int)buf_size, pipe_stream);
             fclose(pipe_stream);
         } else {
-            V_PRINTF("Error: fdopen failed: %s\n", strerror(errno));
+            V_PRINTF("[ERROR] fdopen failed: %s\n", strerror(errno));
             close(pipefd[0]);
         }
 

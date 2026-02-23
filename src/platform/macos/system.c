@@ -94,27 +94,21 @@ static CFPropertyListRef create_plist_from_file(const char *path);
 /**
  * Formats the raw system uptime into a human-readable duration string.
  * Calculates duration by subtracting kern.boottime from current time.
- *
- * @param out_buf  Destination buffer for the formatted string.
- * @param buf_size Maximum size of the destination buffer.
  */
-static void sys_get_uptime();
+static void sys_get_uptime(void);
 
 /**
  * Retrieves the total count of active processes in the system.
  * Uses a KERN_PROC_ALL sysctl snapshot.
- *
- * @param out_buf  Destination buffer for the count string.
- * @param buf_size Maximum size of the destination buffer.
  */
-static void sys_get_procs_count();
+static void sys_get_procs_count(void);
 
 void system_init(void) {
     const char *fallback = "unknown";
     static struct utsname uts;
 
     bool uname_ok = (uname(&uts) == 0);
-    if (!uname_ok) V_PRINTF("Error: uname failed: %s\n", strerror(errno));
+    if (!uname_ok) V_PRINTF("[ERROR] uname failed: %s\n", strerror(errno));
 
     snprintf(sys_data.sysname, sizeof(sys_data.sysname),
              "%s", uname_ok ? uts.sysname : fallback);
@@ -131,7 +125,7 @@ void system_init(void) {
 
 void sys_get_distro(char *out_buf, const size_t buf_size) {
     if (!out_buf || buf_size == 0) {
-        V_PRINTF("[Error] %s: invalid arguments\n", __func__);
+        V_PRINTF("[ERROR] %s: invalid arguments\n", __func__);
         return;
     }
 
@@ -150,7 +144,7 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
 
     /* Fallback to sw_vers for older systems */
     if (capture_line("sw_vers", "-productVersion", product_version, sizeof(product_version)) != 0) {
-        V_PRINTF("[Error] failed to capture sw_vers output\n");
+        V_PRINTF("[ERROR] Failed to capture sw_vers output\n");
         strncpy(product_version, "unknown", sizeof(product_version) - 1);
     }
 
@@ -172,13 +166,13 @@ static const char *sys_get_os_name(void) {
 
 void sys_get_model_name(char *out_buf, size_t buf_size) {
     if (!out_buf || buf_size == 0) {
-        V_PRINTF("[Error] %s: invalid arguments\n", __func__);
+        V_PRINTF("[ERROR] %s: invalid arguments\n", __func__);
         return;
     }
 
     size_t size = buf_size;
     if (sysctlbyname("hw.model", out_buf, &size, NULL, 0) != 0) {
-        V_PRINTF("[Error] sysctlbyname(hw.model) failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] sysctlbyname(hw.model) failed: %s\n", strerror(errno));
         snprintf(out_buf, buf_size, "Unknown Apple Device");
         return;
     }
@@ -193,12 +187,12 @@ void sys_get_model_name(char *out_buf, size_t buf_size) {
         /* Fallback for different localized folder naming conventions */
         path = "/System/Library/PrivateFrameworks/ServerInformation.framework/"
                "Versions/A/Resources/English.lproj/SIMachineAttributes.plist";
-        V_PRINTF("[Info] %s: trying fallback path: %s\n", __func__, path);
+        V_PRINTF("[INFO] %s: trying fallback path: %s\n", __func__, path);
         plist = create_plist_from_file(path);
     }
 
     if (!plist) {
-        V_PRINTF("[Error] %s: SIMachineAttributes.plist not found or failed to parse\n",
+        V_PRINTF("[ERROR] %s: SIMachineAttributes.plist not found or failed to parse\n",
                  __func__);
         return;
     }
@@ -222,22 +216,22 @@ void sys_get_model_name(char *out_buf, size_t buf_size) {
                     if (marketing_name && CFGetTypeID(marketing_name) == CFStringGetTypeID()) {
                         CFStringGetCString(marketing_name, out_buf, buf_size, kCFStringEncodingUTF8);
                     } else {
-                        V_PRINTF("[Warning] %s: 'marketingModel' key missing for %s\n",
+                        V_PRINTF("[WARNING] %s: 'marketingModel' key missing for %s\n",
                                  __func__, out_buf);
                     }
                 } else {
-                    V_PRINTF("[Warning] %s: '_LOCALIZABLE_' dictionary missing for %s\n",
+                    V_PRINTF("[WARNING] %s: '_LOCALIZABLE_' dictionary missing for %s\n",
                              __func__, out_buf);
                 }
             } else {
-                V_PRINTF("[Warning] %s: Model ID %s not found in attributes database\n",
+                V_PRINTF("[WARNING] %s: Model ID %s not found in attributes database\n",
                          __func__, out_buf);
             }
 
             CFRelease(model_key);
         }
     } else {
-        V_PRINTF("[Error] %s: Root of plist is not a dictionary\n", __func__);
+        V_PRINTF("[ERROR] %s: Root of plist is not a dictionary\n", __func__);
     }
 
     CFRelease(plist);
@@ -256,7 +250,7 @@ static CFPropertyListRef create_plist_from_file(const char *path) {
     }
 
     if (sb.st_size == 0) {
-        V_PRINTF("[Error] create_plist_from_file(%s): file is empty\n", path);
+        V_PRINTF("[ERROR] create_plist_from_file(%s): file is empty\n", path);
         close(fd);
         return NULL;
     }
@@ -282,7 +276,7 @@ static CFPropertyListRef create_plist_from_file(const char *path) {
 }
 #endif
 
-static void sys_get_uptime() {
+static void sys_get_uptime(void) {
     sys_data.uptime = 0;
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_VERSION_11_0
@@ -312,25 +306,25 @@ static void sys_get_uptime() {
 #endif
 }
 
-static void sys_get_procs_count() {
+static void sys_get_procs_count(void) {
     int mib[3] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
     size_t len;
 
     /* First call to get the required buffer size */
     if (sysctl(mib, 3, NULL, &len, NULL, 0) < 0) {
-        V_PRINTF("[Error] sysctl(KERN_PROC_ALL) size query failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] sysctl(KERN_PROC_ALL) size query failed: %s\n", strerror(errno));
         return;
     }
 
     struct kinfo_proc *procs = malloc(len);
     if (!procs) {
-        V_PRINTF("[Error] malloc(%zu) for kinfo_proc failed: %s\n", len, strerror(errno));
+        V_PRINTF("[ERROR] malloc(%zu) for kinfo_proc failed: %s\n", len, strerror(errno));
         return;
     }
 
     /* Second call to fetch the actual process list */
     if (sysctl(mib, 3, procs, &len, NULL, 0) < 0) {
-        V_PRINTF("[Error] sysctl(KERN_PROC_ALL) data fetch failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] sysctl(KERN_PROC_ALL) data fetch failed: %s\n", strerror(errno));
         free(procs);
         return;
     }

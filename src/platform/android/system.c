@@ -15,7 +15,7 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
     char android_version[PROP_NAME_MAX] = "Unknown";
 
     if (__system_property_get("ro.build.version.release", android_version) <= 0) {
-        V_PRINTF("Warning: Could not read version, using 'Unknown'\n");
+        V_PRINTF("[WARNING] Could not read version, using 'Unknown'\n");
     }
 
     snprintf(out_buf, buf_size, "Android %s %s", android_version, sys_data.machine);
@@ -29,17 +29,17 @@ void sys_get_model_name(char *out_buf, size_t buf_size) {
     const char *fallback = "Unknown";
 
     if (__system_property_get("ro.product.brand", brand_buf) <= 0) {
-        V_PRINTF("Warning: Could not read version, using 'Unknown'\n");
+        V_PRINTF("[WARNING] Could not read brand, using 'Unknown'\n");
         strcpy(brand_buf, fallback);
     }
 
     if (__system_property_get("ro.product.model", model_buf) <= 0) {
-        V_PRINTF("Warning: Could not read version, using 'Unknown'\n");
+        V_PRINTF("[WARNING] Could not read model, using 'Unknown'\n");
         strcpy(model_buf, fallback);
     }
 
     if (__system_property_get("ro.product.name", name_buf) <= 0) {
-        V_PRINTF("Warning: Could not read version, using 'Unknown'\n");
+        V_PRINTF("[WARNING] Could not read name, using 'Unknown'\n");
         strcpy(name_buf, fallback);
     }
 

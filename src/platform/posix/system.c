@@ -19,7 +19,7 @@
 
 void sys_get_identity(char *out_buf, const size_t buf_size) {
     if (!out_buf || buf_size == 0) {
-        V_PRINTF("[Error] %s: invalid arguments\n", __func__);
+        V_PRINTF("[ERROR] %s: invalid arguments\n", __func__);
         return;
     }
 
@@ -27,7 +27,7 @@ void sys_get_identity(char *out_buf, const size_t buf_size) {
     uid_t uid = geteuid();
 
     if ((pwd = getpwuid(uid)) == NULL) {
-        V_PRINTF("[Error] getpwuid(%u) failed: %s\n", uid, strerror(errno));
+        V_PRINTF("[ERROR] getpwuid(%u) failed: %s\n", uid, strerror(errno));
         snprintf(out_buf, buf_size, "unknown");
         return;
     }

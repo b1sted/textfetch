@@ -88,7 +88,7 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
     }
 
     if (!fp) {
-        V_PRINTF("[ERROR] Fail to open os-release file: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] Failed to open os-release file: %s\n", strerror(errno));
         snprintf(out_buf, buf_size, "%s %s", sys_data.sysname, sys_data.machine);
         return;
     }

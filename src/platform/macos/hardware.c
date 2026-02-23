@@ -99,15 +99,7 @@ static void hw_get_cpu_freq(cpu_info_t *node);
  * @param out_buf Buffer to format the found GPUs into.
  * @param buf_size Size of the buffer.
  */
-static void hw_get_gpu_acclerator(char *out_buf, const size_t buf_size);
-
-/**
- * Queries IOKit for discrete GPUs using the IOPCIDevice subsystem class codes.
- *
- * @param out_buf Buffer to format the found GPUs into.
- * @param buf_size Size of the buffer.
- */
-static void hw_get_gpu_pci(char *out_buf, const size_t buf_size);
+static void hw_get_gpu_accelerator(char *out_buf, const size_t buf_size);
 
 /**
  * Queries IOKit for discrete GPUs using the IOPCIDevice subsystem class codes.
@@ -152,11 +144,10 @@ static const char *hw_get_bat_status(const CFDictionaryRef power_source,
                                      uint8_t battery_percentage);
 
 /**
- * Resolves the string representing the charging state of the battery.
+ * Creates an IOKit iterator matching all services of a given class.
  *
- * @param power_source Pointer to the battery details dictionary.
- * @param battery_percentage The computed battery percentage.
- * @return Constant string representing the charging state.
+ * @param class_name The IOKit class name to match (e.g., "IOAccelerator").
+ * @return An io_iterator_t on success, or IO_OBJECT_NULL on failure.
  */
 static io_iterator_t get_matching_iterator(const char *class_name);
 
@@ -180,7 +171,7 @@ static void hw_get_cpu_package(cpu_info_t *node) {
     size_t packages_size = sizeof(packages);
 
     if (sysctlbyname("hw.packages", &packages, &packages_size, NULL, 0) != 0) {
-        V_PRINTF("[Error] sysctlbyname(hw.packages) failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] sysctlbyname(hw.packages) failed: %s\n", strerror(errno));
     }
 
     node->packages = (packages) ? (uint8_t)packages : 1;
@@ -190,7 +181,7 @@ static void hw_get_cpu_model(cpu_info_t *node) {
     size_t model_size = sizeof(node->model);
 
     if (sysctlbyname("machdep.cpu.brand_string", node->model, &model_size, NULL, 0) != 0) {
-        V_PRINTF("[Error] sysctlbyname(machdep.cpu.brand_string) failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] sysctlbyname(machdep.cpu.brand_string) failed: %s\n", strerror(errno));
     }
 
     if (node->model[0] == '\0') {
@@ -218,7 +209,7 @@ static void hw_get_cpu_cores(cpu_info_t *node) {
     size_t common_size = sizeof(common_cores);
 
     if (sysctlbyname("hw.physicalcpu", &common_cores, &common_size, NULL, 0) != 0) {
-        V_PRINTF("[Error] sysctlbyname(hw.physicalcpu) failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] sysctlbyname(hw.physicalcpu) failed: %s\n", strerror(errno));
     }
 
     size_t core_size = sizeof(node->cores);
@@ -229,14 +220,14 @@ static void hw_get_cpu_cores(cpu_info_t *node) {
     size_t p_size = sizeof(p_cores);
 
     if (sysctlbyname("hw.physicalcpu", p_cores, &p_size, NULL, 0) != 0) {
-        V_PRINTF("[Error] sysctlbyname(hw.physicalcpu) failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] sysctlbyname(hw.physicalcpu) failed: %s\n", strerror(errno));
     }
 
     uint64_t e_cores = 0;
     size_t e_size = sizeof(e_cores);
 
     if (sysctlbyname("hw.physicalcpu", e_cores, &e_size, NULL, 0) != 0) {
-        V_PRINTF("[Error] sysctlbyname(hw.physicalcpu) failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] sysctlbyname(hw.physicalcpu) failed: %s\n", strerror(errno));
     }
 
     size_t current_len = strlen(node->cores) - 1;
@@ -295,7 +286,7 @@ static void hw_get_cpu_freq(cpu_info_t *node) {
 
     /* Using nominal maximum frequency (advertised clock speed) */
     if (sysctlbyname("hw.cpufrequency_max", &hz, &size, NULL, 0) == -1) {
-        V_PRINTF("[Error] sysctlbyname(hw.cpufrequency_max) failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] sysctlbyname(hw.cpufrequency_max) failed: %s\n", strerror(errno));
     }
 
     snprintf(node->frequency, sizeof(node->frequency), " @ %.2f GHz", (double)hz / HZ_PER_GHZ);
@@ -306,14 +297,14 @@ void hw_get_gpu_info(void) {
     char gpu_buf[GPU_BUFFER] = {0};
     size_t gpu_size = sizeof(gpu_buf);
 
-    hw_get_gpu_acclerator(gpu_buf, gpu_size);
+    hw_get_gpu_accelerator(gpu_buf, gpu_size);
 
     if (gpu_buf[0] == '\0') hw_get_gpu_pci(gpu_buf, gpu_size);
 
     if (gpu_buf[0] != '\0') ui_print_info("GPU", gpu_buf);
 }
 
-static void hw_get_gpu_acclerator(char *out_buf, const size_t buf_size) {
+static void hw_get_gpu_accelerator(char *out_buf, const size_t buf_size) {
     io_iterator_t iterator = get_matching_iterator("IOAccelerator");
     if (iterator != IO_OBJECT_NULL) {
         io_service_t service;
@@ -396,7 +387,7 @@ static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *node) {
     size_t len = sizeof(node->ram_size);
 
     if (sysctlbyname("hw.memsize", &node->ram_size, &len, NULL, 0) != 0) {
-        V_PRINTF("[Error] sysctlbyname(hw.memsize) failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] sysctlbyname(hw.memsize) failed: %s\n", strerror(errno));
         return;
     }
 
@@ -410,12 +401,12 @@ static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *node) {
     vm_size_t pg;
 
     if (host_page_size(host, &pg) != KERN_SUCCESS) {
-        V_PRINTF("[Error] Mach host_page_size() failed\n");
+        V_PRINTF("[ERROR] Mach host_page_size() failed\n");
         return;
     }
 
     if (host_statistics64(host, HOST_VM_INFO64, (host_info64_t)&vm, &count) != KERN_SUCCESS) {
-        V_PRINTF("[Error] Mach host_statistics64() failed\n");
+        V_PRINTF("[ERROR] Mach host_statistics64() failed\n");
         return;
     }
 
@@ -437,7 +428,7 @@ static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *node) {
     size_t xsw_len = sizeof(struct xsw_usage);
 
     if (sysctlbyname("vm.swapusage", &xsw, &xsw_len, NULL, 0) != 0) {
-        V_PRINTF("[Error] sysctlbyname(vm.swapusage) failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] sysctlbyname(vm.swapusage) failed: %s\n", strerror(errno));
         return;
     }
 
@@ -452,20 +443,20 @@ static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *node) {
 void hw_get_drives_info(void) {
     int n = getfsstat(NULL, 0, MNT_WAIT);
     if (n <= 0) {
-        V_PRINTF("[Error] getfsstat() size query failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] getfsstat() size query failed: %s\n", strerror(errno));
         return;
     }
 
     struct statfs *st = malloc(sizeof(struct statfs) * n);
     if (!st) {
-        V_PRINTF("[Error] malloc(%zu) for statfs failed: %s\n",
+        V_PRINTF("[ERROR] malloc(%zu) for statfs failed: %s\n",
                  sizeof(struct statfs) * n, strerror(errno));
         return;
     }
 
     n = getfsstat(st, (int)(sizeof(struct statfs) * n), MNT_NOWAIT);
     if (n <= 0) {
-        V_PRINTF("[Error] getfsstat() data fetch failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] getfsstat() data fetch failed: %s\n", strerror(errno));
         free(st);
         return;
     }
@@ -499,7 +490,7 @@ void hw_get_drives_info(void) {
 void hw_get_bat_info(void) {
     CFTypeRef info = IOPSCopyPowerSourcesInfo();
     if (!info) {
-        V_PRINTF("[Error] IOPSCopyPowerSourcesInfo() failed (no power sources found)\n");
+        V_PRINTF("[ERROR] IOPSCopyPowerSourcesInfo() failed (no power sources found)\n");
         return;
     }
 
@@ -517,7 +508,7 @@ void hw_get_bat_info(void) {
     CFStringRef model_ref = CFDictionaryGetValue(dict, CFSTR("DeviceName"));
 
     if (!model_ref) {
-        V_PRINTF("[Warning] Battery specific name not found; using fallback: %s\n", kIOPSNameKey);
+        V_PRINTF("[WARNING] Battery specific name not found; using fallback: %s\n", kIOPSNameKey);
         model_ref = CFDictionaryGetValue(dict, CFSTR(kIOPSNameKey));
     }
 
@@ -588,7 +579,7 @@ static io_iterator_t get_matching_iterator(const char *class_name) {
     io_iterator_t iterator;
     if (IOServiceGetMatchingServices(kIOMainPortDefault,
                                      matching_dict, &iterator) != kIOReturnSuccess) {
-        V_PRINTF("[Error] IOServiceGetMatchingServices failed to find %s\n", class_name);
+        V_PRINTF("[ERROR] IOServiceGetMatchingServices failed to find %s\n", class_name);
         return IO_OBJECT_NULL;
     }
 

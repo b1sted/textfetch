@@ -52,7 +52,14 @@ void add_child(node *parent, uint16_t id, char *name) {
 void add_tree_to_forest(forest *f, node *root) {
     if (f->count >= f->capacity) {
         f->capacity *= 2;
-        f->roots = realloc(f->roots, f->capacity * sizeof(node *));
+
+        node **new_roots = realloc(f->roots, f->capacity * sizeof(node *));
+        if (!new_roots) {
+            V_PRINTF("[ERROR] add_tree_to_forest: realloc failed\n");
+            return;
+        }
+
+        f->roots = new_roots;
     }
 
     f->roots[f->count] = root;
@@ -75,7 +82,7 @@ node *find_in_forest(forest *f, uint16_t target_id) {
         if (f->roots[i]->id == target_id) return f->roots[i];
     }
 
-    V_PRINTF("[DEBUG] find_in_forest: Target Root ID 0x%04X not found in forest.\n",
+    V_PRINTF("[NOTE] find_in_forest: Target Root ID 0x%04X not found in forest.\n",
              target_id);
     return NULL;
 }
