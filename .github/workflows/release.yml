@@ -14,11 +14,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compile
+      - name: Build Textfetch Binary
         run: make
 
-      - name: Test
-        run: ./bin/textfetch
+      - name: Test Execution
+        run: ./bin/textfetch -v
+
+      - name: Profile Execution Time
+        run: \time -v bin/textfetch
+
+      - name: Check for Memory Leaks
+        run: |
+          make leaks
+          ./bin/textfetch-leaks
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -31,11 +39,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compile
+      - name: Build Textfetch Binary
         run: make
 
-      - name: Test
-        run: ./bin/textfetch
+      - name: Test Execution
+        run: ./bin/textfetch -v
+
+      - name: Profile Execution Time
+        run: \time -v bin/textfetch
+
+      - name: Check for Memory Leaks
+        run: |
+          make leaks
+          ./bin/textfetch-leaks
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -57,7 +73,7 @@ jobs:
             tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf
           sparse-checkout-cone-mode: false
 
-      - name: Compile
+      - name: Build Textfetch Binary
         run: |
           export TOOLCHAIN=$GITHUB_WORKSPACE/SDKs/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin
           make CC=$TOOLCHAIN/arm-rockchip830-linux-uclibcgnueabihf-gcc
@@ -81,42 +97,73 @@ jobs:
           sparse-checkout: MacOSX10.11.sdk
           sparse-checkout-cone-mode: false
 
-      - name: Compile
+      - name: Build Textfetch Binary
         run: |
           SDKROOT=$GITHUB_WORKSPACE/SDKs/MacOSX10.11.sdk
           make CFLAGS="-target x86_64-apple-macos10.7 -isysroot $SDKROOT" \
                LDFLAGS="-target x86_64-apple-macos10.7 -isysroot $SDKROOT" \
-               TARGET="bin/textfetch_legacy"
+               TARGET="bin/textfetch-legacy"
           
           rm -rf obj
           
           make CFLAGS="-target x86_64-apple-macos10.9 -isysroot $SDKROOT" \
                LDFLAGS="-target x86_64-apple-macos10.9 -isysroot $SDKROOT" \
-               TARGET="bin/textfetch_modern"
+               TARGET="bin/textfetch-modern"
 
-      - name: Test
+      - name: Test Execution
         run: |
-          ./bin/textfetch_legacy
-          ./bin/textfetch_modern
+          ./bin/textfetch-legacy -v
+          ./bin/textfetch-modern -v
+
+      - name: Profile Execution Time
+        run: |
+          /usr/bin/time -l bin/textfetch-legacy
+          /usr/bin/time -l bin/textfetch-modern
+
+      - name: Check for Memory Leaks
+        run: |
+          SDKROOT=$GITHUB_WORKSPACE/SDKs/MacOSX10.11.sdk
+          make leaks \
+               CFLAGS="-target x86_64-apple-macos10.7 -isysroot $SDKROOT" \
+               LDFLAGS="-target x86_64-apple-macos10.7 -isysroot $SDKROOT" \
+               TARGET_LEAKS="bin/textfetch-legacy-leaks"
+          
+          rm -rf obj
+          
+          make leaks \
+               CFLAGS="-target x86_64-apple-macos10.9 -isysroot $SDKROOT" \
+               LDFLAGS="-target x86_64-apple-macos10.9 -isysroot $SDKROOT" \
+               TARGET_LEAKS="bin/textfetch-modern-leaks"
+
+          ./bin/textfetch-legacy-leaks
+          ./bin/textfetch-modern-leaks
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: textfetch-macos-intel
-          path: bin/textfetch_*
+          path: bin/textfetch-*
 
   build-macos-arm64:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compile
+      - name: Build Textfetch Binary
         run: |
           make CFLAGS="-target arm64-apple-macos11" \
                LDFLAGS="-target arm64-apple-macos11"
 
-      - name: Test
-        run: ./bin/textfetch
+      - name: Test Execution
+        run: ./bin/textfetch -v
+
+      - name: Check for Memory Leaks
+        run: |
+          make leaks
+          ./bin/textfetch-leaks
+
+      - name: Profile Execution Time
+        run: /usr/bin/time -l bin/textfetch-leaks
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -151,12 +198,12 @@ jobs:
           
           # 5. macOS Intel - Legacy (10.7+)
           mkdir -p temp_intel_legacy
-          cp artifacts/textfetch-macos-intel/textfetch_legacy temp_intel_legacy/textfetch
+          cp artifacts/textfetch-macos-intel/textfetch-legacy temp_intel_legacy/textfetch
           tar -C temp_intel_legacy -czvf release_dist/textfetch-macos-intel-legacy.tar.gz textfetch
           
           # 6. macOS Intel - Modern (10.9+)
           mkdir -p temp_intel_modern
-          cp artifacts/textfetch-macos-intel/textfetch_modern temp_intel_modern/textfetch
+          cp artifacts/textfetch-macos-intel/textfetch-modern temp_intel_modern/textfetch
           tar -C temp_intel_modern -czvf release_dist/textfetch-macos-intel-modern.tar.gz textfetch
 
       - name: Create Release

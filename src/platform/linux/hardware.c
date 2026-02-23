@@ -3,258 +3,339 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <stdbool.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(__x86_64__) || defined(__i386__)
-    #include <cpuid.h>
-#endif
-
 #include <ctype.h>
-#include <dirent.h>
 #include <errno.h>
+
+#include <dirent.h>
+#include <inttypes.h>
 #include <limits.h>
-#include <locale.h>
-#include <mntent.h>
-#include <pwd.h>
 #include <unistd.h>
 
 #include <sys/stat.h>
-#include <sys/statvfs.h>
-#include <sys/sysinfo.h>
 #include <sys/types.h>
-#include <sys/utsname.h>
-#include <sys/wait.h>
-
-#include "bitset.h"
-#include "hardware.h"
-#include "hashtable.h"
-#include "ui.h"
-
-/**
- * CPU Information Helpers
- * Functions to query CPUID for model name, scan sysfs for physical cores,
- * and read current scaling frequency.
- */
-
-/**
- * Aggregates CPU model, core count, and current frequency into a single string.
- * 
- * @param out_buf  The destination buffer.
- * @param buf_size The size of the destination buffer.
- */
-static void hw_get_cpu_info(char *out_buf, const size_t buf_size);
-
-/**
- * Retrieves the CPU brand string.
- * On x86/i386, it uses the CPUID instruction. On other architectures, 
- * it falls back to parsing /proc/cpuinfo for the 'model name' field.
- * 
- * @param model_buf The buffer to store the model name.
- */
-static void hw_get_cpu_model(char *model_buf);
-
-/**
- * Calculates the number of unique physical CPU cores using sysfs topology.
- * Uses a bitset to filter out logical threads (Hyper-threading).
- * 
- * @param core_count Pointer to store the result.
- */
-static void hw_get_cpu_cores(uint32_t *core_count);
-
-/**
- * Reads the current CPU scaling frequency from sysfs.
- * Converts KHz to GHz and fractional parts.
- * 
- * @param out_ghz   Pointer to store the GHz integer.
- * @param out_frac  Pointer to store the fractional part (3 decimal places).
- */
-static void hw_get_cpu_freq(uint32_t *out_ghz, uint32_t *out_frac);
-
-/**
- * GPU Detection Helpers
- * Functions to scan the DRM subsystem and translate PCI vendor/device IDs.
- */
-
-/**
- * Scans /sys/class/drm/ for directories matching the 'cardN' pattern.
- * Triggers processing for each valid GPU found.
- */
-static void hw_scan_gpus(void);
-
-/**
- * Reads vendor and device IDs for a specific GPU card.
- * Translates known PCI IDs (Intel, AMD, Nvidia) and prints the result.
- * 
- * @param card_path The sysfs path to the card directory.
- */
-static void hw_process_gpu(const char *card_path);
-
-/**
- * Storage and Memory Helpers
- * Functions to parse /proc/meminfo and /proc/mounts for resource usage.
- */
-
-/**
- * Parses /proc/meminfo to calculate used/total RAM and Swap.
- * Formats results as "Used MiB / Total MiB".
- * 
- * @param ram_buf  Buffer for RAM information.
- * @param swap_buf Buffer for Swap information.
- * @param buf_size Size of the buffers.
- */
-static void hw_get_mem_info(char *ram_buf, char *swap_buf, const size_t buf_size);
-
-/**
- * Parses /proc/mounts to find physical storage devices.
- * Filters out virtual and system partitions to find user-relevant disks.
- */
-static void hw_scan_disks(void);
-
-/**
- * Calculates disk usage statistics and prints the result via the UI module.
- * 
- * @param mnt The mount point path.
- * @param fs  The filesystem statistics structure.
- * @param ent The mount entry metadata.
- */
-static void hw_print_disk(const char *mnt, const struct statvfs *fs, const struct mntent *ent);
-
-/**
- * Power Supply Helpers
- * Functions to locate the primary battery and read its model, capacity, and status.
- */
-
-/**
- * Collects battery model, capacity, and charging status.
- * 
- * @param label_buf Buffer for the "Battery (Model)" label.
- * @param info_buf  Buffer for the "Capacity% (Status)" string.
- * @param buf_size  Size of the buffers.
- */
-static void hw_get_bat_info(char *label_buf, char *info_buf, const size_t buf_size);
-
-/**
- * Searches /sys/class/power_supply/ for the first device of type 'Battery'.
- * 
- * @param out_buf  Buffer to store the directory name (e.g., BAT0).
- * @param buf_size Size of the buffer.
- */
-static void hw_find_battery(char *out_buf, const size_t buf_size);
-
-/**
- * Internal Utility Helpers
- * Low-level functions for sysfs attribute reading and data formatting.
- */
-
-/**
- * Formats used and total sizes into a human-readable string.
- * 
- * Respects user settings for force units (KiB, MiB, GiB). If no force flag is set,
- * it auto-scales the values. Used and total sizes are scaled independently
- * to provide maximum granularity.
- * 
- * @param used_size  The used size in bytes.
- * @param total_size The total size in bytes.
- * @param out_buf    Destination buffer for the formatted string.
- * @param buf_size   Size of the destination buffer.
- */
-static void format_bytes(double used_size, double total_size, char *out_buf, 
-                         const size_t buf_size);
-
-/**
- * Reads a 16-bit hexadecimal value from a sysfs attribute file.
- * 
- * @param path Path to the sysfs file.
- * @return The parsed 16-bit value, or 0 on failure.
- */
-static uint16_t hw_read_hex(const char *path);
-
-/**
- * Reads a single-line string attribute from sysfs and removes the newline.
- * 
- * @param path     Path to the sysfs file.
- * @param out_buf  The destination buffer.
- * @param buf_size Size of the destination buffer.
- */
-static void hw_read_attr(const char *path, char *out_buf, const size_t buf_size);
-
-void hardware_print_info(void) {
-    char cpu_buf[LINE_BUFFER] = {0};
-    hw_get_cpu_info(cpu_buf, LINE_BUFFER);
-    ui_print_info("CPU", cpu_buf);
-
-    hw_scan_gpus();
-
-    char ram_buf[LINE_BUFFER] = {0};
-    char swap_buf[LINE_BUFFER] = {0};
-    hw_get_mem_info(ram_buf, swap_buf, LINE_BUFFER);
-    
-    if (strlen(ram_buf) != 0) {
-        ui_print_info("RAM", ram_buf);
-        ui_print_info("Swap", swap_buf);
-    }
-
-    hw_scan_disks();
-
-    char battery_label[LINE_BUFFER] = {0};
-    char battery_buf[LINE_BUFFER] = {0};
-    hw_get_bat_info(battery_label, battery_buf, LINE_BUFFER);
-
-    if (strlen(battery_label) != 0) ui_print_info(battery_label, battery_buf);
-}
-
-static void hw_get_cpu_info(char *out_buf, const size_t buf_size) {
-    uint32_t phy_core_count = 0;
-    uint32_t frequency_ghz = 0;
-    uint32_t freq_fractional = 0;
-    char cpu_model_name[LINE_BUFFER] = "Unknown";
-
-    hw_get_cpu_model(cpu_model_name);
-    hw_get_cpu_cores(&phy_core_count);
-    hw_get_cpu_freq(&frequency_ghz, &freq_fractional);
- 
-    snprintf(out_buf, buf_size, "%s (%u) @ %u.%03u GHz", 
-             cpu_model_name, phy_core_count, frequency_ghz, freq_fractional);
-}
 
 #if defined(__x86_64__) || defined(__i386__)
-static void hw_get_cpu_model(char *model_buf) {
-    unsigned int regs[4];
-    char *write_cursor = model_buf;
+#include <cpuid.h>
+#endif
 
-    for (unsigned int leaf_id = 0x80000002; leaf_id <= 0x80000004; leaf_id++) {
-        if (__get_cpuid(leaf_id, &regs[0], &regs[1], &regs[2], &regs[3]) == 0) {
-            return ;
+#if defined(__arm__) || defined(__aarch64__)
+#include "arm_ids.h"
+#endif
+
+#include "binary_trees.h"
+#include "bitset.h"
+#include "defs.h"
+#include "hashtable.h"
+#include "sys_utils.h"
+#include "ui.h"
+
+#include "pal/hardware_os.h"
+
+/* Array of paths to search for the pci.ids database file. */
+#define PCI_IDS_PATHS {            \
+    "/var/lib/pciutils/pci.ids",   \
+    "/usr/share/hwdata/pci.ids",   \
+    "/usr/share/misc/pci.ids",     \
+    "/usr/share/pci.ids",          \
+    "/opt/homebrew/share/pci.ids", \
+    "pci.ids",                     \
+    NULL                           \
+}
+
+/* Base directories in sysfs and procfs for hardware enumeration. */
+#define SYS_CPU_DIR      "/sys/devices/system/cpu/"
+#define CPUINFO_PATH     "/proc/cpuinfo"
+#define SYS_GPU_DIR      "/sys/class/drm/"
+#define SYS_BATTERY_DIR  "/sys/class/power_supply/"
+
+/* Maximum supported limits for CPU discovery. */
+#define MAX_CPU_PACKAGES 16
+#define MAX_CPU_CORES    256
+
+/* Number of blocks needed for the CPU cores bitset. */
+#define CORES_SET_BLOCKS (MAX_CPU_CORES / BITS_PER_BLOCK)
+
+/* Internal structure to store CPU parsing progress per socket. */
+typedef struct {
+    char model[MEDIUM_BUFFER];
+    double frequency;
+    uint32_t core_bits[CORES_SET_BLOCKS];
+    bool exists;
+} cpu_data_t;
+
+/* Generic linked list node for hardware enumeration. */
+typedef struct hw_node {
+    char name[SMALL_BUFFER];
+    struct hw_node *next;
+} hw_node_t;
+
+/* Linked list node representing a raw PCI GPU device format. */
+typedef struct gpu_node {
+    uint16_t impl_id;
+    uint16_t part_id;
+    struct gpu_node *next;
+} gpu_node_t;
+
+/* Internal structure for grouping similar GPU models. */
+typedef struct {
+    char name[LINE_BUFFER];
+} gpu_data_t;
+
+/**
+ * Enumerates all CPU cores and packages from sysfs.
+ *
+ * @param cpus Array of CPU data structures to populate.
+ * @param cpu_map Array mapping logical CPU IDs to physical sockets.
+ * @param packages Pointer to store the total number of CPU packages found.
+ */
+static void hw_get_cpu_cores(cpu_data_t *cpus, uint16_t *cpu_map, uint8_t *packages);
+
+/**
+ * Parses /proc/cpuinfo to determine the CPU model name.
+ *
+ * @param cpus Array of CPU data structures to update.
+ * @param cpu_map Array mapping logical CPU IDs to physical sockets.
+ * @param packages Total number of CPU packages.
+ */
+static void hw_get_cpu_model(cpu_data_t *cpus, uint16_t *cpu_map, const uint8_t packages);
+
+#if defined(__i386__) || defined(__x86_64__)
+/**
+ * Parses out unnecessary marketing jargon from an x86 CPU model string.
+ *
+ * @param out_buf Buffer containing the CPU model string to sanitize.
+ */
+static void hw_sanitize_cpu_name(char *out_buf);
+#endif
+
+#if defined(__arm__) || defined(__aarch64__)
+/**
+ * Creates a binary tree forest of ARM vendor and part IDs from an internal database.
+ *
+ * @return A pointer to the populated forest, or NULL on failure.
+ */
+static forest *hw_arm_forest_create(void);
+
+/**
+ * Looks up human-readable names for ARM chips based on implementer and part IDs.
+ *
+ * @param arm_forest The forest containing ARM ID mappings.
+ * @param out_buf Buffer containing the raw IDs, replaced with the readable name.
+ * @param buf_size Size of the output buffer.
+ */
+static void hw_arm_lookup_name(forest *arm_forest, char *out_buf, const size_t buf_size);
+#endif
+
+/**
+ * Reads the current scaling frequency for a given CPU package.
+ *
+ * @param cpus Array of CPU data structures.
+ * @param package The physical package ID.
+ * @param cpu_suffix The string identifying the CPU node in sysfs.
+ */
+static void hw_get_cpu_freq(cpu_data_t *cpus, const int16_t package, const char *cpu_suffix);
+
+/**
+ * Enumerates all GPU devices present in sysfs DRM subsystem.
+ *
+ * @return A linked list of raw GPU nodes, or NULL if none found.
+ */
+static gpu_node_t *hw_get_all_gpus(void);
+
+/**
+ * Parses the pci.ids database file into a binary tree forest.
+ *
+ * @return A tree containing PCI vendors and sub-devices, or NULL on failure.
+ */
+static forest *hw_pci_forest_create(void);
+
+/**
+ * Maps raw GPU PCI IDs to human-readable names and groups duplicates.
+ *
+ * @param out_buf Buffer to store the formatted GPU string.
+ * @param buf_size Maximum size of the output buffer.
+ * @param pci_forest The parsed PCI IDs tree.
+ * @param gpu_list Linked list of detected GPUs.
+ */
+static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size,
+                                forest *pci_forest, gpu_node_t *gpu_list);
+
+/**
+ * Appends a new GPU to the enumeration list.
+ *
+ * @param head Pointer to the head of the GPU list.
+ * @param impl_id The vendor PCI ID.
+ * @param part_id The device PCI ID.
+ * @return Pointer to the new head of the list.
+ */
+static gpu_node_t *add_gpu(gpu_node_t *head, const uint16_t impl_id, const uint16_t part_id);
+
+/**
+ * Frees a linked list of GPU nodes.
+ *
+ * @param head Pointer to the head of the GPU list.
+ */
+static void free_gpu_list(gpu_node_t *head);
+
+/**
+ * Enumerates all power supplies in sysfs to find actual batteries.
+ *
+ * @return A linked list of battery nodes, or NULL on failure.
+ */
+static hw_node_t *hw_get_all_batteries(void);
+
+/**
+ * Appends a new generic hardware element to a list.
+ *
+ * @param head Pointer to the head of the list.
+ * @param name The node name/identifier to store.
+ * @return Pointer to the new head of the list.
+ */
+static hw_node_t *add_element(hw_node_t *head, const char *name);
+
+/**
+ * Frees a linked list of generic hardware nodes.
+ *
+ * @param head Pointer to the head of the list.
+ */
+static void free_data_list(hw_node_t *head);
+
+void hw_get_cpu_info(void) {
+    cpu_data_t cpus[MAX_CPU_PACKAGES];
+    memset(cpus, 0, sizeof(cpus));
+
+    uint16_t cpu_map[MAX_CPU_PACKAGES];
+    memset(cpu_map, 0xFFFF, sizeof(cpu_map));
+
+    uint8_t packages = 0;
+
+    hw_get_cpu_cores(cpus, cpu_map, &packages);
+    hw_get_cpu_model(cpus, cpu_map, packages);
+
+    char cpu_info[LINE_BUFFER] = {0};
+
+    for (uint8_t i = 0; i < packages; i++) {
+        bool already_printed = false;
+
+        for (uint8_t j = 0; j < i; j++) {
+            if (strcmp(cpus[i].model, cpus[j].model) == 0) {
+                already_printed = true;
+                break;
+            }
         }
 
-        memcpy(write_cursor, regs, sizeof(regs));
-        write_cursor += sizeof(regs);
+        if (already_printed) continue;
+
+        uint8_t count = 1;
+        for (uint8_t k = i + 1; k < packages; k++) {
+            if (strcmp(cpus[i].model, cpus[k].model) == 0) {
+                count++;
+            }
+        }
+
+        uint32_t cores = count_set_bits(&(bitset_t){.bits = cpus[i].core_bits,
+                                                    .capacity = MAX_CPU_CORES}, 8);
+        char prefix[HEX_BUFFER] = "";
+        if (count > 1) snprintf(prefix, sizeof(prefix), "%" PRIu8 " x ", count);
+
+        size_t buf_len = strlen(cpu_info);
+        snprintf(cpu_info + buf_len, sizeof(cpu_info) - buf_len,
+                 "%s%s%s (%" PRIu32 ") @ %.03f GHz",
+                 (buf_len == 0) ? "" : "\n     ", prefix,
+                 cpus[i].model, cores, cpus[i].frequency);
     }
 
-    *write_cursor = '\0';
-
-    size_t len = strlen(model_buf);
-
-    while (len > 0 && isspace((unsigned char)model_buf[len - 1])) {
-        len--;
-        model_buf[len] = '\0';
-    }
-
-    return ;
+    ui_print_info("CPU", cpu_info);
 }
-#else
-static void hw_get_cpu_model(char *model_buf) {
-    FILE *fp = fopen("/proc/cpuinfo", "r");
-    if (!fp) {
-        V_PRINTF("Error: failed to open CPU info file: %s\n", strerror(errno));
-        return ;
+
+static void hw_get_cpu_cores(cpu_data_t *cpus, uint16_t *cpu_map, uint8_t *packages) {
+    const char *prefix = "cpu";
+    size_t prefix_len = strlen(prefix);
+
+    DIR *dir = opendir(SYS_CPU_DIR);
+    if (!dir) {
+        V_PRINTF("[ERROR] Failed to open sysfs CPU directory %s: %s\n",
+                 SYS_CPU_DIR, strerror(errno));
+        return;
     }
 
-    char line[LINE_BUFFER];
-    while (fgets(line, LINE_BUFFER, fp)) {
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strncmp(entry->d_name, prefix, prefix_len) != 0) continue;
+
+        const char *suffix = entry->d_name + prefix_len;
+        if (*suffix == '\0') continue;
+
+        const char *cursor = suffix;
+        bool valid_name = true;
+        while (*cursor) {
+            if (!isdigit(*cursor)) {
+                valid_name = false;
+                break;
+            }
+
+            cursor++;
+        }
+
+        if (!valid_name) continue;
+
+        int16_t physical_package_id = 0;
+        uint16_t core_id = 0;
+        char full_path[PATH_BUFFER] = {0};
+
+        snprintf(full_path, sizeof(full_path),
+                 "%s%s/topology/physical_package_id", SYS_CPU_DIR, entry->d_name);
+        util_read_int16(full_path, &physical_package_id);
+        physical_package_id = (physical_package_id == -1) ? 0 : physical_package_id;
+
+        if (!cpus[physical_package_id].exists) {
+            cpus[physical_package_id].exists = true;
+            (*packages)++;
+
+            hw_get_cpu_freq(cpus, physical_package_id, entry->d_name);
+        }
+
+        uint16_t current_id = strtoul(entry->d_name + 3, NULL, 10);
+        if (cpu_map[physical_package_id] == 0xFFFF ||
+            current_id < cpu_map[physical_package_id]) {
+            cpu_map[physical_package_id] = current_id;
+        }
+
+        snprintf(full_path, sizeof(full_path),
+                 "%s%s/topology/core_id", SYS_CPU_DIR, entry->d_name);
+        util_read_uint16(full_path, &core_id);
+        set_add(&(bitset_t){.bits = cpus[physical_package_id].core_bits,
+                            .capacity = MAX_CPU_CORES}, core_id);
+    }
+
+    closedir(dir);
+}
+
+static void hw_get_cpu_model(cpu_data_t *cpus, uint16_t *cpu_map, const uint8_t packages) {
+    FILE *fp = fopen(CPUINFO_PATH, "r");
+    if (!fp) {
+        V_PRINTF("[ERROR] Failed to open CPU info file: %s\n", strerror(errno));
+        return;
+    }
+
+#if defined(__arm__) || defined(__aarch64__)
+    forest *arm_forest = hw_arm_forest_create();
+    if (arm_forest == NULL) {
+        V_PRINTF("[WARNING] Failed to build an ARM forest. Using raw values\n");
+    }
+
+    char arm_model[TINY_BUFFER] = {0};
+#endif
+
+    char line[LINE_BUFFER] = {0};
+    int8_t socket = -1;
+
+    while (fgets(line, sizeof(line), fp)) {
         char *delim = strchr(line, ':');
         if (!delim) continue;
 
@@ -266,105 +347,238 @@ static void hw_get_cpu_model(char *model_buf) {
 
         if (value[0] == ' ') value++;
 
-        if (strncmp(key, "model name", 10) == 0) {
-            snprintf(model_buf, LINE_BUFFER, "%s", value);
-            break;
+        if (strncmp(key, "processor", 9) == 0) {
+#if defined(__arm__) || defined(__aarch64__)
+            arm_model[0] = '\0';
+#endif
+            socket = -1;
+
+            for (uint8_t i = 0; i < packages; i++) {
+                if (cpu_map[i] == strtoul(value, NULL, 10)) {
+                    socket = i;
+                    break;
+                }
+            }
         }
+
+#if defined(__i386__) || defined(__x86_64__)
+        if (strncmp(key, "model name", 10) == 0) {
+            if (socket == -1 || cpus[socket].model[0] != '\0') continue;
+            memcpy(cpus[socket].model, value, strlen(value));
+            hw_sanitize_cpu_name(cpus[socket].model);
+        }
+#elif defined(__arm__) || defined(__aarch64__)
+        if (strncmp(key, "CPU implementer", 15) == 0) {
+            if (socket == -1 || cpus[socket].model[0] != '\0') continue;
+
+            size_t impl_len = strlen(value);
+            memcpy(arm_model, value, impl_len);
+            arm_model[impl_len] = ' ';
+            arm_model[impl_len + 1] = '\0';
+        }
+
+        if (strncmp(key, "CPU part", 8) == 0) {
+            if (socket == -1 || cpus[socket].model[0] != '\0') continue;
+
+            char *dst = strstr(arm_model, " ");
+            if (dst) memcpy(dst + 1, value, strlen(value) + 1);
+
+            size_t model_len = strlen(arm_model);
+            memcpy(cpus[socket].model, arm_model, model_len);
+            cpus[socket].model[model_len] = '\0';
+
+            hw_arm_lookup_name(arm_forest, cpus[socket].model, sizeof(cpus[socket].model));
+        }
+#endif
     }
 
     fclose(fp);
+
+#if defined(__arm__) || defined(__aarch64__)
+    destroy_forest(arm_forest);
+#endif
+}
+
+#if defined(__i386__) || defined(__x86_64__)
+static void hw_sanitize_cpu_name(char *out_buf) {
+    if (!out_buf || !*out_buf) return;
+
+    /* Fucking piece of shit that needs its own fucking line */
+    char *garbage = strstr(out_buf, "Gen");
+    if (garbage) {
+        while (*garbage != ' ') garbage++;
+        garbage++;
+        uint8_t offset = garbage - out_buf;
+        memmove(out_buf, out_buf + offset, strlen(garbage) + 1);
+    }
+
+    const char *prefix_garbage[] = {"(R)", "(TM)", "(tm)", NULL};
+
+    int i = 0;
+    while (prefix_garbage[i] != NULL) {
+        char *garbage = strstr(out_buf, prefix_garbage[i]);
+        if (garbage) {
+            char *src = garbage + strlen(prefix_garbage[i]);
+            size_t len = strlen(src) + 1;
+
+            memmove(garbage, src, len);
+        } else {
+            i++;
+        }
+    }
+
+    const char *suffix_garbage[] = {"CPU", "APU", "with", "-Core", "Processor", NULL};
+
+    for (uint8_t i = 0; suffix_garbage[i] != NULL; i++) {
+        char *garbage = strstr(out_buf, suffix_garbage[i]);
+        if (garbage) {
+            while (garbage[0] != ' ') garbage--;
+            *garbage = '\0';
+            break;
+        }
+    }
 }
 #endif
 
-static void hw_get_cpu_cores(uint32_t *core_count) {
-    struct stat sb;
-    memset(&sb, 0, sizeof(struct stat));
-
-    uint32_t unique_cores[SET_SIZE] = {0};
-    int max_logical_cpus = sysconf(_SC_NPROCESSORS_CONF);
-
-    char sysfs_path_buf[LINE_BUFFER] = "/sys/devices/system/cpu/";
-    size_t len = strlen(sysfs_path_buf);
-    char *path_cursor = sysfs_path_buf + len;
-    ssize_t buffer_capacity = LINE_BUFFER - len;
-
-    for (int i = 0; i < max_logical_cpus; i++) {
-        snprintf(path_cursor, buffer_capacity, "cpu%d/", i);
-
-        if (stat(sysfs_path_buf, &sb) != 0 || !S_ISDIR(sb.st_mode)) break;
-
-        char core_path[PATH_MAX] = {0};
-        snprintf(core_path, sizeof(core_path), "%stopology/core_id", sysfs_path_buf);
-
-        int core_id = -1;
-        FILE *core_file = fopen(core_path, "r");
-        if (!core_file) {
-            V_PRINTF("Error: failed to open CPU core ID file: %s\n", strerror(errno));
-            break;
-        }
-
-        if (fscanf(core_file, "%d", &core_id) != 1) {
-            V_PRINTF("Error: failed to parse numeric value from sysfs\n");
-        }
-
-        fclose(core_file);
-        
-        if (!set_contains(unique_cores, core_id)) set_add(unique_cores, core_id);
+#if defined(__arm__) || defined(__aarch64__)
+static forest *hw_arm_forest_create(void) {
+    FILE *fp = fmemopen(arm_ids, arm_ids_len, "r");
+    if (!fp) {
+        V_PRINTF("[ERROR] Failed to open arm.ids file: %s\n", strerror(errno));
+        return NULL;
     }
 
-    *core_count = count_set_bits(unique_cores, SET_SIZE);
-}
+    forest *arm_forest = create_forest(25);
 
-static void hw_get_cpu_freq(uint32_t *out_ghz, uint32_t *out_frac) {
-    FILE *fp = fopen("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq", "r");
-    if (!fp) {
-        V_PRINTF("Error: failed to open CPU frequency file: %s\n", strerror(errno));
-        return ;
-    } 
+    char line[LINE_BUFFER] = {0};
+    node *branch = NULL;
+    while (fgets(line, sizeof(line), fp)) {
+        if (line[0] == '#' || line[0] == '\n')
+            continue;
 
-    uint32_t frequency_khz = 0;
-    if (fscanf(fp, "%u", &frequency_khz) == -1) {
-        V_PRINTF("Error: failed to parse numeric value from sysfs\n");
+        if (isalnum((unsigned char)line[0])) {
+            char *vendor_name;
+            uint8_t vendor_id = (uint8_t)strtoul(line, &vendor_name, 16);
+
+            line[strcspn(line, "\r\n")] = '\0';
+
+            while (isspace((unsigned char)*vendor_name)) vendor_name++;
+
+            branch = create_node(vendor_id, vendor_name);
+            add_tree_to_forest(arm_forest, branch);
+        }
+
+        else if (line[0] == '\t') {
+            char *device_name;
+            uint16_t device_id = (uint16_t)strtoul(line, &device_name, 16);
+
+            line[strcspn(line, "\r\n")] = '\0';
+
+            while (isspace((unsigned char)*device_name)) device_name++;
+
+            device_name[strcspn(device_name, "\n")] = '\0';
+            add_child(branch, device_id, device_name);
+        }
     }
 
     fclose(fp);
 
-    if (frequency_khz == 0) {
-        *out_ghz = 0;
-        *out_frac = 0;
-        return ;
-    }
-
-    *out_ghz = frequency_khz / 1000000;
-    *out_frac = (frequency_khz % 1000000) / 1000;
+    return arm_forest;
 }
 
-static void hw_scan_gpus(void) {
-    struct dirent *dir_entry;
-    const char *gpu_directory = "/sys/class/drm/";
-    const char *prefix = "card";
-    size_t prefix_len = sizeof("card") - 1;
-
-    DIR *dir_handle = opendir(gpu_directory);
-    if (!dir_handle) {
-        V_PRINTF("Error: failed to open GPU directory %s: %s\n", 
-                gpu_directory, strerror(errno));
-        return ;
+static void hw_arm_lookup_name(forest *arm_forest, char *out_buf, const size_t buf_size) {
+    if (!out_buf || buf_size == 0) {
+        V_PRINTF("[ERROR] hw_arm_lookup_name: incorrect arguments "
+                 "(buf = %p, size = %zu)\n", (void *)out_buf, buf_size);
+        return;
     }
 
-    char card_path[PATH_MAX] = "";
-    while ((dir_entry = readdir(dir_handle)) != NULL) {
-        if (strncmp(dir_entry->d_name, prefix, prefix_len) != 0) continue;
+    char *endptr;
+    uint8_t vendor_id = (uint8_t)strtoul(out_buf, &endptr, 16);
+    uint16_t impl_id  = (uint16_t)strtoul(endptr, NULL, 16);
 
-        const char *suffix = dir_entry->d_name + prefix_len;
+    if (arm_forest) {
+        node *vendor = find_in_forest(arm_forest, vendor_id);
+        node *device = find_in_tree(vendor, impl_id);
 
+        if (vendor && device) {
+            snprintf(out_buf, buf_size, "%s %s", vendor->name, device->name);
+            return;
+        } else if (vendor) {
+            snprintf(out_buf, buf_size, "%s [0x%04X]", vendor->name, impl_id);
+            return;
+        }
+    }
+
+    snprintf(out_buf, buf_size, "Generic ARM CPU [0x%04X 0x%04X]", vendor_id, impl_id);
+}
+#endif
+
+static void hw_get_cpu_freq(cpu_data_t *cpus, const int16_t package, const char *cpu_suffix) {
+    char freq_path[PATH_BUFFER] = {0};
+    snprintf(freq_path, sizeof(freq_path),
+             "%s%s/cpufreq/scaling_cur_freq", SYS_CPU_DIR, cpu_suffix);
+
+    uint32_t freq_khz = 0;
+    util_read_uint32(freq_path, &freq_khz);
+
+    if (freq_khz == 0) {
+        snprintf(freq_path, sizeof(freq_path),
+                 "%s%s/cpufreq/cpuinfo_cur_freq", SYS_CPU_DIR, cpu_suffix);
+        util_read_uint32(freq_path, &freq_khz);
+    }
+
+    cpus[package].frequency = (double)freq_khz / KHZ_PER_GHZ;
+}
+
+void hw_get_gpu_info(void) {
+    gpu_node_t *gpu_list = hw_get_all_gpus();
+    if (gpu_list == NULL) {
+#if defined(__i386__) || defined(__x86_64__) || defined(__ia64__) || defined(__powerpc64__)
+        V_PRINTF("[WARNING] No GPUs found in system (might be VM?)\n");
+#endif
+        return;
+    }
+
+    char info_buf[GPU_BUFFER] = {0};
+
+    forest *pci_forest = hw_pci_forest_create();
+    if (pci_forest == NULL) {
+        V_PRINTF("[WARNING] Failed to build a PCI forest. Using raw values\n");
+    }
+
+    hw_gpu_lookup_names(info_buf, sizeof(info_buf), pci_forest, gpu_list);
+
+    free_gpu_list(gpu_list);
+
+    if (info_buf[0] != '\0') ui_print_info("GPU", info_buf);
+}
+
+static gpu_node_t *hw_get_all_gpus(void) {
+    const char *prefix = "card";
+    size_t prefix_len = strlen("card");
+
+    DIR *dir = opendir(SYS_GPU_DIR);
+    if (!dir) {
+        V_PRINTF("[ERROR] Failed to open GPU directory %s: %s\n",
+                 SYS_GPU_DIR, strerror(errno));
+        return NULL;
+    }
+
+    gpu_node_t *head = NULL;
+    struct dirent *entry;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strncmp(entry->d_name, prefix, prefix_len) != 0) continue;
+
+        const char *suffix = entry->d_name + prefix_len;
         if (*suffix == '\0') continue;
 
         const char *cursor = suffix;
-        int valid_name = 1;
+        bool valid_name = true;
         while (*cursor) {
             if (!isdigit(*cursor)) {
-                valid_name = 0;
+                valid_name = false;
                 break;
             }
 
@@ -373,302 +587,268 @@ static void hw_scan_gpus(void) {
 
         if (!valid_name) continue;
 
-        snprintf(card_path, PATH_MAX, "%s%s", gpu_directory, dir_entry->d_name);
-        hw_process_gpu(card_path);
+        uint16_t vendor_id = 0, device_id = 0;
+        char full_path[PATH_BUFFER] = {0};
+
+        snprintf(full_path, sizeof(full_path), "%s%s/device/vendor", SYS_GPU_DIR, entry->d_name);
+        util_read_hex16(full_path, &vendor_id);
+
+        snprintf(full_path, sizeof(full_path), "%s%s/device/device", SYS_GPU_DIR, entry->d_name);
+        util_read_hex16(full_path, &device_id);
+
+        head = add_gpu(head, vendor_id, device_id);
     }
 
-    closedir(dir_handle);
+    closedir(dir);
+
+    return head;
 }
 
-static void hw_process_gpu(const char *card_path) {
-    char sysfs_attr_path[PATH_MAX] = "";
-    char output_buf[LINE_BUFFER] = "";
+static forest *hw_pci_forest_create(void) {
+    const char *paths[] = PCI_IDS_PATHS;
 
-    snprintf(sysfs_attr_path, PATH_MAX, "%s/device/vendor", card_path);
-    uint16_t vendor_id = hw_read_hex(sysfs_attr_path);
-
-    snprintf(sysfs_attr_path, PATH_MAX, "%s/device/device", card_path);
-    uint16_t device_id = hw_read_hex(sysfs_attr_path);
-
-    const char *vendor_name = "Unknown";
-    char hex_vendor[16];
-
-    switch (vendor_id) {
-        case 0x1002: vendor_name = "AMD"; break;
-        case 0x106b: vendor_name = "Apple"; break;
-        case 0x10de: vendor_name = "Nvidia"; break;
-        case 0x8086: vendor_name = "Intel"; break;
-        default:
-            snprintf(hex_vendor, sizeof(hex_vendor), "0x%04X", vendor_id);
-            vendor_name = hex_vendor;
-            break;
+    FILE *fp = NULL;
+    for (uint8_t i = 0; paths[i] != NULL; i++) {
+        fp = fopen(paths[i], "rb");
+        if (fp) break;
     }
 
-    snprintf(output_buf, LINE_BUFFER, "%s 0x%04X", vendor_name, device_id);
+    if (!fp) {
+        V_PRINTF("[ERROR] Failed to open pci.ids file: %s\n", strerror(errno));
+        return NULL;
+    }
 
-    ui_print_info("GPU", output_buf);
+    forest *pci_forest = create_forest(3000);
+
+    char line[LINE_BUFFER] = {0};
+    node *branch = NULL;
+    while (fgets(line, sizeof(line), fp)) {
+        if (line[0] == '#' || line[0] == '\n' || line[1] == '\t') continue;
+
+        if (isalnum((unsigned char)line[0])) {
+            char *vendor_name;
+            uint16_t vendor_id = (uint16_t)strtoul(line, &vendor_name, 16);
+
+            line[strcspn(line, "\r\n")] = '\0';
+
+            while (*vendor_name == ' ') vendor_name++;
+
+            branch = create_node(vendor_id, vendor_name);
+            add_tree_to_forest(pci_forest, branch);
+        }
+
+        else if (line[0] == '\t') {
+            char *device_name;
+            uint16_t device_id = (uint16_t)strtoul(line, &device_name, 16);
+
+            line[strcspn(line, "\r\n")] = '\0';
+
+            while (*device_name == ' ') device_name++;
+
+            device_name[strcspn(device_name, "\n")] = '\0';
+            add_child(branch, device_id, device_name);
+        }
+    }
+
+    fclose(fp);
+
+    return pci_forest;
 }
 
-static void hw_get_mem_info(char *ram_buf, char *swap_buf, const size_t buf_size) {
-    FILE *memory_file = fopen("/proc/meminfo", "r");
-    if (!memory_file) {
-        V_PRINTF("Error: failed to open /proc/meminfo: %s\n", strerror(errno));
-        return ;
-    }
+static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size,
+                                forest *pci_forest, gpu_node_t *gpu_list) {
+    if (!out_buf || buf_size == 0) {
+        V_PRINTF("[ERROR] hw_gpu_lookup_names: incorrect arguments "
+                 "(buf = %p, size = %zu)\n", (void *)out_buf, buf_size);
 
-    snprintf(swap_buf, buf_size, "none");
-
-    char file_line[LINE_BUFFER];
-    uint64_t ram_size = 0;
-    uint64_t ram_available = 0;
-    uint64_t swap_size = 0;
-    uint64_t swap_free = 0;
-
-    while (fgets(file_line, LINE_BUFFER, memory_file)) {
-        char *delimeter_ptr = strstr(file_line, ": ");
-        if (!delimeter_ptr) continue;
-
-        *delimeter_ptr = 0;
-        char *key = file_line;
-        char *value = delimeter_ptr + 1;
-        char *endptr;
-
-        if (strcmp(key, "MemTotal") == 0)     ram_size = strtoull(value, &endptr, 10);
-        if (strcmp(key, "MemAvailable") == 0) ram_available = strtoull(value, &endptr, 10);
-        if (strcmp(key, "SwapTotal") == 0)    swap_size = strtoull(value, &endptr, 10);
-        if (strcmp(key, "SwapFree") == 0)     swap_free = strtoull(value, &endptr, 10);
-    }
-
-    fclose(memory_file);
-
-    uint64_t used_ram = ram_size - ram_available;
-    format_bytes(used_ram * BYTES_TO_KIB_DIVISOR, ram_size * BYTES_TO_KIB_DIVISOR, 
-                 ram_buf, buf_size);
-
-    if (swap_size == 0) return ;
-
-    uint64_t used_swap = swap_size - swap_free;
-    format_bytes(used_swap * BYTES_TO_KIB_DIVISOR, swap_size * BYTES_TO_KIB_DIVISOR, 
-                 swap_buf, buf_size);
-}
-
-static void hw_scan_disks(void) {
-    struct mntent *mnt_entry;
-    struct statvfs fs;
-    memset(&fs, 0, sizeof(struct statvfs));
-
-    const char *ignore_name[] = {
-        "/.", "/boot", "/mnt/wslg/distro", "/run/user", "/var", 
-        "/apex", "/bootstrap-apex", NULL
-    };
-
-    FILE *mounts_file = fopen("/proc/mounts", "r");
-    if (!mounts_file) {
-        V_PRINTF("Error: failed to open /proc/mounts: %s\n", strerror(errno));
+        if (pci_forest) destroy_forest(pci_forest);
         return;
     }
 
-    string_set_t *outputted_partitions = strset_create(INITIAL_CAPACITY);
+    gpu_data_t gpus[MAX_GPUS] = {0};
+    uint8_t gpu_count = 0;
 
-    while ((mnt_entry = getmntent(mounts_file)) != NULL) {
-        if (strncmp(mnt_entry->mnt_fsname, "/dev/", 5) != 0) continue; 
-        if (strncmp(mnt_entry->mnt_fsname, "/dev/loop", 9) == 0) continue;
-        
-        if (strcmp(mnt_entry->mnt_type, "fuse") == 0 ||
-            strcmp(mnt_entry->mnt_type, "erofs") == 0) continue;
+    for (gpu_node_t *curr = gpu_list; curr != NULL && gpu_count < MAX_GPUS;
+         curr = curr->next) {
+        const char *vendor_name = "Generic GPU";
+        const char *device_name = "";
+        const char *separator = "";
 
-        bool is_ignore = false;
-        for (int i = 0; ignore_name[i] != NULL; i++) {
-            if (strncmp(mnt_entry->mnt_dir, ignore_name[i], 
-                        strlen(ignore_name[i])) == 0) {
-                is_ignore = true;
+        if (pci_forest) {
+            node *vendor = find_in_forest(pci_forest, curr->impl_id);
+            node *device = find_in_tree(vendor, curr->part_id);
+
+            if (vendor) {
+                vendor_name = vendor->name;
+            }
+
+            if (device) {
+                device_name = device->name;
+                separator = " ";
             }
         }
 
-        if (is_ignore) continue;
-
-        if (statvfs(mnt_entry->mnt_dir, &fs) != 0) {
-            V_PRINTF("Error: statvfs failed for %s: %s\n", 
-                    mnt_entry->mnt_dir, strerror(errno));
-            continue;
+        size_t offset = strlen(out_buf);
+        if (offset >= buf_size) {
+            V_PRINTF("[WARNING] hw_gpu_lookup_names: buffer overflow, truncating list\n");
+            break;
         }
 
-        if (fs.f_blocks == 0) continue; 
+        snprintf(gpus[gpu_count].name, sizeof(gpus[gpu_count].name), 
+                 "%s%s%s [0x%04X]", vendor_name, separator, device_name, curr->part_id);
+        gpu_count++;
+    }
 
-        if (!strset_contains(outputted_partitions, mnt_entry->mnt_fsname)) {
-            strset_add(outputted_partitions, mnt_entry->mnt_fsname);
-            hw_print_disk(mnt_entry->mnt_dir, &fs, mnt_entry);
+    for (uint8_t i = 0; i < gpu_count; i++) {
+        bool already_printed = false;
+
+        for (uint8_t j = 0; j < i; j++) {
+            if (strcmp(gpus[i].name, gpus[j].name) == 0) {
+                already_printed = true;
+                break;
+            }
+        }
+
+        if (already_printed) continue;
+
+        uint8_t count = 1;
+        for (uint8_t k = i + 1; k < gpu_count; k++) {
+            if (strcmp(gpus[i].name, gpus[k].name) == 0) {
+                count++;
+            }
+        }
+
+        char prefix[HEX_BUFFER] = "";
+        if (count > 1) {
+            snprintf(prefix, sizeof(prefix), "%" PRIu8 " x ", count);
+        }
+
+        size_t offset = strlen(out_buf);
+        if (offset >= buf_size) break;
+
+        int written = snprintf(out_buf + offset, buf_size - offset,
+                       "%s%s%s", (out_buf[0] == '\0') ? "" : "\n     ",
+                       prefix, gpus[i].name);
+
+        if (written < 0 || (size_t)written >= buf_size - offset) {
+            break;
         }
     }
 
-    strset_destroy(outputted_partitions);
-    fclose(mounts_file);
+    if (pci_forest) destroy_forest(pci_forest);
 }
 
-static void hw_print_disk(const char *mnt, const struct statvfs *fs, const struct mntent *ent) {
-    uint64_t block_size = fs->f_frsize;
-    double total_size   = (uint64_t)fs->f_blocks * block_size;
-    double free_size    = fs->f_bfree * block_size;
-    double used_size    = total_size - free_size;
+void hw_get_bat_info(void) {
+    hw_node_t *list = hw_get_all_batteries();
+    if (list == NULL) return;
 
-    char label[LINE_BUFFER];
-    snprintf(label, LINE_BUFFER, "Disk (%s)", mnt);
+    char full_path[PATH_BUFFER] = {0};
+    size_t base_len = strlen(SYS_BATTERY_DIR);
+    memcpy(full_path, SYS_BATTERY_DIR, base_len);
 
-    char usage_info[LINE_BUFFER];
-    format_bytes(used_size, total_size, usage_info, LINE_BUFFER);
+    for (hw_node_t *curr = list; curr != NULL; curr = curr->next) {
+        char attr_buf[SMALL_BUFFER] = {0};
+        char label_buf[MEDIUM_BUFFER] = {0};
+        char info_buf[MEDIUM_BUFFER] = {0};
 
-    size_t len = strlen(usage_info);
-    snprintf(usage_info + len, LINE_BUFFER - len, " [%s]", ent->mnt_type);
+        size_t name_len = strlen(curr->name);
+        memcpy(full_path + base_len, curr->name, name_len);
 
-    ui_print_info(label, usage_info);
+        size_t file_offset = base_len + name_len;
+        full_path[file_offset] = '\0';
+
+        memcpy(full_path + file_offset, "/model_name", sizeof("/model_name"));
+        util_read_line(full_path, attr_buf, sizeof(attr_buf));
+        snprintf(label_buf, sizeof(label_buf), "Battery (%s)", attr_buf[0] ? attr_buf : "Unknown");
+
+        memcpy(full_path + file_offset, "/capacity", sizeof("/capacity"));
+        util_read_line(full_path, attr_buf, sizeof(attr_buf));
+        snprintf(info_buf, sizeof(info_buf), "%s%%", attr_buf);
+
+        memcpy(full_path + file_offset, "/status", sizeof("/status"));
+        util_read_line(full_path, attr_buf, sizeof(attr_buf));
+
+        size_t current_len = strlen(info_buf);
+        snprintf(info_buf + current_len, sizeof(info_buf) - current_len,
+                 " (%s)", attr_buf[0] ? attr_buf : "Unknown");
+
+        ui_print_info(label_buf, info_buf);
+    }
+
+    free_data_list(list);
 }
 
-static void hw_get_bat_info(char *label_buf, char *info_buf, const size_t buf_size) {
-	const char *power_directory = "/sys/class/power_supply/";
-    char bat_dir[SMALL_BUFFER];
+static hw_node_t *hw_get_all_batteries(void) {
+    DIR *dir = opendir(SYS_BATTERY_DIR);
+    if (!dir) return NULL;
 
-    hw_find_battery(bat_dir, SMALL_BUFFER);
-
-    if (strcmp(bat_dir, "No Battery") == 0) return ;
-
-	char sysfs_attr_path[PATH_MAX];
-	char attr_buf[SMALL_BUFFER];
-
-	snprintf(sysfs_attr_path, sizeof(sysfs_attr_path), "%s%s/model_name", power_directory, bat_dir);
-    hw_read_attr(sysfs_attr_path, attr_buf, SMALL_BUFFER);
-    snprintf(label_buf, buf_size, "Battery (%s)", attr_buf);
-
-	snprintf(sysfs_attr_path, sizeof(sysfs_attr_path), "%s%s/capacity", power_directory, bat_dir);
-    hw_read_attr(sysfs_attr_path, attr_buf, SMALL_BUFFER);
-    snprintf(info_buf, buf_size, "%s%% ", attr_buf);
-
-	snprintf(sysfs_attr_path, sizeof(sysfs_attr_path), "%s%s/status", power_directory, bat_dir);
-    hw_read_attr(sysfs_attr_path, attr_buf, SMALL_BUFFER);
-    snprintf(info_buf + strlen(info_buf), buf_size - strlen(info_buf), 
-             "(%s)", attr_buf);
-}
-
-static void hw_find_battery(char *out_buf, const size_t buf_size) {
-    snprintf(out_buf, buf_size, "No Battery");
-
-    const char *power_path = "/sys/class/power_supply/";
-    DIR *dir = opendir(power_path);
-    if (!dir) return;
-
+    hw_node_t *head = NULL;
     struct dirent *entry;
+
     while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_name[0] == '.') continue; 
+        if (entry->d_name[0] == '.') continue;
 
         char type_path[PATH_MAX];
-        snprintf(type_path, sizeof(type_path), "%s%s/type", power_path, entry->d_name);
+        snprintf(type_path, sizeof(type_path), "%s%s/type", SYS_BATTERY_DIR, entry->d_name);
 
         FILE *fp = fopen(type_path, "r");
         if (!fp) continue;
 
-        char buf[SMALL_BUFFER];
-        if (fgets(buf, SMALL_BUFFER, fp) && strncmp(buf, "Battery", 7) == 0) {
-            snprintf(out_buf, buf_size, "%.*s", (int)(buf_size - 1), entry->d_name);
-            fclose(fp);
-            break;
+        char type[SMALL_BUFFER];
+        if (fgets(type, sizeof(type), fp) && strncmp(type, "Battery", 7) == 0) {
+            head = add_element(head, entry->d_name);
         }
+
         fclose(fp);
     }
 
     closedir(dir);
+
+    return head;
 }
 
-static void format_bytes(double used_size, double total_size, char *out_buf, 
-                         const size_t buf_size) {
-    const char *memory_units[] = {"B", "KiB", "MiB", "GiB", "TiB", "PiB"};
-    uint8_t usage_pct = (total_size > 0) ? (uint8_t)((used_size / total_size) * 100) : 0;
+static gpu_node_t *add_gpu(gpu_node_t *head, const uint16_t impl_id, const uint16_t part_id) {
+    gpu_node_t *new_node = malloc(sizeof(gpu_node_t));
+    if (!new_node) return head;
 
-    if (cfg_is_kib()) {
-        total_size /= BYTES_TO_KIB_DIVISOR;
-        used_size /= BYTES_TO_KIB_DIVISOR;
+    memset(new_node, 0, sizeof(gpu_node_t));
 
-        snprintf(out_buf, buf_size, "%.0f %s / %.0f %s (%hhu%%)", 
-                 used_size, memory_units[1], 
-                 total_size, memory_units[1], usage_pct);
+    new_node->impl_id = impl_id;
+    new_node->part_id = part_id;
+    new_node->next = head;
 
-        return;
-    }
-
-    if (cfg_is_mib()) {
-        total_size /= BYTES_TO_MIB_DIVISOR;
-        used_size /= BYTES_TO_MIB_DIVISOR;
-        
-        snprintf(out_buf, buf_size, "%.0f %s / %.0f %s (%hhu%%)", 
-                 used_size, memory_units[2], 
-                 total_size, memory_units[2], usage_pct);
-        
-        return;
-    }
-
-    if (cfg_is_gib()) {
-        total_size /= BYTES_TO_GIB_DIVISOR;
-        used_size /= BYTES_TO_GIB_DIVISOR;
-        
-        snprintf(out_buf, buf_size, "%.2f %s / %.2f %s (%hhu%%)", 
-                 used_size, memory_units[3], 
-                 total_size, memory_units[3], usage_pct);
-    
-        return;
-    }
-
-    int i = 0;
-    while (total_size >= 1024 && i < 5) {
-        total_size /= 1024;
-        i++;
-    }
-
-    int j = 0;
-    while (used_size >= 1024 && j < 5) {
-        used_size /= 1024;
-        j++;
-    }
-
-    snprintf(out_buf, buf_size, "%.2f %s / %.2f %s (%hhu%%)", 
-             used_size, memory_units[j], 
-             total_size, memory_units[i], usage_pct);
+    return new_node;
 }
 
-static uint16_t hw_read_hex(const char *path) {
-    char content_buf[LINE_BUFFER] = {0};
-    char *endptr;
-
-	FILE *sysfs_fp = fopen(path, "r");
-    if (!sysfs_fp) {
-        V_PRINTF("Error: failed to open sysfs file: %s\n", strerror(errno));
-        return 0;
+static void free_gpu_list(gpu_node_t *head) {
+    while (head) {
+        gpu_node_t *temp = head;
+        head = head->next;
+        free(temp);
     }
-
-    fgets(content_buf, LINE_BUFFER, sysfs_fp);
-
-    fclose(sysfs_fp);	
-
-    unsigned long val = strtoul(content_buf, &endptr, 16);
-
-    if (content_buf == endptr || val > 0xFFFF) return 0;
-
-    return (uint16_t)val;
 }
 
-static void hw_read_attr(const char *path, char *out_buf, const size_t buf_size) {
-    char content_buf[LINE_BUFFER] = {0};
+static hw_node_t *add_element(hw_node_t *head, const char *name) {
+    hw_node_t *new_node = malloc(sizeof(hw_node_t));
+    if (!new_node) return head;
 
-	FILE *sysfs_fp = fopen(path, "r");
-    if (!sysfs_fp) {
-        V_PRINTF("Error: failed to open sysfs file: %s\n", strerror(errno));
-        snprintf(out_buf, buf_size, "-");
-        return ;
+    memset(new_node, 0, sizeof(hw_node_t));
+
+    size_t name_len = strlen(name);
+    size_t to_copy = (name_len >= sizeof(new_node->name)) 
+                     ? sizeof(new_node->name) - 1 : name_len;
+
+    memcpy(new_node->name, name, to_copy);
+    new_node->name[to_copy] = '\0';
+
+    new_node->next = head;
+    return new_node;
+}
+
+static void free_data_list(hw_node_t *head) {
+    while (head) {
+        hw_node_t *temp = head;
+        head = head->next;
+        free(temp);
     }
-
-    fgets(content_buf, LINE_BUFFER, sysfs_fp);
-
-    fclose(sysfs_fp);	
-
-    size_t len = strlen(content_buf);
-    if (len > 0 && content_buf[len - 1] == '\n') content_buf[len - 1] = '\0';
-
-    snprintf(out_buf, buf_size, "%s", content_buf);
 }

@@ -6,17 +6,15 @@
 #include <stddef.h>
 
 /**
- * Executes a shell command and captures its standard output into a buffer.
- * 
- * This function reads only the first line of the command's output. 
- * The trailing newline character ('\n'), if present, is automatically removed.
- * The resulting string in out_buf is always null-terminated.
+ * Executes a command and captures its first line of output.
  *
- * @param command  The shell command to execute.
- * @param out_buf  Buffer to store the captured line.
- * @param buf_size Size of the output buffer.
- * @return 0 on success, non-zero on error (e.g., process execution failed).
+ * @param command The command to execute.
+ * @param arg An optional argument to pass to the command (can be NULL).
+ * @param out_buf Buffer to store the captured output.
+ * @param buf_size The maximum size of the output buffer.
+ * @return 0 on success, or -1 if the command fails or output is empty.
  */
-int capture_line(const char *command, char *out_buf, size_t buf_size);
+int capture_line(const char *command, const char *arg,
+                 char *out_buf, const size_t buf_size);
 
-#endif // CAPTURE_H
+#endif /* CAPTURE_H */

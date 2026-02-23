@@ -9,22 +9,27 @@
 #include <AvailabilityMacros.h>
 
 #ifndef MAC_OS_X_VERSION_10_9
-    #define MAC_OS_X_VERSION_10_9 1090
+#define MAC_OS_X_VERSION_10_9 1090
+#endif
+
+#ifndef MAC_OS_X_VERSION_10_12
+#define MAC_OS_X_VERSION_10_12 101200
 #endif
 
 #ifndef MAC_OS_VERSION_11_0
-    #define MAC_OS_VERSION_11_0 110000
+#define MAC_OS_VERSION_11_0 110000
 #endif
 #endif
 
-#define APP_VERSION "1.0-alpha"
+#define APP_VERSION "1.0-beta"
 
 #ifdef __APPLE__
-    #define VERSION_SECTION "__TEXT,__app_version"
+#define VERSION_SECTION "__TEXT,__app_version"
 #else
-    #define VERSION_SECTION ".app_version"
+#define VERSION_SECTION ".app_version"
 #endif
 
+/* Global constant containing the compiled application version string. */
 extern const char version_string[];
 
 /**
@@ -53,12 +58,12 @@ bool cfg_is_verbose(void);
 
 /**
  * Checks if color output is enabled.
- * 
+ *
  * Logic:
  * - Enabled by default if stdout is a TTY.
  * - Automatically disabled if the NO_COLOR environment variable is set.
  * - Can be explicitly disabled via the --no-color command-line flag.
- * 
+ *
  * @return true if colors should be used for output.
  */
 bool cfg_is_color(void);
@@ -66,10 +71,10 @@ bool cfg_is_color(void);
 /**
  * Parses command line arguments and initializes global settings.
  * Handles immediate exit flags like --help and --version.
- * 
+ *
  * @param argc Argument count from main.
  * @param argv Argument vector from main.
  */
 void cfg_init(int argc, char *argv[]);
 
-#endif // CONFIG_H
+#endif /* CONFIG_H */

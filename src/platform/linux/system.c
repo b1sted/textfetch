@@ -1,148 +1,96 @@
 /* SPDX-License-Identifier: MIT */
 
-#define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
 
-#include <stdio.h>
+#include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
-#include <string.h> 
+#include <string.h>
+#include <strings.h>
 
 #include <errno.h>
-#include <limits.h>
-#include <pwd.h>
-#include <unistd.h>
 
-#include <sys/sysinfo.h>
-#include <sys/types.h>
-#include <sys/utsname.h>
-#include <sys/wait.h>
+#include "bitset.h"
+#include "defs.h"
+#include "sys_utils.h"
 
-#ifdef __ANDROID__
-    #include <sys/system_properties.h>
+#include "pal/system_os.h"
+
+/* Standard paths for accessing OS release information. */
+#define OS_RELEASE_PATH {                  \
+    "/etc/os-release",                     \
+    "/usr/lib/os-release",                 \
+    NULL                                   \
+}
+
+/* Paths corresponding to the device tree model string on ARM platforms. */
+#define DEVICE_MODEL_FILE {                \
+    "/proc/device-tree/model",             \
+    "/sys/firmware/devicetree/base/model", \
+    NULL                                   \
+}
+
+/* Placeholder or garbage DMI product family strings to ignore in the final output. */
+#define IGNORE_SYS_PRODUCT_FAMILY {        \
+    "00000000",                            \
+    "11111111",                            \
+    "All Series",                          \
+    "BDW",                                 \
+    "CFL",                                 \
+    "CHASSIS",                             \
+    "CNL",                                 \
+    "Default String",                      \
+    "Family",                              \
+    "Generic",                             \
+    "HSW",                                 \
+    "ICL",                                 \
+    "Invalid",                             \
+    "KBL",                                 \
+    "LBG",                                 \
+    "None",                                \
+    "Not Specified",                       \
+    "SKL",                                 \
+    "System Family",                       \
+    "TGL",                                 \
+    "To Be Filled By O.E.M.",              \
+    "Unknown",                             \
+    "Whiskey Lake",                        \
+    NULL                                   \
+}
+
+/* Sysfs DMI tables used to construct the full hardware marketing model name. */
+#define SYS_VENDOR_PATH         "/sys/class/dmi/id/sys_vendor"
+#define SYS_PRODUCT_FAMILY_PATH "/sys/class/dmi/id/product_family"
+#define SYS_PRODUCT_NAME_PATH   "/sys/class/dmi/id/product_name"
+#define PATH_DMI_CHASSIS        "/sys/class/dmi/id/chassis_type"
+
+/* DMI chassis type bitmask parameters used to identifying portable devices (laptops). */
+#define CHASSIS_MASK_ELEMENTS 64
+#define CHASSIS_MASK_BLOCKS   (CHASSIS_MASK_ELEMENTS / BITS_PER_BLOCK)
+
+#if !(defined(__arm__) || defined(__aarch64__) || defined(__riscv) || defined(__powerpc__))
+/**
+ * Determines if the system is a portable device (laptop) using DMI chassis type.
+ *
+ * @return true if the system chassis identifies as portable.
+ */
+static bool sys_is_portable(void);
 #endif
 
-#include "system.h"
-#include "ui.h"
+void sys_get_distro(char *out_buf, const size_t buf_size) {
+    const char *os_release[] = OS_RELEASE_PATH;
 
-static struct utsname sys_info;
-static struct sysinfo sys_stat;
-
-/**
- * Internal helper to retrieve the effective username.
- * Queries the system password database (getpwuid) using the current 
- * effective user ID. Falls back to "unknown" on failure.
- *
- * @param out_buf  Destination buffer for the username.
- * @param buf_size Maximum size of the destination buffer.
- */
-static void sys_get_identity(char *out_buf, const size_t buf_size);
-
-/**
- * Internal helper to identify the OS distribution name.
- *
- * On Android: Retrieves the version via system property "ro.build.version.release".
- * 
- * On Linux:   Parses /etc/os-release (or /usr/lib/os-release) to find NAME
- *             or PRETTY_NAME keys.
- *
- * Appends the machine architecture to the result.
- *
- * @param out_buf  Destination buffer for the distro string.
- * @param buf_size Maximum size of the destination buffer.
- */
-static void sys_get_distro(char *out_buf, const size_t buf_size);
-
-/**
- * Formats the raw uptime value into a human-readable duration string.
- * Result format: "D days, HH:MM:SS" or "HH:MM:SS".
- * Operates on a local copy of the uptime to preserve the original value.
- *
- * @param out_buffer Destination buffer for the formatted string.
- * @param buf_size   Maximum size of the destination buffer.
- */
-static void sys_format_uptime(char *out_buf, const size_t buf_size);
-
-void system_init(void) {
-    const char *fallback = "unknown";
-
-    memset(&sys_info, 0, sizeof(struct utsname));
-
-    if (uname(&sys_info) != 0) {
-        V_PRINTF("Error: uname failed: %s\n", strerror(errno));
-
-        strncpy(sys_info.sysname,  fallback, sizeof(sys_info.sysname)  - 1);
-        strncpy(sys_info.nodename, fallback, sizeof(sys_info.nodename) - 1);
-        strncpy(sys_info.release,  fallback, sizeof(sys_info.release)  - 1);
-        strncpy(sys_info.machine,  fallback, sizeof(sys_info.machine)  - 1);
+    FILE *fp = NULL;
+    for (uint8_t i = 0; os_release[i] != NULL; i++) {
+        fp = fopen(os_release[i], "rb");
+        if (fp) break;
     }
 
-    memset(&sys_stat, 0, sizeof(struct sysinfo));
-
-    if (sysinfo(&sys_stat) != 0) {
-        V_PRINTF("Error: sysinfo failed: %s\n", strerror(errno));
-
-        sys_stat.uptime = 0;
-        sys_stat.procs = 0;
-    }
-}
-
-void system_print_header(void) {
-    char username[LOGIN_NAME_MAX] = {0};
-
-    sys_get_identity(username, LOGIN_NAME_MAX);
-    ui_render_header(username, sys_info.nodename);
-}
-
-void system_print_info(void) {
-    char os_buf[LINE_BUFFER] = {0};
-    sys_get_distro(os_buf, LINE_BUFFER);
-    
-    char uptime_buf[LINE_BUFFER] = {0};
-    sys_format_uptime(uptime_buf, LINE_BUFFER);
-
-    char procs_buf[SMALL_BUFFER] = {0};
-    snprintf(procs_buf, SMALL_BUFFER, "%hu", sys_stat.procs);
-
-    ui_print_info("OS", os_buf);
-    ui_print_info("Kernel", sys_info.release);
-    ui_print_info("Uptime", uptime_buf);
-    ui_print_info("Processes", procs_buf);
-}
-
-static void sys_get_identity(char *out_buf, const size_t buf_size) {
-    struct passwd *pwd;
-    uid_t uid = geteuid();
-
-    if ((pwd = getpwuid(uid)) == NULL) {
-        V_PRINTF("Error: getpwuid failed: %s\n", strerror(errno));
-        snprintf(out_buf, buf_size, "unknown");
-        return ;
-    }
-
-    snprintf(out_buf, buf_size, "%s", pwd->pw_name);
-}
-
-#ifdef __ANDROID__
-static void sys_get_distro(char *out_buf, const size_t buf_size) {
-    char android_version[PROP_VALUE_MAX] = "unknown";
-
-    if (__system_property_get("ro.build.version.release", android_version) <= 0) {
-        V_PRINTF("Warning: Could not read version, using 'unknown'\n");
-    }
-
-    snprintf(out_buf, buf_size, "Android %s %s", android_version, sys_info.machine);
-}
-#else
-static void sys_get_distro(char *out_buf, const size_t buf_size) {
-    FILE *fp = fopen("/etc/os-release", "r");
     if (!fp) {
-        fp = fopen("/usr/lib/os-release", "r");
-
-        if (!fp) {
-            V_PRINTF("Error: open os-release file failed: %s\n", strerror(errno));
-            snprintf(out_buf, buf_size, "%s %s", sys_info.sysname, sys_info.machine);
-            return;
-        }
+        V_PRINTF("[ERROR] Failed to open os-release file: %s\n", strerror(errno));
+        snprintf(out_buf, buf_size, "%s %s", sys_data.sysname, sys_data.machine);
+        return;
     }
 
     char line[LINE_BUFFER];
@@ -179,25 +127,65 @@ static void sys_get_distro(char *out_buf, const size_t buf_size) {
     fclose(fp);
 
     size_t len = strlen(out_buf);
-    snprintf(out_buf + len, buf_size - len, " %s", sys_info.machine);
+    snprintf(out_buf + len, buf_size - len, " %s", sys_data.machine);
 }
-#endif
 
-static void sys_format_uptime(char *out_buf, const size_t buf_size) {
-    long uptime = sys_stat.uptime;
+#if defined(__arm__) || defined(__aarch64__) || defined(__riscv) || defined(__powerpc__)
+void sys_get_model_name(char *out_buf, const size_t buf_size) {
+    const char *model_file[] = DEVICE_MODEL_FILE;
 
-    long days = uptime / 86400;
-    uptime %= 86400;
+    for (uint8_t i = 0; model_file[i] != NULL; i++) {
+        if (util_read_line(model_file[i], out_buf, buf_size)) return;
+    }
 
-    long hours = uptime / 3600;
-    uptime %= 3600;
-    
-    long minutes = uptime / 60;
-    long seconds = uptime % 60;
+    V_PRINTF("[ERROR] Failed to obtain model name from Device Tree\n");
+}
+#else
+void sys_get_model_name(char *out_buf, const size_t buf_size) {
+    if (!sys_is_portable()) return;
 
-    if (days != 0) {
-        snprintf(out_buf, buf_size, "%ld days, %02ld:%02ld:%02ld", days, hours, minutes, seconds);
+    char vendor_buf[SMALL_BUFFER] = {0};
+    char family_buf[MEDIUM_BUFFER] = {0};
+    char name_buf[MEDIUM_BUFFER] = {0};
+
+    util_read_line(SYS_VENDOR_PATH, vendor_buf, sizeof(vendor_buf));
+    util_read_line(SYS_PRODUCT_FAMILY_PATH, family_buf, sizeof(family_buf));
+    util_read_line(SYS_PRODUCT_NAME_PATH, name_buf, sizeof(name_buf));
+
+    const char *ignore_product_family[] = IGNORE_SYS_PRODUCT_FAMILY;
+
+    bool is_family_value_garbage = false;
+    for (int i = 0; ignore_product_family[i] != NULL; i++) {
+        if (strcasecmp(family_buf, ignore_product_family[i]) == 0) {
+            is_family_value_garbage = true;
+            break;
+        }
+    }
+
+    const char *final_vendor = (strcasestr(name_buf, vendor_buf)) ? "" : vendor_buf;
+
+    if (is_family_value_garbage) {
+        snprintf(out_buf, buf_size, "%s %s", final_vendor, name_buf);
     } else {
-        snprintf(out_buf, buf_size, "%02ld:%02ld:%02ld", hours, minutes, seconds);
+        snprintf(out_buf, buf_size, "%s %s %s", final_vendor,
+                 (strcasestr(name_buf, family_buf)) ? "" : family_buf, name_buf);
     }
 }
+
+static bool sys_is_portable(void) {
+    uint8_t chassis_value = 0;
+    if (!util_read_uint8(PATH_DMI_CHASSIS, &chassis_value)) return false;
+
+    uint32_t dmi_portable_chassis_bits[CHASSIS_MASK_BLOCKS] = {
+        [0] = BIT(8) | BIT(9) | BIT(10) | BIT(11) | BIT(14) | BIT(30) | BIT(31),
+        [1] = BIT(32)
+    };
+
+    bitset_t chassis_set = {.bits = dmi_portable_chassis_bits,
+                            .capacity = CHASSIS_MASK_ELEMENTS};
+
+    if (set_contains(&chassis_set, chassis_value)) return true;
+
+    return false;
+}
+#endif

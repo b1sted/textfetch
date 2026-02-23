@@ -1,16 +1,16 @@
 /* SPDX-License-Identifier: MIT */
 
-#include <stdio.h>
-#include <string.h>
-
 #include <errno.h>
 #include <spawn.h>
+#include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
+#include <sys/types.h>
 #include <sys/wait.h>
 
 #include "capture.h"
-#include "ui.h"
+#include "sys_utils.h"
 
 /**
  * Pointer to the process environment variables array.
@@ -18,10 +18,15 @@
  */
 extern char **environ;
 
-int capture_line(const char *command, char *out_buf, const size_t buf_size) {
+int capture_line(const char *command, const char *arg,
+                 char *out_buf, const size_t buf_size) {
+    if (!command || !out_buf || buf_size < 2) return -1;
+
+    out_buf[0] = '\0';
+
     int pipefd[2];
     if (pipe(pipefd) != 0) {
-        V_PRINTF("[Error] pipe failed: %s\n", strerror(errno));
+        V_PRINTF("[ERROR] pipe failed: %s\n", strerror(errno));
         return -1;
     }
 
@@ -32,32 +37,43 @@ int capture_line(const char *command, char *out_buf, const size_t buf_size) {
     posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
     posix_spawn_file_actions_addclose(&actions, pipefd[1]);
 
-    char *argv[] = {"sh", "-c", (char *)command, NULL};
+    char *argv[] = {(char *)command, (char *)arg, NULL};
     pid_t pid;
-    int status = posix_spawnp(&pid, "sh", &actions, NULL, argv, environ);
 
-    if (status == 0) {
+    int spawn_status = posix_spawnp(&pid, command, &actions, NULL, argv, environ);
+
+    int result = -1;
+
+    if (spawn_status == 0) {
         close(pipefd[1]);
 
         FILE *stream = fdopen(pipefd[0], "r");
         if (stream) {
-            if (fgets(out_buf, (int)buf_size, stream) == NULL) {
-                V_PRINTF("[Error] failed to read command output\n");
+            if (fgets(out_buf, (int)buf_size, stream) != NULL) {
+                out_buf[strcspn(out_buf, "\r\n")] = '\0';
+            } else {
+                V_PRINTF("[ERROR] failed to read command output for %s\n", command);
             }
-
-            fclose(stream); /* Also closes pipefd[0] */ 
+            fclose(stream);
         } else {
             close(pipefd[0]);
         }
 
-        out_buf[strcspn(out_buf, "\r\n")] = '\0';
-        waitpid(pid, NULL, 0);
+        int wait_status;
+        waitpid(pid, &wait_status, 0);
+
+        if (WIFEXITED(wait_status) &&
+            WEXITSTATUS(wait_status) == 0 &&
+            out_buf[0] != '\0') {
+            result = 0;
+        }
     } else {
         close(pipefd[0]);
         close(pipefd[1]);
-        V_PRINTF("[Error] posix_spawn failed: %s\n", strerror(status));
+        V_PRINTF("[ERROR] posix_spawn failed: %s\n", strerror(spawn_status));
     }
 
     posix_spawn_file_actions_destroy(&actions);
-    return status;
+
+    return result;
 }
