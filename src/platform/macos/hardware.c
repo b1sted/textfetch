@@ -531,6 +531,8 @@ void hw_get_bat_info(void) {
     snprintf(label_buf, sizeof(label_buf), "Battery (%s)", model);
     snprintf(info_buf, sizeof(info_buf), "%u%% (%s, Health: %s)", pct, status, health);
 
+    ui_print_help(label_buf, info_buf);
+
     CFRelease(list);
     CFRelease(info);
 }
@@ -550,17 +552,19 @@ static uint8_t hw_get_bat_percentage(const CFDictionaryRef power_source) {
 
 static const char *hw_get_bat_status(const CFDictionaryRef power_source,
                                      uint8_t battery_percentage) {
-    uint8_t status = 0;
     CFStringRef state = CFDictionaryGetValue(power_source, CFSTR(kIOPSPowerSourceStateKey));
-    CFBooleanRef charging = CFDictionaryGetValue(power_source, CFSTR(kIOPSIsChargingKey));
+    
+    CFBooleanRef is_charging = CFDictionaryGetValue(power_source, CFSTR(kIOPSIsChargingKey));
+    CFBooleanRef is_charged  = CFDictionaryGetValue(power_source, CFSTR(kIOPSIsChargedKey));
+
+    uint8_t status = 0;
 
     if (state &&
-        CFStringCompare(state, CFSTR(kIOPSACPowerValue), 0) == kCFCompareEqualTo) {
+        CFStringCompare(state, CFSTR(kIOPSACPowerValue), 0) == kCFCompareEqualTo)
         status |= FLAG_AC;
-    }
-    if (charging && CFBooleanGetValue(charging))
+    if (is_charging && CFBooleanGetValue(is_charging))
         status |= FLAG_CHARGING;
-    if (battery_percentage >= 100)
+    if ((is_charged && CFBooleanGetValue(is_charged)) || (battery_percentage >= 100))
         status |= FLAG_FULL;
 
     if (status & FLAG_FULL && status & FLAG_AC)
