@@ -16,9 +16,9 @@ void terminal_print_info(void) {
     char shell_buf[LINE_BUFFER] = {0};
     term_get_shell(shell_buf, LINE_BUFFER);
 
-    char *locale = setlocale(LC_ALL, "");
+    char *locale = setlocale(LC_CTYPE, "");
     if (!locale) {
-        V_PRINTF("[ERROR] setlocale(LC_ALL, \"\") failed\n");
+        V_PRINTF("[ERROR] setlocale(LC_CTYPE, \"\") failed\n");
         locale = "-";
     }
 
