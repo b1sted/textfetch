@@ -291,7 +291,8 @@ static void hw_get_cpu_cores(cpu_data_t *cpus, uint16_t *cpu_map, uint8_t *packa
         snprintf(full_path, sizeof(full_path),
                  "%s%s/topology/physical_package_id", SYS_CPU_DIR, entry->d_name);
         util_read_int16(full_path, &physical_package_id);
-        physical_package_id = (physical_package_id == -1) ? 0 : physical_package_id;
+        if (physical_package_id < 0 || physical_package_id >= MAX_CPU_PACKAGES)
+            physical_package_id = 0;
 
         if (!cpus[physical_package_id].exists) {
             cpus[physical_package_id].exists = true;
@@ -495,22 +496,22 @@ static void hw_arm_lookup_name(forest *arm_forest, char *out_buf, const size_t b
 
     char *endptr;
     uint8_t vendor_id = (uint8_t)strtoul(out_buf, &endptr, 16);
-    uint16_t impl_id  = (uint16_t)strtoul(endptr, NULL, 16);
+    uint16_t device_id  = (uint16_t)strtoul(endptr, NULL, 16);
 
     if (arm_forest) {
         node *vendor = find_in_forest(arm_forest, vendor_id);
-        node *device = find_in_tree(vendor, impl_id);
+        node *device = find_in_tree(vendor, device_id);
 
         if (vendor && device) {
             snprintf(out_buf, buf_size, "%s %s", vendor->name, device->name);
             return;
         } else if (vendor) {
-            snprintf(out_buf, buf_size, "%s [0x%04X]", vendor->name, impl_id);
+            snprintf(out_buf, buf_size, "%s [0x%04X]", vendor->name, device_id);
             return;
         }
     }
 
-    snprintf(out_buf, buf_size, "Generic ARM CPU [0x%04X 0x%04X]", vendor_id, impl_id);
+    snprintf(out_buf, buf_size, "Generic ARM CPU [0x%04X 0x%04X]", vendor_id, device_id);
 }
 #endif
 
