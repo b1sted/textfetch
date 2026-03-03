@@ -106,6 +106,27 @@ bool util_read_hex(const char *path, uint32_t *value);
 bool util_is_file_exist(const char *path);
 
 /**
+ * Checks if a string consists entirely of numeric digits.
+ *
+ * @param str The string to evaluate.
+ * @return true if all characters are digits, false otherwise or if string is
+ * empty.
+ */
+bool util_is_numeric_string(const char *str);
+
+/**
+ * Groups and formats an array of hardware strings, automatically adding
+ * count prefixes (e.g. "2 x ") for duplicate entries.
+ *
+ * @param strings Array of strings representing hardware models.
+ * @param count Number of elements in the array.
+ * @param out_buf Buffer to store the formatted multi-line output.
+ * @param buf_size Maximum size of the output buffer.
+ */
+void util_format_duplicate_hardware(const char **strings, uint8_t count,
+                                    char *out_buf, size_t buf_size);
+
+/**
  * Formats a byte size into a human-readable string (e.g., "MiB", "GiB").
  *
  * @param total_size The total capacity.
@@ -114,7 +135,7 @@ bool util_is_file_exist(const char *path);
  * @param buf_size Maximum size of the output buffer.
  * @param from_unit The unit of the input sizes (e.g., UNIT_KIB).
  */
-void util_format_size(double total_size, double used_size, char *out_buf, 
+void util_format_size(double total_size, double used_size, char *out_buf,
                       const size_t buf_size, data_unit_t from_unit);
 
 #endif /* SYS_UTILS_H */

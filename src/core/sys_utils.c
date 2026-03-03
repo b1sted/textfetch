@@ -6,7 +6,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <ctype.h>
 #include <errno.h>
+#include <inttypes.h>
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -132,6 +134,52 @@ bool util_read_hex16(const char *path, uint16_t *value) {
 
 bool util_is_file_exist(const char *path) {
     return access(path, R_OK) == 0;
+}
+
+bool util_is_numeric_string(const char *str) {
+    if (*str == '\0') return false;
+
+    const char *cursor = str;
+    while (*cursor) {
+        if (!isdigit(*cursor)) return false;
+        cursor++;
+    }
+
+    return true;
+}
+
+void util_format_duplicate_hardware(const char **strings, uint8_t count, 
+                                    char *out_buf, size_t buf_size) {
+    for (uint8_t i = 0; i < count; i++) {
+        if (!strings[i] || strings[i][0] == '\0') continue;
+        
+        bool already_printed = false;
+        for (uint8_t j = 0; j < i; j++) {
+            if (strcmp(strings[i], strings[j]) == 0) {
+                already_printed = true;
+                break;
+            }
+        }
+
+        if (already_printed) continue;
+
+        uint8_t dup_count = 1;
+        for (uint8_t k = i + 1; k < count; k++) {
+            if (strcmp(strings[i], strings[k]) == 0) {
+                dup_count++;
+            }
+        }
+
+        char prefix[HEX_BUFFER] = "";
+        if (dup_count > 1) snprintf(prefix, sizeof(prefix), "%" PRIu8 " x ", dup_count);
+
+        size_t offset = strlen(out_buf);
+        if (offset >= buf_size) break;
+
+        snprintf(out_buf + offset, buf_size - offset,
+                 "%s%s%s", (out_buf[0] == '\0') ? "" : "\n     ",
+                 prefix, strings[i]);
+    }
 }
 
 void util_format_size(double total_size, double used_size, char *out_buf,

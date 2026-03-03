@@ -83,28 +83,59 @@ typedef struct gpu_node {
 
 /* Internal structure for grouping similar GPU models. */
 typedef struct {
-    char name[LINE_BUFFER];
+    char model[LINE_BUFFER];
 } gpu_data_t;
 
 /**
- * Enumerates all CPU cores and packages from sysfs.
+ * Recursively parses the sysfs directory to construct the CPU topology.
  *
  * @param cpus Array of CPU data structures to populate.
  * @param cpu_map Array mapping logical CPU IDs to physical sockets.
  * @param packages Pointer to store the total number of CPU packages found.
  */
-static void hw_get_cpu_cores(cpu_data_t *cpus, uint16_t *cpu_map, uint8_t *packages);
+static void hw_parse_cpu_topology(cpu_data_t *cpus, uint16_t *cpu_map, uint8_t *packages);
 
 /**
- * Parses /proc/cpuinfo to determine the CPU model name.
+ * Parses hardware properties of a single logical CPU core node.
+ * 
+ * @param node_name The directory name of the CPU node (e.g., "cpu0").
+ * @param cpus Array of CPU data structures to be updated.
+ * @param cpu_map Array mapping logical CPU IDs to physical sockets.
+ * @param packages Pointer to the total number of CPU packages found.
+ */
+static void hw_cpu_process_core_node(const char *node_name, cpu_data_t *cpus,
+                                     uint16_t *cpu_map, uint8_t *packages);
+
+/**
+ * Reads the current scaling frequency for a given CPU package.
+ *
+ * @param cpus Array of CPU data structures.
+ * @param package The physical package ID.
+ * @param cpu_suffix The string identifying the CPU node in sysfs.
+ */
+static void hw_get_cpu_freq(cpu_data_t *cpus, const int16_t package, const char *cpu_suffix);
+
+/**
+ * Parses /proc/cpuinfo to determine the CPU model name using architecture-specific strategies.
  *
  * @param cpus Array of CPU data structures to update.
  * @param cpu_map Array mapping logical CPU IDs to physical sockets.
- * @param packages Total number of CPU packages.
+ * @param packages Total number of CPU packages in the system.
  */
 static void hw_get_cpu_model(cpu_data_t *cpus, uint16_t *cpu_map, const uint8_t packages);
 
 #if defined(__i386__) || defined(__x86_64__)
+/**
+ * Parses the x86 processor model name from an open cpuinfo stream.
+ * 
+ * @param fp Pointer to the open /proc/cpuinfo file.
+ * @param cpus Array of CPU data structures to update.
+ * @param cpu_map Array mapping logical CPU IDs to physical sockets.
+ * @param packages Total number of CPU packages.
+ */
+static void hw_parse_x86_cpu_model(FILE *fp, cpu_data_t *cpus,
+                                   uint16_t *cpu_map, const uint8_t packages);
+
 /**
  * Parses out unnecessary marketing jargon from an x86 CPU model string.
  *
@@ -114,6 +145,17 @@ static void hw_sanitize_cpu_name(char *out_buf);
 #endif
 
 #if defined(__arm__) || defined(__aarch64__)
+/**
+ * Parses the ARM CPU implementer and part IDs from an open cpuinfo stream.
+ * 
+ * @param fp Pointer to the open /proc/cpuinfo file.
+ * @param cpus Array of CPU data structures to update.
+ * @param cpu_map Array mapping logical CPU IDs to physical sockets.
+ * @param packages Total number of CPU packages.
+ */
+static void hw_parse_arm_cpu_model(FILE *fp, cpu_data_t *cpus,
+                                   uint16_t *cpu_map, const uint8_t packages);
+
 /**
  * Creates a binary tree forest of ARM vendor and part IDs from an internal database.
  *
@@ -130,15 +172,6 @@ static forest *hw_arm_forest_create(void);
  */
 static void hw_arm_lookup_name(forest *arm_forest, char *out_buf, const size_t buf_size);
 #endif
-
-/**
- * Reads the current scaling frequency for a given CPU package.
- *
- * @param cpus Array of CPU data structures.
- * @param package The physical package ID.
- * @param cpu_suffix The string identifying the CPU node in sysfs.
- */
-static void hw_get_cpu_freq(cpu_data_t *cpus, const int16_t package, const char *cpu_suffix);
 
 /**
  * Enumerates all GPU devices present in sysfs DRM subsystem.
@@ -214,46 +247,28 @@ void hw_get_cpu_info(void) {
 
     uint8_t packages = 0;
 
-    hw_get_cpu_cores(cpus, cpu_map, &packages);
+    hw_parse_cpu_topology(cpus, cpu_map, &packages);
     hw_get_cpu_model(cpus, cpu_map, packages);
 
-    char cpu_info[LINE_BUFFER] = {0};
-
+    char cpu_formatted[MAX_CPU_PACKAGES][LINE_BUFFER] = {0};
+    const char *cpu_strings[MAX_CPU_PACKAGES] = {0};
     for (uint8_t i = 0; i < packages; i++) {
-        bool already_printed = false;
-
-        for (uint8_t j = 0; j < i; j++) {
-            if (strcmp(cpus[i].model, cpus[j].model) == 0) {
-                already_printed = true;
-                break;
-            }
-        }
-
-        if (already_printed) continue;
-
-        uint8_t count = 1;
-        for (uint8_t k = i + 1; k < packages; k++) {
-            if (strcmp(cpus[i].model, cpus[k].model) == 0) {
-                count++;
-            }
-        }
-
         uint32_t cores = count_set_bits(&(bitset_t){.bits = cpus[i].core_bits,
                                                     .capacity = MAX_CPU_CORES}, 8);
-        char prefix[HEX_BUFFER] = "";
-        if (count > 1) snprintf(prefix, sizeof(prefix), "%" PRIu8 " x ", count);
 
-        size_t buf_len = strlen(cpu_info);
-        snprintf(cpu_info + buf_len, sizeof(cpu_info) - buf_len,
-                 "%s%s%s (%" PRIu32 ") @ %.03f GHz",
-                 (buf_len == 0) ? "" : "\n     ", prefix,
-                 cpus[i].model, cores, cpus[i].frequency);
+        snprintf(cpu_formatted[i], sizeof(cpu_formatted[i]),
+                 "%s (%" PRIu32 ") @ %.03f GHz", cpus[i].model, cores, cpus[i].frequency);
+
+        cpu_strings[i] = cpu_formatted[i];
     }
+
+    char cpu_info[LINE_BUFFER] = {0};
+    util_format_duplicate_hardware(cpu_strings, packages, cpu_info, sizeof(cpu_info));
 
     ui_print_info("CPU", cpu_info);
 }
 
-static void hw_get_cpu_cores(cpu_data_t *cpus, uint16_t *cpu_map, uint8_t *packages) {
+static void hw_parse_cpu_topology(cpu_data_t *cpus, uint16_t *cpu_map, uint8_t *packages) {
     const char *prefix = "cpu";
     size_t prefix_len = strlen(prefix);
 
@@ -269,52 +284,60 @@ static void hw_get_cpu_cores(cpu_data_t *cpus, uint16_t *cpu_map, uint8_t *packa
         if (strncmp(entry->d_name, prefix, prefix_len) != 0) continue;
 
         const char *suffix = entry->d_name + prefix_len;
-        if (*suffix == '\0') continue;
+        if (!util_is_numeric_string(suffix)) continue;
 
-        const char *cursor = suffix;
-        bool valid_name = true;
-        while (*cursor) {
-            if (!isdigit(*cursor)) {
-                valid_name = false;
-                break;
-            }
-
-            cursor++;
-        }
-
-        if (!valid_name) continue;
-
-        int16_t physical_package_id = 0;
-        uint16_t core_id = 0;
-        char full_path[PATH_BUFFER] = {0};
-
-        snprintf(full_path, sizeof(full_path),
-                 "%s%s/topology/physical_package_id", SYS_CPU_DIR, entry->d_name);
-        util_read_int16(full_path, &physical_package_id);
-        if (physical_package_id < 0 || physical_package_id >= MAX_CPU_PACKAGES)
-            physical_package_id = 0;
-
-        if (!cpus[physical_package_id].exists) {
-            cpus[physical_package_id].exists = true;
-            (*packages)++;
-
-            hw_get_cpu_freq(cpus, physical_package_id, entry->d_name);
-        }
-
-        uint16_t current_id = strtoul(entry->d_name + 3, NULL, 10);
-        if (cpu_map[physical_package_id] == 0xFFFF ||
-            current_id < cpu_map[physical_package_id]) {
-            cpu_map[physical_package_id] = current_id;
-        }
-
-        snprintf(full_path, sizeof(full_path),
-                 "%s%s/topology/core_id", SYS_CPU_DIR, entry->d_name);
-        util_read_uint16(full_path, &core_id);
-        set_add(&(bitset_t){.bits = cpus[physical_package_id].core_bits,
-                            .capacity = MAX_CPU_CORES}, core_id);
+        hw_cpu_process_core_node(entry->d_name, cpus, cpu_map, packages);
     }
 
     closedir(dir);
+}
+
+static void hw_cpu_process_core_node(const char *node_name, cpu_data_t *cpus,
+                                     uint16_t *cpu_map, uint8_t *packages) {
+    int16_t physical_package_id = 0;
+    uint16_t core_id = 0;
+    char full_path[PATH_BUFFER] = {0};
+
+    snprintf(full_path, sizeof(full_path),
+             "%s%s/topology/physical_package_id", SYS_CPU_DIR, node_name);
+    util_read_int16(full_path, &physical_package_id);
+    if (physical_package_id < 0 || physical_package_id >= MAX_CPU_PACKAGES) {
+        physical_package_id = 0;
+    }
+
+    if (!cpus[physical_package_id].exists) {
+        cpus[physical_package_id].exists = true;
+        (*packages)++;
+
+        hw_get_cpu_freq(cpus, physical_package_id, node_name);
+    }
+
+    uint16_t current_id = strtoul(node_name + 3, NULL, 10);
+    if (cpu_map[physical_package_id] == 0xFFFF || current_id < cpu_map[physical_package_id]) {
+        cpu_map[physical_package_id] = current_id;
+    }
+
+    snprintf(full_path, sizeof(full_path), "%s%s/topology/core_id", SYS_CPU_DIR, node_name);
+    util_read_uint16(full_path, &core_id);
+    set_add(&(bitset_t){.bits = cpus[physical_package_id].core_bits,
+                        .capacity = MAX_CPU_CORES}, core_id);
+}
+
+static void hw_get_cpu_freq(cpu_data_t *cpus, const int16_t package, const char *cpu_suffix) {
+    char freq_path[PATH_BUFFER] = {0};
+    snprintf(freq_path, sizeof(freq_path),
+             "%s%s/cpufreq/scaling_cur_freq", SYS_CPU_DIR, cpu_suffix);
+
+    uint32_t freq_khz = 0;
+    util_read_uint32(freq_path, &freq_khz);
+
+    if (freq_khz == 0) {
+        snprintf(freq_path, sizeof(freq_path),
+                 "%s%s/cpufreq/cpuinfo_cur_freq", SYS_CPU_DIR, cpu_suffix);
+        util_read_uint32(freq_path, &freq_khz);
+    }
+
+    cpus[package].frequency = (double)freq_khz / KHZ_PER_GHZ;
 }
 
 static void hw_get_cpu_model(cpu_data_t *cpus, uint16_t *cpu_map, const uint8_t packages) {
@@ -324,15 +347,16 @@ static void hw_get_cpu_model(cpu_data_t *cpus, uint16_t *cpu_map, const uint8_t 
         return;
     }
 
-#if defined(__arm__) || defined(__aarch64__)
-    forest *arm_forest = hw_arm_forest_create();
-    if (arm_forest == NULL) {
-        V_PRINTF("[WARNING] Failed to build an ARM forest. Using raw values\n");
-    }
+#if defined(__i386__) || defined(__x86_64__)
+    hw_parse_x86_cpu_model(fp, cpus, cpu_map, packages);
+#elif defined(__arm__) || defined(__aarch64__)
+    hw_parse_arm_cpu_model(fp, cpus, cpu_map, packages);
+#endif 
+}
 
-    char arm_model[TINY_BUFFER] = {0};
-#endif
-
+#if defined(__i386__) || defined(__x86_64__)
+static void hw_parse_x86_cpu_model(FILE *fp, cpu_data_t *cpus,
+                                   uint16_t *cpu_map, const uint8_t packages) {
     char line[LINE_BUFFER] = {0};
     int8_t socket = -1;
 
@@ -349,9 +373,6 @@ static void hw_get_cpu_model(cpu_data_t *cpus, uint16_t *cpu_map, const uint8_t 
         if (value[0] == ' ') value++;
 
         if (strncmp(key, "processor", 9) == 0) {
-#if defined(__arm__) || defined(__aarch64__)
-            arm_model[0] = '\0';
-#endif
             socket = -1;
 
             for (uint8_t i = 0; i < packages; i++) {
@@ -362,45 +383,14 @@ static void hw_get_cpu_model(cpu_data_t *cpus, uint16_t *cpu_map, const uint8_t 
             }
         }
 
-#if defined(__i386__) || defined(__x86_64__)
         if (strncmp(key, "model name", 10) == 0) {
             if (socket == -1 || cpus[socket].model[0] != '\0') continue;
             memcpy(cpus[socket].model, value, strlen(value));
             hw_sanitize_cpu_name(cpus[socket].model);
         }
-#elif defined(__arm__) || defined(__aarch64__)
-        if (strncmp(key, "CPU implementer", 15) == 0) {
-            if (socket == -1 || cpus[socket].model[0] != '\0') continue;
-
-            size_t impl_len = strlen(value);
-            memcpy(arm_model, value, impl_len);
-            arm_model[impl_len] = ' ';
-            arm_model[impl_len + 1] = '\0';
-        }
-
-        if (strncmp(key, "CPU part", 8) == 0) {
-            if (socket == -1 || cpus[socket].model[0] != '\0') continue;
-
-            char *dst = strstr(arm_model, " ");
-            if (dst) memcpy(dst + 1, value, strlen(value) + 1);
-
-            size_t model_len = strlen(arm_model);
-            memcpy(cpus[socket].model, arm_model, model_len);
-            cpus[socket].model[model_len] = '\0';
-
-            hw_arm_lookup_name(arm_forest, cpus[socket].model, sizeof(cpus[socket].model));
-        }
-#endif
     }
-
-    fclose(fp);
-
-#if defined(__arm__) || defined(__aarch64__)
-    destroy_forest(arm_forest);
-#endif
 }
 
-#if defined(__i386__) || defined(__x86_64__)
 static void hw_sanitize_cpu_name(char *out_buf) {
     if (!out_buf || !*out_buf) return;
 
@@ -442,6 +432,67 @@ static void hw_sanitize_cpu_name(char *out_buf) {
 #endif
 
 #if defined(__arm__) || defined(__aarch64__)
+static void hw_parse_arm_cpu_model(FILE *fp, cpu_data_t *cpus,
+                                   uint16_t *cpu_map, const uint8_t packages) {
+    forest *arm_forest = hw_arm_forest_create();
+    if (arm_forest == NULL) {
+        V_PRINTF("[WARNING] Failed to build an ARM forest. Using raw values\n");
+    }
+
+    char arm_model[TINY_BUFFER] = {0};
+    char line[LINE_BUFFER] = {0};
+    int8_t socket = -1;
+
+    while (fgets(line, sizeof(line), fp)) {
+        char *delim = strchr(line, ':');
+        if (!delim) continue;
+
+        *delim = 0;
+        char *key = line;
+        char *value = delim + 1;
+
+        value[strcspn(value, "\n")] = 0;
+
+        if (value[0] == ' ') value++;
+
+        if (strncmp(key, "processor", 9) == 0) {
+            arm_model[0] = '\0';
+            socket = -1;
+
+            for (uint8_t i = 0; i < packages; i++) {
+                if (cpu_map[i] == strtoul(value, NULL, 10)) {
+                    socket = i;
+                    break;
+                }
+            }
+        }
+
+        if (strncmp(key, "CPU implementer", 15) == 0) {
+            if (socket == -1 || cpus[socket].model[0] != '\0') continue;
+
+            size_t impl_len = strlen(value);
+            memcpy(arm_model, value, impl_len);
+            arm_model[impl_len] = ' ';
+            arm_model[impl_len + 1] = '\0';
+        }
+
+        if (strncmp(key, "CPU part", 8) == 0) {
+            if (socket == -1 || cpus[socket].model[0] != '\0') continue;
+
+            char *dst = strstr(arm_model, " ");
+            if (dst) memcpy(dst + 1, value, strlen(value) + 1);
+
+            size_t model_len = strlen(arm_model);
+            memcpy(cpus[socket].model, arm_model, model_len);
+            cpus[socket].model[model_len] = '\0';
+
+            hw_arm_lookup_name(arm_forest, cpus[socket].model, sizeof(cpus[socket].model));
+        }
+    }
+
+    destroy_forest(arm_forest);
+}
+
 static forest *hw_arm_forest_create(void) {
     FILE *fp = fmemopen(arm_ids, arm_ids_len, "r");
     if (!fp) {
@@ -515,23 +566,6 @@ static void hw_arm_lookup_name(forest *arm_forest, char *out_buf, const size_t b
 }
 #endif
 
-static void hw_get_cpu_freq(cpu_data_t *cpus, const int16_t package, const char *cpu_suffix) {
-    char freq_path[PATH_BUFFER] = {0};
-    snprintf(freq_path, sizeof(freq_path),
-             "%s%s/cpufreq/scaling_cur_freq", SYS_CPU_DIR, cpu_suffix);
-
-    uint32_t freq_khz = 0;
-    util_read_uint32(freq_path, &freq_khz);
-
-    if (freq_khz == 0) {
-        snprintf(freq_path, sizeof(freq_path),
-                 "%s%s/cpufreq/cpuinfo_cur_freq", SYS_CPU_DIR, cpu_suffix);
-        util_read_uint32(freq_path, &freq_khz);
-    }
-
-    cpus[package].frequency = (double)freq_khz / KHZ_PER_GHZ;
-}
-
 void hw_get_gpu_info(void) {
     gpu_node_t *gpu_list = hw_get_all_gpus();
     if (gpu_list == NULL) {
@@ -573,20 +607,7 @@ static gpu_node_t *hw_get_all_gpus(void) {
         if (strncmp(entry->d_name, prefix, prefix_len) != 0) continue;
 
         const char *suffix = entry->d_name + prefix_len;
-        if (*suffix == '\0') continue;
-
-        const char *cursor = suffix;
-        bool valid_name = true;
-        while (*cursor) {
-            if (!isdigit(*cursor)) {
-                valid_name = false;
-                break;
-            }
-
-            cursor++;
-        }
-
-        if (!valid_name) continue;
+        if (!util_is_numeric_string(suffix)) continue;
 
         uint16_t vendor_id = 0, device_id = 0;
         char full_path[PATH_BUFFER] = {0};
@@ -695,46 +716,17 @@ static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size,
             break;
         }
 
-        snprintf(gpus[gpu_count].name, sizeof(gpus[gpu_count].name), 
+        snprintf(gpus[gpu_count].model, sizeof(gpus[gpu_count].model), 
                  "%s%s%s [0x%04X]", vendor_name, separator, device_name, curr->part_id);
         gpu_count++;
     }
 
+    const char *gpu_strings[MAX_GPUS] = {0};
     for (uint8_t i = 0; i < gpu_count; i++) {
-        bool already_printed = false;
-
-        for (uint8_t j = 0; j < i; j++) {
-            if (strcmp(gpus[i].name, gpus[j].name) == 0) {
-                already_printed = true;
-                break;
-            }
-        }
-
-        if (already_printed) continue;
-
-        uint8_t count = 1;
-        for (uint8_t k = i + 1; k < gpu_count; k++) {
-            if (strcmp(gpus[i].name, gpus[k].name) == 0) {
-                count++;
-            }
-        }
-
-        char prefix[HEX_BUFFER] = "";
-        if (count > 1) {
-            snprintf(prefix, sizeof(prefix), "%" PRIu8 " x ", count);
-        }
-
-        size_t offset = strlen(out_buf);
-        if (offset >= buf_size) break;
-
-        int written = snprintf(out_buf + offset, buf_size - offset,
-                       "%s%s%s", (out_buf[0] == '\0') ? "" : "\n     ",
-                       prefix, gpus[i].name);
-
-        if (written < 0 || (size_t)written >= buf_size - offset) {
-            break;
-        }
+        gpu_strings[i] = gpus[i].model;
     }
+
+    util_format_duplicate_hardware(gpu_strings, gpu_count, out_buf, buf_size);
 
     if (pci_forest) destroy_forest(pci_forest);
 }
