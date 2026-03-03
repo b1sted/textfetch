@@ -9,10 +9,12 @@
 #include <string.h>
 #include <strings.h>
 
+#include <ctype.h>
 #include <errno.h>
 
 #include "bitset.h"
 #include "defs.h"
+#include "dictionary.h"
 #include "sys_utils.h"
 
 #include "pal/system_os.h"
@@ -59,6 +61,41 @@
     NULL                                   \
 }
 
+/* Vendor names mapped to their preferred short acronyms. */
+#define LONGEST_VENDOR_NAMES {                       \
+    { "ASUSTeK COMPUTER INC.", "ASUS" },             \
+    { "Micro-Star International Co., Ltd.", "MSI" }, \
+    { "Hewlett-Packard", "HP" }                      \
+}
+
+/* Corporate suffixes and garbage words to be stripped from vendor names. */
+#define GARBAGE_IN_VENDOR_NAME {           \
+    "Technology",                          \
+    "Corporation",                         \
+    "Computer",                            \
+    "Foundation",                          \
+    "Electronics",                         \
+    "Inc.",                                \
+    "Co., Ltd.",                           \
+    "Ltd.",                                \
+    NULL                                   \
+}
+
+/* Specific vendor acronyms and brands that must remain fully capitalized. */
+#define ALLCAPS_VENDOR_NAMES {             \
+    "ASUS",                                \
+    "AYANEO",                              \
+    "AYN",                                 \
+    "CHUWI",                               \
+    "GPD",                                 \
+    "HP",                                  \
+    "LG",                                  \
+    "MSI",                                 \
+    "ONEXPLAYER",                          \
+    "TECHO",                               \
+    NULL                                   \
+}
+
 /* Sysfs DMI tables used to construct the full hardware marketing model name. */
 #define SYS_VENDOR_PATH         "/sys/class/dmi/id/sys_vendor"
 #define SYS_PRODUCT_FAMILY_PATH "/sys/class/dmi/id/product_family"
@@ -76,6 +113,30 @@
  * @return true if the system chassis identifies as portable.
  */
 static bool sys_is_portable(void);
+
+/**
+ * Checks if the DMI product family string is a placeholder or meaningless value.
+ *
+ * @param family_value The null-terminated product family string.
+ * @return true if the value is considered garbage and should be skipped.
+ */
+static bool hw_is_family_garbage(char *family_value);
+
+/**
+ * Sanitizes and formats the raw vendor name (capitalization, acronyms, suffix stripping).
+ *
+ * @param vendor_name A pointer to the vendor string to be sanitized.
+ * @param vendor_size The maximum capacity of the vendor_name buffer.
+ */
+static void hw_sanitize_vendor_name(char *vendor_name, const size_t vendor_size);
+
+/**
+ * Removes the vendor name from the beginning of the device model string if it is duplicated.
+ *
+ * @param vendor_name The sanitized vendor name string.
+ * @param device_name A pointer to the device string from which the vendor name will be stripped.
+ */
+static void hw_remove_vendor_from_model(const char *vendor_name, char *device_name);
 #endif
 
 void sys_get_distro(char *out_buf, const size_t buf_size) {
@@ -152,22 +213,15 @@ void sys_get_model_name(char *out_buf, const size_t buf_size) {
     util_read_line(SYS_PRODUCT_FAMILY_PATH, family_buf, sizeof(family_buf));
     util_read_line(SYS_PRODUCT_NAME_PATH, name_buf, sizeof(name_buf));
 
-    const char *ignore_product_family[] = IGNORE_SYS_PRODUCT_FAMILY;
+    bool is_family_value_garbage = hw_is_family_garbage(family_buf);
 
-    bool is_family_value_garbage = false;
-    for (int i = 0; ignore_product_family[i] != NULL; i++) {
-        if (strcasecmp(family_buf, ignore_product_family[i]) == 0) {
-            is_family_value_garbage = true;
-            break;
-        }
-    }
-
-    const char *final_vendor = (strcasestr(name_buf, vendor_buf)) ? "" : vendor_buf;
+    hw_sanitize_vendor_name(vendor_buf, sizeof(vendor_buf));
+    hw_remove_vendor_from_model(vendor_buf, name_buf);
 
     if (is_family_value_garbage) {
-        snprintf(out_buf, buf_size, "%s %s", final_vendor, name_buf);
+        snprintf(out_buf, buf_size, "%s %s", vendor_buf, name_buf);
     } else {
-        snprintf(out_buf, buf_size, "%s %s %s", final_vendor,
+        snprintf(out_buf, buf_size, "%s %s %s", vendor_buf,
                  (strcasestr(name_buf, family_buf)) ? "" : family_buf, name_buf);
     }
 }
@@ -187,5 +241,77 @@ static bool sys_is_portable(void) {
     if (set_contains(&chassis_set, chassis_value)) return true;
 
     return false;
+}
+
+static bool hw_is_family_garbage(char *family_value) {
+    const char *ignore_product_family[] = IGNORE_SYS_PRODUCT_FAMILY;
+
+    for (int i = 0; ignore_product_family[i] != NULL; i++) {
+        if (strcasecmp(family_value, ignore_product_family[i]) == 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void hw_sanitize_vendor_name(char *vendor_name, const size_t vendor_size) {
+    if (!vendor_name || vendor_size == 0) return;
+
+    const char *vendor_pairs[][2] = LONGEST_VENDOR_NAMES;
+    uint8_t vendor_pairs_count = sizeof(vendor_pairs) / sizeof(vendor_pairs[0]);
+
+    const char *short_vendor_name = NULL;
+    for (uint8_t i = 0; i < vendor_pairs_count; i++) {
+        if (strcmp(vendor_name, vendor_pairs[i][0]) == 0) {
+            short_vendor_name = vendor_pairs[i][1];
+            break;
+        }
+    }
+
+    if (short_vendor_name != NULL) {
+        snprintf(vendor_name, vendor_size, "%s", short_vendor_name);
+    }
+        
+    const char *vendor_garbage[] = GARBAGE_IN_VENDOR_NAME;
+    for (uint8_t i = 0; vendor_garbage[i] != NULL; i++) {
+        char *garbage_pos = strstr(vendor_name, vendor_garbage[i]);
+        if (garbage_pos) {
+            if (garbage_pos > vendor_name) garbage_pos--;
+            *garbage_pos = '\0';
+            break;
+        }
+    }
+
+    const char *allcaps_vendor[] = ALLCAPS_VENDOR_NAMES;
+
+    bool is_allcaps = false;
+    for (uint8_t i = 0; allcaps_vendor[i] != NULL; i++) {
+        if (strcmp(vendor_name, allcaps_vendor[i]) == 0) {
+            is_allcaps = true;
+            break;
+        }
+    }
+
+    for (uint8_t i = 1; i < strlen(vendor_name); i++) {
+        unsigned char ch = (unsigned char)vendor_name[i];
+        if (ch > 127) break;
+
+        if (is_allcaps || !isupper(ch)) break;
+
+        vendor_name[i] = (char)tolower(ch);
+    }
+}
+
+static void hw_remove_vendor_from_model(const char *vendor_name, char *device_name) {
+    if (!vendor_name || !device_name) return;
+
+    char *dup_pos = strstr(device_name, vendor_name);
+    if (dup_pos) {
+        char *dup_end = dup_pos + strlen(vendor_name);
+        if (*dup_end == ' ') dup_end++;
+
+        memmove(dup_pos, dup_end, strlen(dup_end) + 1);
+    }
 }
 #endif
