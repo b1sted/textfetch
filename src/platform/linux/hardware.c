@@ -60,6 +60,10 @@
 /* Number of blocks needed for the CPU cores bitset. */
 #define CORES_SET_BLOCKS (MAX_CPU_CORES / BITS_PER_BLOCK)
 
+/* Estimated capacities for hardware ID forests to optimize tree allocation. */
+#define ARM_IMPLEMENTERS 25
+#define PCI_IMPLEMENTERS 3000
+
 /* Internal structure to store CPU parsing progress per socket. */
 typedef struct {
     char model[MEDIUM_BUFFER];
@@ -157,13 +161,6 @@ static void hw_parse_arm_cpu_model(FILE *fp, cpu_data_t *cpus,
                                    uint16_t *cpu_map, const uint8_t packages);
 
 /**
- * Creates a binary tree forest of ARM vendor and part IDs from an internal database.
- *
- * @return A pointer to the populated forest, or NULL on failure.
- */
-static forest *hw_arm_forest_create(void);
-
-/**
  * Looks up human-readable names for ARM chips based on implementer and part IDs.
  *
  * @param arm_forest The forest containing ARM ID mappings.
@@ -179,13 +176,6 @@ static void hw_arm_lookup_name(forest *arm_forest, char *out_buf, const size_t b
  * @return A linked list of raw GPU nodes, or NULL if none found.
  */
 static gpu_node_t *hw_get_all_gpus(void);
-
-/**
- * Parses the pci.ids database file into a binary tree forest.
- *
- * @return A tree containing PCI vendors and sub-devices, or NULL on failure.
- */
-static forest *hw_pci_forest_create(void);
 
 /**
  * Maps raw GPU PCI IDs to human-readable names and groups duplicates.
@@ -434,7 +424,12 @@ static void hw_sanitize_cpu_name(char *out_buf) {
 #if defined(__arm__) || defined(__aarch64__)
 static void hw_parse_arm_cpu_model(FILE *fp, cpu_data_t *cpus,
                                    uint16_t *cpu_map, const uint8_t packages) {
-    forest *arm_forest = hw_arm_forest_create();
+    FILE *fp_ids = fmemopen(arm_ids, arm_ids_len, "r");
+    if (!fp_ids) {
+        V_PRINTF("[ERROR] Failed to open arm.ids file: %s\n", strerror(errno));
+    }
+
+    forest *arm_forest = util_parse_ids_file(fp_ids, ARM_IMPLEMENTERS);
     if (arm_forest == NULL) {
         V_PRINTF("[WARNING] Failed to build an ARM forest. Using raw values\n");
     }
@@ -493,51 +488,6 @@ static void hw_parse_arm_cpu_model(FILE *fp, cpu_data_t *cpus,
     destroy_forest(arm_forest);
 }
 
-static forest *hw_arm_forest_create(void) {
-    FILE *fp = fmemopen(arm_ids, arm_ids_len, "r");
-    if (!fp) {
-        V_PRINTF("[ERROR] Failed to open arm.ids file: %s\n", strerror(errno));
-        return NULL;
-    }
-
-    forest *arm_forest = create_forest(25);
-
-    char line[LINE_BUFFER] = {0};
-    node *branch = NULL;
-    while (fgets(line, sizeof(line), fp)) {
-        if (line[0] == '#' || line[0] == '\n')
-            continue;
-
-        if (isalnum((unsigned char)line[0])) {
-            char *vendor_name;
-            uint8_t vendor_id = (uint8_t)strtoul(line, &vendor_name, 16);
-
-            line[strcspn(line, "\r\n")] = '\0';
-
-            while (isspace((unsigned char)*vendor_name)) vendor_name++;
-
-            branch = create_node(vendor_id, vendor_name);
-            add_tree_to_forest(arm_forest, branch);
-        }
-
-        else if (line[0] == '\t') {
-            char *device_name;
-            uint16_t device_id = (uint16_t)strtoul(line, &device_name, 16);
-
-            line[strcspn(line, "\r\n")] = '\0';
-
-            while (isspace((unsigned char)*device_name)) device_name++;
-
-            device_name[strcspn(device_name, "\n")] = '\0';
-            add_child(branch, device_id, device_name);
-        }
-    }
-
-    fclose(fp);
-
-    return arm_forest;
-}
-
 static void hw_arm_lookup_name(forest *arm_forest, char *out_buf, const size_t buf_size) {
     if (!out_buf || buf_size == 0) {
         V_PRINTF("[ERROR] hw_arm_lookup_name: incorrect arguments "
@@ -577,7 +527,19 @@ void hw_get_gpu_info(void) {
 
     char info_buf[GPU_BUFFER] = {0};
 
-    forest *pci_forest = hw_pci_forest_create();
+    const char *paths[] = PCI_IDS_PATHS;
+
+    FILE *fp = NULL;
+    for (uint8_t i = 0; paths[i] != NULL; i++) {
+        fp = fopen(paths[i], "rb");
+        if (fp) break;
+    }
+
+    if (!fp) {
+        V_PRINTF("[ERROR] Failed to open pci.ids file: %s\n", strerror(errno));
+    }
+
+    forest *pci_forest = util_parse_ids_file(fp, PCI_IMPLEMENTERS);
     if (pci_forest == NULL) {
         V_PRINTF("[WARNING] Failed to build a PCI forest. Using raw values\n");
     }
@@ -624,57 +586,6 @@ static gpu_node_t *hw_get_all_gpus(void) {
     closedir(dir);
 
     return head;
-}
-
-static forest *hw_pci_forest_create(void) {
-    const char *paths[] = PCI_IDS_PATHS;
-
-    FILE *fp = NULL;
-    for (uint8_t i = 0; paths[i] != NULL; i++) {
-        fp = fopen(paths[i], "rb");
-        if (fp) break;
-    }
-
-    if (!fp) {
-        V_PRINTF("[ERROR] Failed to open pci.ids file: %s\n", strerror(errno));
-        return NULL;
-    }
-
-    forest *pci_forest = create_forest(3000);
-
-    char line[LINE_BUFFER] = {0};
-    node *branch = NULL;
-    while (fgets(line, sizeof(line), fp)) {
-        if (line[0] == '#' || line[0] == '\n' || line[1] == '\t') continue;
-
-        if (isalnum((unsigned char)line[0])) {
-            char *vendor_name;
-            uint16_t vendor_id = (uint16_t)strtoul(line, &vendor_name, 16);
-
-            line[strcspn(line, "\r\n")] = '\0';
-
-            while (*vendor_name == ' ') vendor_name++;
-
-            branch = create_node(vendor_id, vendor_name);
-            add_tree_to_forest(pci_forest, branch);
-        }
-
-        else if (line[0] == '\t') {
-            char *device_name;
-            uint16_t device_id = (uint16_t)strtoul(line, &device_name, 16);
-
-            line[strcspn(line, "\r\n")] = '\0';
-
-            while (*device_name == ' ') device_name++;
-
-            device_name[strcspn(device_name, "\n")] = '\0';
-            add_child(branch, device_id, device_name);
-        }
-    }
-
-    fclose(fp);
-
-    return pci_forest;
 }
 
 static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size,

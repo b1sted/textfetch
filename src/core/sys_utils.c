@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include "binary_trees.h"
 #include "config.h"
 #include "defs.h"
 #include "sys_utils.h"
@@ -239,4 +240,44 @@ void util_format_size(double total_size, double used_size, char *out_buf,
     snprintf(out_buf, buf_size, "%.*f %s / %.*f %s (%hhu%%)",
              precision, used_size,  memory_units[used_unit],
              precision, total_size, memory_units[total_unit], usage_pct);
+}
+
+forest *util_parse_ids_file(FILE *fp, size_t capacity) {
+    if (!fp || capacity == 0) return NULL;
+
+    forest *ids_forest = create_forest(capacity);
+
+    char line[LINE_BUFFER] = {0};
+    node *branch = NULL;
+    while (fgets(line, sizeof(line), fp)) {
+        if (line[0] == '#' || line[0] == '\n' || line[1] == '\t') continue;
+
+        if (isalnum((unsigned char)line[0])) {
+            char *vendor_name;
+            uint16_t vendor_id = (uint16_t)strtoul(line, &vendor_name, 16);
+
+            line[strcspn(line, "\r\n")] = '\0';
+
+            while (isspace((unsigned char)*vendor_name)) vendor_name++;
+
+            branch = create_node(vendor_id, vendor_name);
+            add_tree_to_forest(ids_forest, branch);
+        }
+
+        else if (line[0] == '\t') {
+            char *device_name;
+            uint16_t device_id = (uint16_t)strtoul(line, &device_name, 16);
+
+            line[strcspn(line, "\r\n")] = '\0';
+
+            while (isspace((unsigned char)*device_name)) device_name++;
+
+            device_name[strcspn(device_name, "\n")] = '\0';
+            add_child(branch, device_id, device_name);
+        }
+    }
+
+    fclose(fp);
+
+    return ids_forest;
 }

@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "binary_trees.h"
 #include "config.h"
 
 /**
@@ -137,5 +138,14 @@ void util_format_duplicate_hardware(const char **strings, uint8_t count,
  */
 void util_format_size(double total_size, double used_size, char *out_buf,
                       const size_t buf_size, data_unit_t from_unit);
+
+/**
+ * Parses a hardware ID database file into a binary tree forest.
+ *
+ * @param fp Pointer to the open IDs file (e.g., pci.ids).
+ * @param capacity The expected number of top-level nodes (vendors).
+ * @return A tree containing the parsed hardware mappings, or NULL on failure.
+ */
+forest *util_parse_ids_file(FILE *fp, size_t capacity);
 
 #endif /* SYS_UTILS_H */
