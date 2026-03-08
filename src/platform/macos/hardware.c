@@ -531,7 +531,7 @@ void hw_get_bat_info(void) {
     snprintf(label_buf, sizeof(label_buf), "Battery (%s)", model);
     snprintf(info_buf, sizeof(info_buf), "%u%% (%s, Health: %s)", pct, status, health);
 
-    ui_print_help(label_buf, info_buf);
+    ui_print_info(label_buf, info_buf);
 
     CFRelease(list);
     CFRelease(info);
