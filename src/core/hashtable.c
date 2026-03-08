@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <sys/types.h>
+
 #include "hashtable.h"
 
 /**
@@ -35,6 +37,15 @@ static size_t next_pow2(size_t n);
  */
 static bool strset_resize(string_set_t *set, size_t new_capacity);
 
+/**
+ * Resolves the appropriate index for a key within the hash table using linear probing.
+ *
+ * @param set Pointer to the string set.
+ * @param key The null-terminated string key to find.
+ * @return The index containing the key, or the first available empty (NULL) index.
+ */
+static size_t strset_find_index(string_set_t *set, const char *key);
+
 string_set_t *strset_create(size_t capacity) {
     string_set_t *set = malloc(sizeof(string_set_t));
     if (!set) return NULL;
@@ -60,16 +71,8 @@ bool strset_add(string_set_t *set, const char *key) {
         }
     }
 
-    uint64_t hash = hash_key(key);
-    size_t index = hash & (set->capacity - 1);
-
-    while (set->entries[index].key != NULL) {
-        if (strcmp(set->entries[index].key, key) == 0) {
-            return false;
-        }
-
-        index = (index + 1) & (set->capacity - 1);
-    }
+    size_t index = strset_find_index(set, key);
+    if (set->entries[index].key != NULL) return false;
 
     char *copy = strdup(key);
     if (!copy) return false;
@@ -83,18 +86,9 @@ bool strset_add(string_set_t *set, const char *key) {
 bool strset_contains(string_set_t *set, const char *key) {
     if (!set || !key) return false;
 
-    uint64_t hash = hash_key(key);
-    size_t index = hash & (set->capacity - 1);
+    size_t index = strset_find_index(set, key);
 
-    while (set->entries[index].key != NULL) {
-        if (strcmp(set->entries[index].key, key) == 0) {
-            return true;
-        }
-
-        index = (index + 1) & (set->capacity - 1);
-    }
-
-    return false;
+    return set->entries[index].key != NULL;
 }
 
 size_t strset_get_count(const string_set_t *set) {
@@ -155,4 +149,19 @@ static bool strset_resize(string_set_t *set, size_t new_capacity) {
     set->capacity = new_capacity;
 
     return true;
+}
+
+static size_t strset_find_index(string_set_t *set, const char *key) {
+    uint64_t hash = hash_key(key);
+    size_t index = hash & (set->capacity - 1);
+
+    while (set->entries[index].key != NULL) {
+        if (strcmp(set->entries[index].key, key) == 0) {
+            return index;
+        }
+
+        index = (index + 1) & (set->capacity - 1);
+    }
+
+    return index;
 }
