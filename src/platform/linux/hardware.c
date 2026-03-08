@@ -90,6 +90,13 @@ typedef struct {
     char model[LINE_BUFFER];
 } gpu_data_t;
 
+/* Internal structure to store parsed battery metrics. */
+typedef struct {
+    char model[SMALL_BUFFER];
+    char capacity[TINY_BUFFER];
+    char status[MINI_BUFFER];
+} bat_data_t;
+
 /**
  * Recursively parses the sysfs directory to construct the CPU topology.
  *
@@ -211,6 +218,14 @@ static void free_gpu_list(gpu_node_t *head);
  * @return A linked list of battery nodes, or NULL on failure.
  */
 static hw_node_t *hw_get_all_batteries(void);
+
+/**
+ * Reads battery metrics (model, capacity, status) from sysfs for a specific node.
+ * 
+ * @param bat_node_name The directory name of the battery (e.g., "BAT0").
+ * @param out_data Pointer to the battery data structure to populate.
+ */
+static void hw_battery_read_metrics(const char *bat_node_name, bat_data_t *out_data);
 
 /**
  * Appends a new generic hardware element to a list.
@@ -642,6 +657,27 @@ static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size,
     if (pci_forest) destroy_forest(pci_forest);
 }
 
+static gpu_node_t *add_gpu(gpu_node_t *head, const uint16_t impl_id, const uint16_t part_id) {
+    gpu_node_t *new_node = malloc(sizeof(gpu_node_t));
+    if (!new_node) return head;
+
+    memset(new_node, 0, sizeof(gpu_node_t));
+
+    new_node->impl_id = impl_id;
+    new_node->part_id = part_id;
+    new_node->next = head;
+
+    return new_node;
+}
+
+static void free_gpu_list(gpu_node_t *head) {
+    while (head) {
+        gpu_node_t *temp = head;
+        head = head->next;
+        free(temp);
+    }
+}
+
 void hw_get_bat_info(void) {
     hw_node_t *list = hw_get_all_batteries();
     if (list == NULL) return;
@@ -651,30 +687,17 @@ void hw_get_bat_info(void) {
     memcpy(full_path, SYS_BATTERY_DIR, base_len);
 
     for (hw_node_t *curr = list; curr != NULL; curr = curr->next) {
-        char attr_buf[SMALL_BUFFER] = {0};
+        bat_data_t bat_info = {0};
+        hw_battery_read_metrics(curr->name, &bat_info);
+
         char label_buf[MEDIUM_BUFFER] = {0};
+        snprintf(label_buf, sizeof(label_buf),
+                 "Battery (%s)", (bat_info.model[0] == '\0') ? "Unknown" : bat_info.model);
+
         char info_buf[MEDIUM_BUFFER] = {0};
-
-        size_t name_len = strlen(curr->name);
-        memcpy(full_path + base_len, curr->name, name_len);
-
-        size_t file_offset = base_len + name_len;
-        full_path[file_offset] = '\0';
-
-        memcpy(full_path + file_offset, "/model_name", sizeof("/model_name"));
-        util_read_line(full_path, attr_buf, sizeof(attr_buf));
-        snprintf(label_buf, sizeof(label_buf), "Battery (%s)", attr_buf[0] ? attr_buf : "Unknown");
-
-        memcpy(full_path + file_offset, "/capacity", sizeof("/capacity"));
-        util_read_line(full_path, attr_buf, sizeof(attr_buf));
-        snprintf(info_buf, sizeof(info_buf), "%s%%", attr_buf);
-
-        memcpy(full_path + file_offset, "/status", sizeof("/status"));
-        util_read_line(full_path, attr_buf, sizeof(attr_buf));
-
-        size_t current_len = strlen(info_buf);
-        snprintf(info_buf + current_len, sizeof(info_buf) - current_len,
-                 " (%s)", attr_buf[0] ? attr_buf : "Unknown");
+        snprintf(info_buf, sizeof(info_buf),
+                 "%s%% (%s)", bat_info.capacity,
+                 (bat_info.status[0] == '\0') ? "Unknown" : bat_info.status);
 
         ui_print_info(label_buf, info_buf);
     }
@@ -711,25 +734,17 @@ static hw_node_t *hw_get_all_batteries(void) {
     return head;
 }
 
-static gpu_node_t *add_gpu(gpu_node_t *head, const uint16_t impl_id, const uint16_t part_id) {
-    gpu_node_t *new_node = malloc(sizeof(gpu_node_t));
-    if (!new_node) return head;
+static void hw_battery_read_metrics(const char *bat_node_name, bat_data_t *out_data) {
+    char full_path[PATH_BUFFER] = {0};
 
-    memset(new_node, 0, sizeof(gpu_node_t));
+    snprintf(full_path, sizeof(full_path), SYS_BATTERY_DIR "%s/model_name", bat_node_name);
+    util_read_line(full_path, out_data->model, sizeof(out_data->model));
 
-    new_node->impl_id = impl_id;
-    new_node->part_id = part_id;
-    new_node->next = head;
+    snprintf(full_path, sizeof(full_path), SYS_BATTERY_DIR "%s/capacity", bat_node_name);
+    util_read_line(full_path, out_data->capacity, sizeof(out_data->capacity));
 
-    return new_node;
-}
-
-static void free_gpu_list(gpu_node_t *head) {
-    while (head) {
-        gpu_node_t *temp = head;
-        head = head->next;
-        free(temp);
-    }
+    snprintf(full_path, sizeof(full_path), SYS_BATTERY_DIR "%s/status", bat_node_name);
+    util_read_line(full_path, out_data->status, sizeof(out_data->status));
 }
 
 static hw_node_t *add_element(hw_node_t *head, const char *name) {
