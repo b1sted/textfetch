@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include <ctype.h>
 #include <errno.h>
@@ -227,6 +228,16 @@ static void free_gpu_list(gpu_node_t *head);
  * @return A linked list of battery nodes, or NULL on failure.
  */
 static hw_node_t *hw_get_all_batteries(void);
+
+/**
+ * Validates a power supply sysfs node to confirm it is a real battery.
+ * Filters out AC adapters (non-Battery type) and peripheral devices
+ * (scope == Device) such as Bluetooth mice or headphones.
+ *
+ * @param bat_node_name The name of the power supply directory in sysfs.
+ * @return true if the node is a valid system battery, false otherwise.
+ */
+static bool hw_is_valid_battery(const char *bat_node_name);
 
 /**
  * Reads battery metrics (model, capacity, status) from sysfs for a specific node.
@@ -730,23 +741,34 @@ static hw_node_t *hw_get_all_batteries(void) {
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_name[0] == '.') continue;
 
-        char type_path[PATH_MAX];
-        snprintf(type_path, sizeof(type_path), "%s%s/type", SYS_BATTERY_DIR, entry->d_name);
+        if (!hw_is_valid_battery(entry->d_name)) continue;
 
-        FILE *fp = fopen(type_path, "r");
-        if (!fp) continue;
-
-        char type[SMALL_BUFFER];
-        if (fgets(type, sizeof(type), fp) && strncmp(type, "Battery", 7) == 0) {
-            head = add_element(head, entry->d_name);
-        }
-
-        fclose(fp);
+        head = add_element(head, entry->d_name);
     }
 
     closedir(dir);
 
     return head;
+}
+
+static bool hw_is_valid_battery(const char *bat_node_name) {
+    char sysfs_path[PATH_BUFFER] = {0};
+    snprintf(sysfs_path, sizeof(sysfs_path), SYS_BATTERY_DIR "%s/type", bat_node_name);
+
+    char type[TINY_BUFFER] = {0};
+    if (util_read_line(sysfs_path, type, sizeof(type)) &&
+        strncasecmp(type, "Battery", 7) != 0) {
+        return false;
+    }
+
+    char scope[TINY_BUFFER] = {0};
+    snprintf(sysfs_path, sizeof(sysfs_path), SYS_BATTERY_DIR "%s/scope", bat_node_name);
+    if (util_read_line(sysfs_path, scope, sizeof(scope)) &&
+        strncasecmp(scope, "Device", 6) != 0) {
+        return false;
+    }
+
+    return true;
 }
 
 static void hw_battery_read_metrics(const char *bat_node_name, bat_data_t *out_data) {
