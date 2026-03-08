@@ -14,7 +14,6 @@
 
 #include "bitset.h"
 #include "defs.h"
-#include "dictionary.h"
 #include "sys_utils.h"
 
 #include "pal/system_os.h"
