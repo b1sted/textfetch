@@ -282,7 +282,8 @@ void hw_get_cpu_info(void) {
                                                     .capacity = MAX_CPU_CORES}, 8);
 
         snprintf(cpu_formatted[i], sizeof(cpu_formatted[i]),
-                 "%s (%" PRIu32 ") @ %.03f GHz", cpus[i].model, cores, cpus[i].frequency);
+                 "%.*s (%" PRIu32 ") @ %.03f GHz",
+                 (int)sizeof(cpus[i].model), cpus[i].model, cores, cpus[i].frequency);
 
         cpu_strings[i] = cpu_formatted[i];
     }
