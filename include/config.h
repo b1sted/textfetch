@@ -36,25 +36,37 @@ extern const char version_string[];
  * Checks if force kibibytes (KiB) output is enabled.
  * @return true if the -k or --kibibytes flag was provided.
  */
-bool cfg_is_kib(void);
+bool cfg_get_kib(void);
+
+/* Forces the application to use Kibibytes (KiB) for formatting memory sizes. */
+void cfg_set_kib(void);
 
 /**
  * Checks if force mebibytes (MiB) output is enabled.
  * @return true if the -m or --mebibytes flag was provided.
  */
-bool cfg_is_mib(void);
+bool cfg_get_mib(void);
+
+/* Forces the application to use Mebibytes (MiB) for formatting memory sizes. */
+void cfg_set_mib(void);
 
 /**
  * Checks if force gibibytes (GiB) output is enabled.
  * @return true if the -g or --gibibytes flag was provided.
  */
-bool cfg_is_gib(void);
+bool cfg_get_gib(void);
+
+/* Forces the application to use Gibibytes (GiB) for formatting memory sizes. */
+void cfg_set_gib(void);
 
 /**
  * Checks if verbose logging is enabled.
  * @return true if the -v or --verbose flag was provided.
  */
-bool cfg_is_verbose(void);
+bool cfg_get_verbose(void);
+
+/* Enables verbose output, causing the application to print debug information. */
+void cfg_set_verbose(void);
 
 /**
  * Checks if color output is enabled.
@@ -66,15 +78,13 @@ bool cfg_is_verbose(void);
  *
  * @return true if colors should be used for output.
  */
-bool cfg_is_color(void);
+bool cfg_get_color(void);
 
 /**
- * Parses command line arguments and initializes global settings.
- * Handles immediate exit flags like --help and --version.
+ * Explicitly sets the color output state of the application.
  *
- * @param argc Argument count from main.
- * @param argv Argument vector from main.
+ * @param state true to enable ANSI color formatting, false to disable.
  */
-void cfg_init(int argc, char *argv[]);
+void cfg_set_color(bool state);
 
 #endif /* CONFIG_H */

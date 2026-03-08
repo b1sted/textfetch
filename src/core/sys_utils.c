@@ -250,15 +250,15 @@ void util_format_size(double total_size, double used_size, char *out_buf,
     int8_t forced_unit = -1;
     uint8_t precision = 2;
 
-    if (cfg_is_kib()) {
+    if (cfg_get_kib()) {
         forced_unit = 1;
         precision = 0;
     }
-    if (cfg_is_mib()) {
+    else if (cfg_get_mib()) {
         forced_unit = 2;
         precision = 0;
     }
-    if (cfg_is_gib()) {
+    else if (cfg_get_gib()) {
         forced_unit = 3;
         precision = 2;
     }

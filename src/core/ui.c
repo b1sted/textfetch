@@ -69,5 +69,5 @@ void ui_print_version(const char *app_version) {
 }
 
 static const char *get_color(const char *ansi_code) {
-    return cfg_is_color() ? ansi_code : "";
+    return cfg_get_color() ? ansi_code : "";
 }

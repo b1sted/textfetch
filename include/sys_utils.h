@@ -17,7 +17,7 @@
  */
 #define V_PRINTF(fmt, ...)                       \
     do {                                         \
-        if (cfg_is_verbose())                    \
+        if (cfg_get_verbose())                   \
             fprintf(stderr, fmt, ##__VA_ARGS__); \
     } while (0)
 
