@@ -38,6 +38,16 @@
     1125899906842624.0 /* PiB */ \
 }
 
+/**
+ * Reads a single line from a file and parses it as a base-10 long integer.
+ * Acts as a generic backbone for typed unsigned/signed integer readers.
+ *
+ * @param path The absolute path to the file to read.
+ * @param out_val Pointer to the long variable to store the parsed value.
+ * @return true if the file was read and a value was parsed, false otherwise.
+ */
+static bool util_parse_long(const char *path, long *out_val);
+
 bool util_read_line(const char *path, char *out_buf, const size_t buf_size) {
     if (!out_buf || buf_size == 0) return false;
     out_buf[0] = '\0';
@@ -61,60 +71,68 @@ bool util_read_line(const char *path, char *out_buf, const size_t buf_size) {
 }
 
 bool util_read_uint8(const char *path, uint8_t *value) {
-    char buf[TINY_BUFFER] = {0};
-    util_read_line(path, buf, sizeof(buf));
+    long raw_value = 0;
+    if (!util_parse_long(path, &raw_value)) return false;
 
-    if (buf[0] == '\0') return false;
+    if (raw_value < 0 || raw_value > UINT8_MAX) return false;
 
-    *value = (uint8_t)strtoul(buf, NULL, 10);
+    *value = (uint8_t)raw_value;
     return true;
 }
 
 bool util_read_uint16(const char *path, uint16_t *value) {
-    char buf[TINY_BUFFER] = {0};
-    util_read_line(path, buf, sizeof(buf));
+    long raw_value = 0;
+    if (!util_parse_long(path, &raw_value)) return false;
 
-    if (buf[0] == '\0') return false;
+    if (raw_value < 0 || raw_value > UINT16_MAX) return false;
 
-    *value = (uint16_t)strtoul(buf, NULL, 10);
+    *value = (uint16_t)raw_value;
     return true;
 }
 
 bool util_read_uint32(const char *path, uint32_t *value) {
-    char buf[TINY_BUFFER] = {0};
-    util_read_line(path, buf, sizeof(buf));
+    long raw_value = 0;
+    if (!util_parse_long(path, &raw_value)) return false;
 
-    if (buf[0] == '\0') return false;
+    if (raw_value < 0 || raw_value > UINT32_MAX) return false;
 
-    *value = (uint32_t)strtoul(buf, NULL, 10);
+    *value = (uint32_t)raw_value;
     return true;
 }
 
 bool util_read_int16(const char *path, int16_t *value) {
-    char buf[TINY_BUFFER] = {0};
-    util_read_line(path, buf, sizeof(buf));
+    long raw_value = 0;
+    if (!util_parse_long(path, &raw_value)) return false;
 
-    if (buf[0] == '\0') return false;
+    if (raw_value < INT16_MIN || raw_value > INT16_MAX) return false;
 
-    *value = (int16_t)strtoul(buf, NULL, 10);
+    *value = (int16_t)raw_value;
     return true;
 }
 
 bool util_read_int32(const char *path, int32_t *value) {
+    long raw_value = 0;
+    if (!util_parse_long(path, &raw_value)) return false;
+
+    if (raw_value < INT32_MIN || raw_value > INT32_MAX) return false;
+
+    *value = (int32_t)raw_value;
+    return true;
+}
+
+static bool util_parse_long(const char *path, long *out_val) {
     char buf[TINY_BUFFER] = {0};
     util_read_line(path, buf, sizeof(buf));
 
     if (buf[0] == '\0') return false;
 
-    *value = (int32_t)strtoul(buf, NULL, 10);
+    *out_val = strtoul(buf, NULL, 10);
     return true;
 }
 
 bool util_read_hex(const char *path, uint32_t *value) {
     char buf[TINY_BUFFER] = {0};
-    if (!util_read_line(path, buf, sizeof(buf)) || buf[0] == '\0') {
-        return false;
-    }
+    if (!util_read_line(path, buf, sizeof(buf)) || buf[0] == '\0') return false;
 
     char *endptr;
     errno = 0;
