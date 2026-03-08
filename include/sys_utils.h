@@ -81,6 +81,15 @@ bool util_read_uint32(const char *path, uint32_t *value);
 bool util_read_int16(const char *path, int16_t *value);
 
 /**
+ * Reads a 32-bit signed integer from a file.
+ *
+ * @param path The absolute path to the file.
+ * @param value Pointer to store the result.
+ * @return true if successful, false otherwise.
+ */
+bool util_read_int32(const char *path, int32_t *value);
+
+/**
  * Reads a 16-bit unsigned integer in hexadecimal format from a file.
  *
  * @param path The absolute path to the file.

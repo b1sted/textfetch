@@ -100,6 +100,16 @@ bool util_read_int16(const char *path, int16_t *value) {
     return true;
 }
 
+bool util_read_int32(const char *path, int32_t *value) {
+    char buf[TINY_BUFFER] = {0};
+    util_read_line(path, buf, sizeof(buf));
+
+    if (buf[0] == '\0') return false;
+
+    *value = (int32_t)strtoul(buf, NULL, 10);
+    return true;
+}
+
 bool util_read_hex(const char *path, uint32_t *value) {
     char buf[TINY_BUFFER] = {0};
     if (!util_read_line(path, buf, sizeof(buf)) || buf[0] == '\0') {

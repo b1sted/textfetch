@@ -95,7 +95,16 @@ typedef struct {
     char model[SMALL_BUFFER];
     char capacity[TINY_BUFFER];
     char status[MINI_BUFFER];
+    uint8_t health;
 } bat_data_t;
+
+/* Bitmask flags representing the calculated health status of a battery. */
+typedef enum {
+    HEALTH_GOOD    = 1 << 0,
+    HEALTH_FAIR    = 1 << 1,
+    HEALTH_POOR    = 1 << 2,
+    HEALTH_SERVICE = 1 << 3
+} battery_health_flags;
 
 /**
  * Recursively parses the sysfs directory to construct the CPU topology.
@@ -694,10 +703,16 @@ void hw_get_bat_info(void) {
         snprintf(label_buf, sizeof(label_buf),
                  "Battery (%s)", (bat_info.model[0] == '\0') ? "Unknown" : bat_info.model);
 
+        const char *health = "";
+        if (bat_info.health & HEALTH_GOOD)      health = "Good";
+        else if (bat_info.health & HEALTH_FAIR) health = "Fair";
+        else if (bat_info.health & HEALTH_POOR) health = "Poor";
+        else                                    health = "Service Battery";
+
         char info_buf[MEDIUM_BUFFER] = {0};
         snprintf(info_buf, sizeof(info_buf),
-                 "%s%% (%s)", bat_info.capacity,
-                 (bat_info.status[0] == '\0') ? "Unknown" : bat_info.status);
+                 "%s%% (%s, Health: %s)", bat_info.capacity,
+                 (bat_info.status[0] == '\0') ? "Unknown" : bat_info.status, health);
 
         ui_print_info(label_buf, info_buf);
     }
@@ -745,6 +760,29 @@ static void hw_battery_read_metrics(const char *bat_node_name, bat_data_t *out_d
 
     snprintf(full_path, sizeof(full_path), SYS_BATTERY_DIR "%s/status", bat_node_name);
     util_read_line(full_path, out_data->status, sizeof(out_data->status));
+
+    int32_t energy_full_design = 0;
+    snprintf(full_path, sizeof(full_path),
+             SYS_BATTERY_DIR "%s/energy_full_design", bat_node_name);
+    if (!util_read_int32(full_path, &energy_full_design)) {
+        snprintf(full_path, sizeof(full_path),
+                 SYS_BATTERY_DIR "%s/charge_full_design", bat_node_name);
+        util_read_int32(full_path, &energy_full_design);
+    }
+
+    int32_t energy_full = 0;
+    snprintf(full_path, sizeof(full_path), SYS_BATTERY_DIR "%s/energy_full", bat_node_name);
+    if (!util_read_int32(full_path, &energy_full)) {
+        snprintf(full_path, sizeof(full_path),
+                 SYS_BATTERY_DIR "%s/charge_full", bat_node_name);
+        util_read_int32(full_path, &energy_full);
+    }
+
+    int8_t health = ((double)energy_full / energy_full_design) * 100;
+    if (health >= 80)      out_data->health |= HEALTH_GOOD;
+    else if (health >= 60) out_data->health |= HEALTH_FAIR;
+    else if (health >= 0)  out_data->health |= HEALTH_POOR;
+    else                   out_data->health |= HEALTH_SERVICE;
 }
 
 static hw_node_t *add_element(hw_node_t *head, const char *name) {
