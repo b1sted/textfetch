@@ -19,12 +19,6 @@
 
 #include "pal/hardware_os.h"
 
-/* Path for reading virtual memory usage. */
-#define MEMINFO_PATH        "/proc/meminfo"
-
-/* Path for reading currently mounted filesystems. */
-#define MOUNTS_PATH         "/proc/mounts"
-
 /* Temporary or pseudo-filesystems to ignore when summarizing disk space. */
 #define IGNORE_MOUNT_POINTS { \
     "/.",                     \
@@ -36,6 +30,21 @@
     "/bootstrap-apex",        \
     NULL                      \
 }
+
+/* Path for reading virtual memory usage. */
+#define MEMINFO_PATH "/proc/meminfo"
+
+/* Path for reading currently mounted filesystems. */
+#define MOUNTS_PATH  "/proc/mounts"
+
+/**
+ * Evaluates a mount entry to determine if it should be processed.
+ * Filters out non-physical devices, loopbacks, FUSE/EROFS, and specific ignore paths.
+ *
+ * @param ent Pointer to the mount entry structure from getmntent.
+ * @return true if the mount point is a valid physical drive, false if it should be skipped.
+ */
+static bool is_valid_mount(const struct mntent *ent);
 
 /**
  * Formats and prints disk usage information for a specific mount point.
@@ -101,8 +110,6 @@ void hw_get_drives_info(void) {
     struct statvfs fs;
     memset(&fs, 0, sizeof(struct statvfs));
 
-    const char *ignore_mount_points[] = IGNORE_MOUNT_POINTS;
-
     FILE *mounts_file = fopen(MOUNTS_PATH, "r");
     if (!mounts_file) {
         V_PRINTF("[ERROR] Failed to open %s: %s\n", MOUNTS_PATH, strerror(errno));
@@ -112,21 +119,7 @@ void hw_get_drives_info(void) {
     string_set_t *outputted_partitions = strset_create(INITIAL_CAPACITY);
 
     while ((mnt_entry = getmntent(mounts_file)) != NULL) {
-        if (strncmp(mnt_entry->mnt_fsname, "/dev/", 5) != 0) continue;
-        if (strncmp(mnt_entry->mnt_fsname, "/dev/loop", 9) == 0) continue;
-
-        if (strcmp(mnt_entry->mnt_type, "fuse") == 0 ||
-            strcmp(mnt_entry->mnt_type, "erofs") == 0) continue;
-
-        bool is_ignore = false;
-        for (int i = 0; ignore_mount_points[i] != NULL; i++) {
-            if (strncmp(mnt_entry->mnt_dir, ignore_mount_points[i],
-                        strlen(ignore_mount_points[i])) == 0) {
-                is_ignore = true;
-            }
-        }
-
-        if (is_ignore) continue;
+        if (!is_valid_mount(mnt_entry)) continue;
 
         if (statvfs(mnt_entry->mnt_dir, &fs) != 0) {
             V_PRINTF("[ERROR] statvfs failed for %s: %s\n",
@@ -144,6 +137,28 @@ void hw_get_drives_info(void) {
 
     strset_destroy(outputted_partitions);
     fclose(mounts_file);
+}
+
+static bool is_valid_mount(const struct mntent *ent) {
+    if (strncmp(ent->mnt_fsname, "/dev/", 5) != 0) return false;
+    if (strncmp(ent->mnt_fsname, "/dev/loop", 9) == 0) return false;
+
+    if (strcmp(ent->mnt_type, "fuse") == 0 ||
+        strcmp(ent->mnt_type, "erofs") == 0) return false;
+
+    const char *ignore_mount_points[] = IGNORE_MOUNT_POINTS;
+    bool is_ignore = false;
+
+    for (int i = 0; ignore_mount_points[i] != NULL; i++) {
+        if (strncmp(ent->mnt_dir, ignore_mount_points[i],
+                    strlen(ignore_mount_points[i])) == 0) {
+            is_ignore = true;
+        }
+    }
+
+    if (is_ignore) return false;
+
+    return true;
 }
 
 static void hw_print_disk(const char *mnt, const struct statvfs *fs,
