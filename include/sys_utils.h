@@ -35,6 +35,26 @@ typedef enum {
 } data_unit_t;
 
 /**
+ * Searches for any string from a null-terminated array within a target string.
+ *
+ * @param str The target string to search within.
+ * @param array A NULL-terminated array of strings to search for.
+ * @return A pointer to the first occurrence of a matched substring, or NULL if not found.
+ */
+char *util_string_in_array(const char *str, const char **array);
+
+/**
+ * Looks up a string key in a 2D dictionary array and returns its mapped value.
+ *
+ * @param str The key string to look up.
+ * @param dict A 2D array of string pairs {key, value}.
+ * @param dict_size The number of pairs in the dictionary.
+ * @return The mapped value string, or NULL if the key is not found.
+ */
+const char *util_string_lookup(const char *str, const char *dict[][2],
+                               const size_t dict_size);
+
+/**
  * Reads the first line of a file into a buffer.
  *
  * @param path The absolute path to the file.

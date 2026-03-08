@@ -246,13 +246,9 @@ static bool sys_is_portable(void) {
 static bool hw_is_family_garbage(char *family_value) {
     const char *ignore_product_family[] = IGNORE_SYS_PRODUCT_FAMILY;
 
-    for (int i = 0; ignore_product_family[i] != NULL; i++) {
-        if (strcasecmp(family_value, ignore_product_family[i]) == 0) {
-            return true;
-        }
-    }
+    if (!util_string_in_array(family_value, ignore_product_family)) return false;
 
-    return false;
+    return true;
 }
 
 static void hw_sanitize_vendor_name(char *vendor_name, const size_t vendor_size) {
@@ -261,37 +257,23 @@ static void hw_sanitize_vendor_name(char *vendor_name, const size_t vendor_size)
     const char *vendor_pairs[][2] = LONGEST_VENDOR_NAMES;
     uint8_t vendor_pairs_count = sizeof(vendor_pairs) / sizeof(vendor_pairs[0]);
 
-    const char *short_vendor_name = NULL;
-    for (uint8_t i = 0; i < vendor_pairs_count; i++) {
-        if (strcmp(vendor_name, vendor_pairs[i][0]) == 0) {
-            short_vendor_name = vendor_pairs[i][1];
-            break;
-        }
-    }
+    const char *short_vendor_name = util_string_lookup(vendor_name, vendor_pairs,
+                                                       vendor_pairs_count);
 
     if (short_vendor_name != NULL) {
         snprintf(vendor_name, vendor_size, "%s", short_vendor_name);
     }
         
     const char *vendor_garbage[] = GARBAGE_IN_VENDOR_NAME;
-    for (uint8_t i = 0; vendor_garbage[i] != NULL; i++) {
-        char *garbage_pos = strstr(vendor_name, vendor_garbage[i]);
-        if (garbage_pos) {
-            if (garbage_pos > vendor_name) garbage_pos--;
-            *garbage_pos = '\0';
-            break;
-        }
+    char *garbage_pos = util_string_in_array(vendor_name, vendor_garbage);
+    if (garbage_pos) {
+        if (garbage_pos > vendor_name) garbage_pos--;
+        *garbage_pos = '\0';
     }
 
     const char *allcaps_vendor[] = ALLCAPS_VENDOR_NAMES;
 
-    bool is_allcaps = false;
-    for (uint8_t i = 0; allcaps_vendor[i] != NULL; i++) {
-        if (strcmp(vendor_name, allcaps_vendor[i]) == 0) {
-            is_allcaps = true;
-            break;
-        }
-    }
+    bool is_allcaps = util_string_in_array(vendor_name, allcaps_vendor);
 
     for (uint8_t i = 1; i < strlen(vendor_name); i++) {
         unsigned char ch = (unsigned char)vendor_name[i];

@@ -48,6 +48,30 @@
  */
 static bool util_parse_long(const char *path, long *out_val);
 
+char *util_string_in_array(const char *str, const char **array) {
+    if (!str || !array) return NULL;
+
+    for (uint8_t i = 0; array[i] != NULL; i++) {
+        char *ptr = strstr(str, array[i]);
+        if (ptr) return ptr;
+    }
+    
+    return NULL;
+}
+
+const char *util_string_lookup(const char *str, const char *dict[][2],
+                               const size_t dict_size) {
+    if (!str || !dict || dict_size == 0) return NULL;
+
+    for (size_t i = 0; i < dict_size; i++) {
+        if (strcmp(str, dict[i][0]) == 0) {
+            return dict[i][1];
+        }
+    }
+
+    return NULL;
+}
+
 bool util_read_line(const char *path, char *out_buf, const size_t buf_size) {
     if (!out_buf || buf_size == 0) return false;
     out_buf[0] = '\0';
