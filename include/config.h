@@ -21,7 +21,7 @@
 #endif
 #endif
 
-#define APP_VERSION "1.0-beta"
+#define APP_VERSION "1.0"
 
 #ifdef __APPLE__
 #define VERSION_SECTION "__TEXT,__app_version"
