@@ -169,8 +169,27 @@ jobs:
           name: textfetch-macos-arm64
           path: bin/textfetch
 
+  build-android-termux:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build Textfetch Binary in Termux
+        run: |
+          docker run --rm --security-opt seccomp:unconfined -v ${{ github.workspace }}:/workspace termux/termux-docker:aarch64 \
+            bash -c "apt update -yq && \
+                     apt install -yq clang make mesa-dev && \
+                     cd /workspace && \
+                     make"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: textfetch-android-termux-arm64
+          path: bin/textfetch
+
   release:
-    needs: [build-linux-amd64, build-linux-arm64, build-linux-luckfox, build-macos-intel, build-macos-arm64]
+    needs: [build-linux-amd64, build-linux-arm64, build-linux-luckfox, build-macos-intel, build-macos-arm64, build-android-termux]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -203,6 +222,9 @@ jobs:
           mkdir -p temp_intel_modern
           cp artifacts/textfetch-macos-intel/textfetch-modern temp_intel_modern/textfetch
           tar -C temp_intel_modern -czvf release_dist/textfetch-macos-intel-modern.tar.gz textfetch
+
+          # 7. Android Termux (ARM64)
+          tar -C artifacts/textfetch-android-termux-arm64 -czvf release_dist/textfetch-android-termux-arm64.tar.gz textfetch
 
       - name: Create Release
         uses: softprops/action-gh-release@v2.6.1
