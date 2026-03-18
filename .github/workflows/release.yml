@@ -1,4 +1,4 @@
-name: Build and Release
+name: Build, Test and Release
 
 on:
   push:
@@ -9,21 +9,227 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-linux-amd64:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Compile
-        run: make all
+      - name: Build Textfetch Binary
+        run: make
 
-      - name: Rename binary
-        run: mv bin/textfetch bin/textfetch-linux-amd64
+      - name: Test Execution
+        run: ./bin/textfetch -v
 
-      - name: Release
-        uses: softprops/action-gh-release@v2
+      - name: Profile Execution Time
+        run: \time -v bin/textfetch
+
+      - name: Check for Memory Leaks
+        run: |
+          make leaks
+          ./bin/textfetch-leaks
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v6
         with:
-          files: bin/textfetch-linux-amd64
+          name: textfetch-linux-amd64
+          path: bin/textfetch
+
+  build-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build Textfetch Binary
+        run: make
+
+      - name: Test Execution
+        run: ./bin/textfetch -v
+
+      - name: Profile Execution Time
+        run: \time -v bin/textfetch
+
+      - name: Check for Memory Leaks
+        run: |
+          make leaks
+          ./bin/textfetch-leaks
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: textfetch-linux-arm64
+          path: bin/textfetch
+
+  build-linux-luckfox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download SDK
+        uses: actions/checkout@v6
+        with:
+          repository: LuckfoxTECH/luckfox-pico
+          path: SDKs
+          sparse-checkout: |
+            tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf
+          sparse-checkout-cone-mode: false
+
+      - name: Build Textfetch Binary
+        run: |
+          export TOOLCHAIN=$GITHUB_WORKSPACE/SDKs/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin
+          make CC=$TOOLCHAIN/arm-rockchip830-linux-uclibcgnueabihf-gcc
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: textfetch-linux-luckfox
+          path: bin/textfetch
+
+  build-macos-intel:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download SDK
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/SDKs
+          curl -fsSL https://github.com/phracker/MacOSX-SDKs/releases/download/11.3/MacOSX10.11.sdk.tar.xz \
+          | tar -xJ -C $GITHUB_WORKSPACE/SDKs
+
+      - name: Build Textfetch Binary
+        run: |
+          SDKROOT=$GITHUB_WORKSPACE/SDKs/MacOSX10.11.sdk
+          make CFLAGS="-target x86_64-apple-macos10.7 -isysroot $SDKROOT" \
+               LDFLAGS="-target x86_64-apple-macos10.7 -isysroot $SDKROOT -Wl,-ld_classic -Wl,-no_new_main" \
+               TARGET="bin/textfetch-legacy"
+          
+          rm -rf obj
+          
+          make CFLAGS="-target x86_64-apple-macos10.9 -isysroot $SDKROOT" \
+               LDFLAGS="-target x86_64-apple-macos10.9 -isysroot $SDKROOT" \
+               TARGET="bin/textfetch-modern"
+
+      - name: Test Execution
+        run: |
+          ./bin/textfetch-legacy -v
+          ./bin/textfetch-modern -v
+
+      - name: Profile Execution Time
+        run: |
+          /usr/bin/time -l bin/textfetch-legacy
+          /usr/bin/time -l bin/textfetch-modern
+
+      - name: Check for Memory Leaks
+        run: |
+          SDKROOT=$GITHUB_WORKSPACE/SDKs/MacOSX10.11.sdk
+          make leaks \
+               CFLAGS="-target x86_64-apple-macos10.7 -isysroot $SDKROOT" \
+               LDFLAGS="-target x86_64-apple-macos10.7 -isysroot $SDKROOT -Wl,-ld_classic -Wl,-no_new_main" \
+               TARGET_LEAKS="bin/textfetch-legacy-leaks"
+          
+          rm -rf obj
+          
+          make leaks \
+               CFLAGS="-target x86_64-apple-macos10.9 -isysroot $SDKROOT" \
+               LDFLAGS="-target x86_64-apple-macos10.9 -isysroot $SDKROOT" \
+               TARGET_LEAKS="bin/textfetch-modern-leaks"
+
+          ./bin/textfetch-legacy-leaks
+          ./bin/textfetch-modern-leaks
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: textfetch-macos-intel
+          path: bin/textfetch-*
+
+  build-macos-arm64:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build Textfetch Binary
+        run: |
+          make CFLAGS="-target arm64-apple-macos11" \
+               LDFLAGS="-target arm64-apple-macos11"
+
+      - name: Test Execution
+        run: ./bin/textfetch -v
+
+      - name: Check for Memory Leaks
+        run: |
+          make leaks
+          ./bin/textfetch-leaks
+
+      - name: Profile Execution Time
+        run: /usr/bin/time -l bin/textfetch
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: textfetch-macos-arm64
+          path: bin/textfetch
+
+  build-android-termux:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build Textfetch Binary in Termux
+        run: |
+          docker run --rm --security-opt seccomp:unconfined -v ${{ github.workspace }}:/workspace termux/termux-docker:aarch64 \
+            bash -c "apt update -yq && \
+                     apt install -yq clang make mesa-dev && \
+                     cd /workspace && \
+                     make"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: textfetch-android-termux-arm64
+          path: bin/textfetch
+
+  release:
+    needs: [build-linux-amd64, build-linux-arm64, build-linux-luckfox, build-macos-intel, build-macos-arm64, build-android-termux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Prepare Archives
+        run: |
+          mkdir release_dist
+          
+          # 1. Linux AMD64
+          tar -C artifacts/textfetch-linux-amd64 -czvf release_dist/textfetch-linux-amd64.tar.gz textfetch
+          
+          # 2. Linux ARM64
+          tar -C artifacts/textfetch-linux-arm64 -czvf release_dist/textfetch-linux-arm64.tar.gz textfetch
+          
+          # 3. Linux Luckfox
+          tar -C artifacts/textfetch-linux-luckfox -czvf release_dist/textfetch-linux-luckfox.tar.gz textfetch
+          
+          # 4. macOS ARM64 (Apple Silicon)
+          tar -C artifacts/textfetch-macos-arm64 -czvf release_dist/textfetch-macos-arm64.tar.gz textfetch
+          
+          # 5. macOS Intel - Legacy (10.7+)
+          mkdir -p temp_intel_legacy
+          cp artifacts/textfetch-macos-intel/textfetch-legacy temp_intel_legacy/textfetch
+          tar -C temp_intel_legacy -czvf release_dist/textfetch-macos-intel-legacy.tar.gz textfetch
+          
+          # 6. macOS Intel - Modern (10.9+)
+          mkdir -p temp_intel_modern
+          cp artifacts/textfetch-macos-intel/textfetch-modern temp_intel_modern/textfetch
+          tar -C temp_intel_modern -czvf release_dist/textfetch-macos-intel-modern.tar.gz textfetch
+
+          # 7. Android Termux (ARM64)
+          tar -C artifacts/textfetch-android-termux-arm64 -czvf release_dist/textfetch-android-termux-arm64.tar.gz textfetch
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2.6.1
+        with:
+          files: release_dist/*.tar.gz
           generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
