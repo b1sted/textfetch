@@ -176,11 +176,12 @@ jobs:
 
       - name: Build Textfetch Binary in Termux
         run: |
-          docker run --rm --security-opt seccomp:unconfined -v ${{ github.workspace }}:/workspace termux/termux-docker:aarch64 \
-            bash -c "apt update -yq && \
-                     apt install -yq clang make mesa-dev && \
-                     cd /workspace && \
-                     make"
+          docker run --rm --security-opt seccomp:unconfined --user root \
+          -v ${{ github.workspace }}:/workspace termux/termux-docker:aarch64 \
+          bash -c "apt update -yq && \
+                   apt install -yq clang make mesa-dev && \
+                   cd /workspace && \
+                   make"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v6
