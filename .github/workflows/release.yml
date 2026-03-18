@@ -179,8 +179,9 @@ jobs:
           docker run --name termux-build --security-opt seccomp:unconfined \
           -v ${{ github.workspace }}:/src:ro \
           termux/termux-docker:aarch64 \
-          bash -c "apt update -yq && \
-                   apt upgrade -yq && \
+          bash -c "export DEBIAN_FRONTEND=noninteractive && \
+                   apt update -yq && \
+                   apt upgrade -yq -o Dpkg::Options::='--force-confnew' && \
                    apt install -yq clang make mesa-dev && \
                    cp -r /src /tmp/build && \
                    cd /tmp/build && \
