@@ -180,6 +180,7 @@ jobs:
           -v ${{ github.workspace }}:/src:ro \
           termux/termux-docker:aarch64 \
           bash -c "apt update -yq && \
+                   apt upgrade -yq && \
                    apt install -yq clang make mesa-dev && \
                    cp -r /src /tmp/build && \
                    cd /tmp/build && \
