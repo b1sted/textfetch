@@ -194,8 +194,11 @@ static void hw_get_cpu_model(cpu_info_t *node) {
         snprintf(prefix, sizeof(prefix), "%" PRIu32 " x ", node->packages);
         size_t prefix_len = strlen(prefix);
 
-        memmove(node->model + prefix_len, node->model, strlen(prefix) + 1);
-        memcpy(node->model, prefix, prefix_len);
+        size_t model_len = strlen(node->model);
+        if (model_len + prefix_len < sizeof(node->model)) {
+            memmove(node->model + prefix_len, node->model, model_len + 1);
+            memcpy(node->model, prefix, prefix_len);
+        }
     }
 
     size_t len = strlen(node->model);

@@ -80,9 +80,11 @@ bool util_read_line(const char *path, char *out_buf, const size_t buf_size) {
     if (fd != -1) {
         ssize_t bytes_read = read(fd, out_buf, buf_size - 1);
         if (bytes_read > 0) {
+            out_buf[bytes_read] = '\0';
             out_buf[strcspn(out_buf, "\n")] = '\0';
         } else {
             V_PRINTF("[ERROR] Failed to read %s\n", path);
+            close(fd);
             return false;
         }
 
@@ -208,7 +210,7 @@ void util_format_duplicate_hardware(const char **strings, uint8_t count,
         
         bool already_printed = false;
         for (uint8_t j = 0; j < i; j++) {
-            if (strcmp(strings[i], strings[j]) == 0) {
+            if (strings[j] && strcmp(strings[i], strings[j]) == 0) {
                 already_printed = true;
                 break;
             }
@@ -218,7 +220,7 @@ void util_format_duplicate_hardware(const char **strings, uint8_t count,
 
         uint8_t dup_count = 1;
         for (uint8_t k = i + 1; k < count; k++) {
-            if (strcmp(strings[i], strings[k]) == 0) {
+            if (strings[k] && strcmp(strings[i], strings[k]) == 0) {
                 dup_count++;
             }
         }
@@ -298,6 +300,10 @@ forest *util_parse_ids_file(FILE *fp, size_t capacity) {
     if (!fp || capacity == 0) return NULL;
 
     forest *ids_forest = create_forest(capacity);
+    if (!ids_forest) {
+        fclose(fp);
+        return NULL;
+    }
 
     char line[LINE_BUFFER] = {0};
     node *branch = NULL;

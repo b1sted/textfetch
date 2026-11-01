@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include <ctype.h>
 
@@ -13,11 +14,22 @@
 #include "sys_utils.h"
 
 node *create_node(uint16_t id, char *name) {
+    if (!name) return NULL;
+
     node *new_node = (node *)malloc(sizeof(node));
-    if (!new_node) return NULL;
+    if (!new_node) {
+        V_PRINTF("[ERROR] Unable to allocate memory: %s\n", strerror(errno));
+        return NULL;
+    }
 
     new_node->id = id;
     new_node->name = strdup(name);
+    if (!new_node->name) {
+        V_PRINTF("[ERROR] Unable to allocate memory: %s\n", strerror(errno));
+        free(new_node);
+        return NULL;
+    }
+
     new_node->first_child = NULL;
     new_node->next_sibling = NULL;
 
@@ -26,16 +38,33 @@ node *create_node(uint16_t id, char *name) {
 
 forest *create_forest(int initial_capacity) {
     forest *f = malloc(sizeof(forest));
+    if (!f) {
+        V_PRINTF("[ERROR] Unable to allocate memory: %s\n", strerror(errno));
+        return NULL;
+    }
 
     f->count = 0;
     f->capacity = initial_capacity;
     f->roots = malloc(f->capacity * sizeof(node *));
+    if (!f->roots) {
+        V_PRINTF("[ERROR] Unable to allocate memory: %s\n", strerror(errno));
+        free(f);
+        return NULL;
+    }
 
     return f;
 }
 
 void add_child(node *parent, uint16_t id, char *name) {
+    if (!parent) return;
+
     node *new_node = create_node(id, name);
+    if (!new_node) {
+        V_PRINTF("[ERROR] Failed to add child node (id: %u, name: %s)\n",
+                 (unsigned)id, name);
+        return;
+    }
+
     if (parent->first_child == NULL) {
         parent->first_child = new_node;
     } else {
@@ -50,12 +79,16 @@ void add_child(node *parent, uint16_t id, char *name) {
 }
 
 void add_tree_to_forest(forest *f, node *root) {
+    if (!f || !root) {
+        return;
+    }
+
     if (f->count >= f->capacity) {
         f->capacity *= 2;
 
         node **new_roots = realloc(f->roots, f->capacity * sizeof(node *));
         if (!new_roots) {
-            V_PRINTF("[ERROR] add_tree_to_forest: realloc failed\n");
+            V_PRINTF("[ERROR] Unable to allocate memory: %s\n", strerror(errno));
             return;
         }
 
@@ -78,6 +111,10 @@ node *find_in_tree(node *root, uint16_t target_id) {
 }
 
 node *find_in_forest(forest *f, uint16_t target_id) {
+    if (!f) {
+        return NULL;
+    }
+
     for (int i = 0; i < f->count; i++) {
         if (f->roots[i]->id == target_id) return f->roots[i];
     }
@@ -88,6 +125,10 @@ node *find_in_forest(forest *f, uint16_t target_id) {
 }
 
 void free_tree(node *root) {
+    if (!root) {
+        return;
+    }
+
     while (root != NULL) {
         node *next = root->next_sibling;
         if (root->first_child) {
@@ -102,6 +143,10 @@ void free_tree(node *root) {
 }
 
 void destroy_forest(forest *f) {
+    if (!f) {
+        return;
+    }
+
     for (int i = 0; i < f->count; i++) {
         free_tree(f->roots[i]);
     }

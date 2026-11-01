@@ -104,7 +104,7 @@ typedef enum {
     HEALTH_GOOD    = 1 << 0,
     HEALTH_FAIR    = 1 << 1,
     HEALTH_POOR    = 1 << 2,
-    HEALTH_SERVICE = 1 << 3
+    HEALTH_UNKNOWN = 1 << 3
 } battery_health_flags;
 
 /**
@@ -377,7 +377,9 @@ static void hw_get_cpu_model(cpu_data_t *cpus, uint16_t *cpu_map, const uint8_t 
     hw_parse_x86_cpu_model(fp, cpus, cpu_map, packages);
 #elif defined(__arm__) || defined(__aarch64__)
     hw_parse_arm_cpu_model(fp, cpus, cpu_map, packages);
-#endif 
+#endif
+
+    fclose(fp);
 }
 
 #if defined(__i386__) || defined(__x86_64__)
@@ -411,7 +413,7 @@ static void hw_parse_x86_cpu_model(FILE *fp, cpu_data_t *cpus,
 
         if (strncmp(key, "model name", 10) == 0) {
             if (socket == -1 || cpus[socket].model[0] != '\0') continue;
-            memcpy(cpus[socket].model, value, strlen(value));
+            snprintf(cpus[socket].model, sizeof(cpus[socket].model), "%s", value);
             hw_sanitize_cpu_name(cpus[socket].model);
         }
     }
@@ -421,12 +423,13 @@ static void hw_sanitize_cpu_name(char *out_buf) {
     if (!out_buf || !*out_buf) return;
 
     /* Fucking piece of shit that needs its own fucking line */
-    char *garbage = strstr(out_buf, "Gen");
-    if (garbage) {
-        while (*garbage != ' ') garbage++;
-        garbage++;
-        uint8_t offset = garbage - out_buf;
-        memmove(out_buf, out_buf + offset, strlen(garbage) + 1);
+    char *garbage_gen = strstr(out_buf, "Gen");
+    if (garbage_gen) {
+        char *space_after = strchr(garbage_gen, ' ');
+        if (space_after) {
+            space_after++;
+            memmove(out_buf, space_after, strlen(space_after) + 1);
+        }
     }
 
     const char *prefix_garbage[] = {"(R)", "(TM)", "(tm)", NULL};
@@ -437,7 +440,6 @@ static void hw_sanitize_cpu_name(char *out_buf) {
         if (garbage) {
             char *src = garbage + strlen(prefix_garbage[i]);
             size_t len = strlen(src) + 1;
-
             memmove(garbage, src, len);
         } else {
             i++;
@@ -446,13 +448,28 @@ static void hw_sanitize_cpu_name(char *out_buf) {
 
     const char *suffix_garbage[] = {"CPU", "APU", "with", "-Core", "Processor", NULL};
 
-    for (uint8_t i = 0; suffix_garbage[i] != NULL; i++) {
-        char *garbage = strstr(out_buf, suffix_garbage[i]);
-        if (garbage) {
-            while (garbage[0] != ' ') garbage--;
-            *garbage = '\0';
-            break;
+    for (size_t j = 0; suffix_garbage[j] != NULL; j++) {
+        char *garbage = strstr(out_buf, suffix_garbage[j]);
+        if (!garbage) continue;
+
+        if (garbage == out_buf) break;
+
+        while (garbage > out_buf && garbage[-1] != ' ') {
+            garbage--;
         }
+
+        if (garbage > out_buf) {
+            garbage--;
+        }
+
+        *garbage = '\0';
+
+        size_t len = strlen(out_buf);
+        while (len > 0 && out_buf[len - 1] == ' ') {
+            out_buf[--len] = '\0';
+        }
+
+        break;
     }
 }
 #endif
@@ -501,21 +518,18 @@ static void hw_parse_arm_cpu_model(FILE *fp, cpu_data_t *cpus,
         if (strncmp(key, "CPU implementer", 15) == 0) {
             if (socket == -1 || cpus[socket].model[0] != '\0') continue;
 
-            size_t impl_len = strlen(value);
-            memcpy(arm_model, value, impl_len);
-            arm_model[impl_len] = ' ';
-            arm_model[impl_len + 1] = '\0';
+            snprintf(arm_model, sizeof(arm_model), "%s ", value);
         }
 
         if (strncmp(key, "CPU part", 8) == 0) {
             if (socket == -1 || cpus[socket].model[0] != '\0') continue;
 
-            char *dst = strstr(arm_model, " ");
-            if (dst) memcpy(dst + 1, value, strlen(value) + 1);
+            size_t used = strlen(arm_model);
+            if (used < sizeof(arm_model)) {
+                snprintf(arm_model + used, sizeof(arm_model) - used, "%s", value);
+            }
 
-            size_t model_len = strlen(arm_model);
-            memcpy(cpus[socket].model, arm_model, model_len);
-            cpus[socket].model[model_len] = '\0';
+            snprintf(cpus[socket].model, sizeof(cpus[socket].model), "%s", arm_model);
 
             hw_arm_lookup_name(arm_forest, cpus[socket].model, sizeof(cpus[socket].model));
         }
@@ -719,7 +733,7 @@ void hw_get_bat_info(void) {
         if (bat_info.health & HEALTH_GOOD)      health = "Good";
         else if (bat_info.health & HEALTH_FAIR) health = "Fair";
         else if (bat_info.health & HEALTH_POOR) health = "Poor";
-        else                                    health = "Service Battery";
+        else                                    health = "Unknown";
 
         char info_buf[MEDIUM_BUFFER] = {0};
         snprintf(info_buf, sizeof(info_buf),
@@ -765,7 +779,7 @@ static bool hw_is_valid_battery(const char *bat_node_name) {
     char scope[TINY_BUFFER] = {0};
     snprintf(sysfs_path, sizeof(sysfs_path), SYS_BATTERY_DIR "%s/scope", bat_node_name);
     if (util_read_line(sysfs_path, scope, sizeof(scope)) &&
-        strncasecmp(scope, "Device", 6) != 0) {
+        strncasecmp(scope, "Device", 6) == 0) {
         return false;
     }
 
@@ -801,11 +815,28 @@ static void hw_battery_read_metrics(const char *bat_node_name, bat_data_t *out_d
         util_read_int32(full_path, &energy_full);
     }
 
-    int8_t health = ((double)energy_full / energy_full_design) * 100;
-    if (health >= 80)      out_data->health |= HEALTH_GOOD;
-    else if (health >= 60) out_data->health |= HEALTH_FAIR;
-    else if (health >= 0)  out_data->health |= HEALTH_POOR;
-    else                   out_data->health |= HEALTH_SERVICE;
+    uint8_t health = 0;
+    bool health_ok = false;
+
+    if (energy_full_design > 0 && energy_full > 0) {
+        double ratio = (double)energy_full / (double)energy_full_design * 100.0;
+        if (ratio > 100.0) {
+            ratio = 100.0;
+        }
+
+        health = (uint8_t)ratio;
+        health_ok = true;
+    }
+
+    if (!health_ok) {
+        out_data->health |= HEALTH_UNKNOWN;
+    } else if (health >= 80) {
+        out_data->health |= HEALTH_GOOD;
+    } else if (health >= 60) {
+        out_data->health |= HEALTH_FAIR;
+    } else {
+        out_data->health |= HEALTH_POOR;
+    }
 }
 
 static hw_node_t *add_element(hw_node_t *head, const char *name) {

@@ -27,3 +27,6 @@ obj/
 .gdb_history
 /core
 .DS_Store
+
+# --- Static analyzer reports ---
+*.plist
