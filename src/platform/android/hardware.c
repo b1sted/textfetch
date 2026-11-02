@@ -195,6 +195,6 @@ void hw_get_bat_info(void) {
 
     char information[LINE_BUFFER] = {0};
     snprintf(information, sizeof(information),
-             "%" PRIu8 "(%s, Health: %s)", capacity, status, health);
+             "%" PRIu8 "%% (%s, Health: %s)", capacity, status, health);
     ui_print_info("Battery", information);
 }
