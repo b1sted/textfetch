@@ -696,6 +696,15 @@ static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *node) {
     node->ram_used = app + wired + compressed;
 #endif
 
+    /*
+     * Kernel memory counters can briefly exceed the installed capacity while
+     * pages are being reclaimed or compressed. Clamp the result so callers
+     * never report more than 100% RAM usage.
+     */
+    if (node->ram_used > node->ram_size) {
+        node->ram_used = node->ram_size;
+    }
+
     *flags |= MEM_RAM;
 }
 
