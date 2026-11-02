@@ -161,7 +161,7 @@ static void test_actual_cpu(void) {
     TEST_CHECK(packages > 0);
     TEST_CHECK(packages <= MAX_CPU_PACKAGES);
 
-    hw_get_cpu_model(cpus, cpu_map, packages);
+    hw_get_cpu_model(cpus, cpu_map);
     TEST_CHECK(strlen(cpus[0].model) > 0);
     TEST_CHECK(cpus[0].frequency >= 0.0);
 
