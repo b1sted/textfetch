@@ -65,6 +65,22 @@ make
 ./bin/textfetch
 ```
 
+### Testing
+
+The project ships with a self-contained test suite that runs under AddressSanitizer and UndefinedBehaviorSanitizer:
+
+```bash
+make test
+```
+
+Static analysis is available through `clang-tidy` and `cppcheck`:
+
+```bash
+make lint
+```
+
+Both commands are executed by the `Tests and Linters` GitHub Actions workflow.
+
 ### Pre-built binaries
 Pre-compiled tarballs for macOS, Linux, and Android (Termux) are available in the [Releases](https://github.com/b1sted/textfetch/releases) section.
 
