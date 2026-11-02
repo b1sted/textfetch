@@ -9,11 +9,16 @@
 
 #include "pal/hardware_os.h"
 
-void hw_print_mem_info(const mem_flags_t flags, const mem_info_t *node) {
+void hw_print_mem_info(const mem_flags_t flags, const mem_info_t *info) {
+    if (!info || (flags & (MEM_RAM | MEM_SWAP)) == 0) {
+        V_PRINTF("[ERROR] %s: invalid arguments\n", __func__);
+        return;
+    }
+
     if (flags & MEM_RAM) {
         char ram_info[SMALL_BUFFER] = {0};
 
-        util_format_size(node->ram_size, node->ram_used,
+        util_format_size(info->ram_size, info->ram_used,
                          ram_info, sizeof(ram_info), UNIT_B);
         ui_print_info("RAM", ram_info);
     }
@@ -21,7 +26,7 @@ void hw_print_mem_info(const mem_flags_t flags, const mem_info_t *node) {
     if (flags & MEM_SWAP) {
         char swap_info[SMALL_BUFFER] = {0};
 
-        util_format_size(node->swap_size, node->swap_used,
+        util_format_size(info->swap_size, info->swap_used,
                          swap_info, sizeof(swap_info), UNIT_B);
         ui_print_info("Swap", swap_info);
     }

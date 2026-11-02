@@ -36,6 +36,11 @@ void sys_get_identity(char *out_buf, const size_t buf_size) {
 }
 
 void sys_format_uptime(char *out_buf, const size_t buf_size) {
+    if (!out_buf || buf_size == 0) {
+        V_PRINTF("[ERROR] %s: invalid arguments\n", __func__);
+        return;
+    }
+
     uint64_t t = sys_data.uptime;
 
     uint64_t days = t / 86400;
