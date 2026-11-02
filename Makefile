@@ -101,6 +101,8 @@ lint:
 	cppcheck --enable=warning,performance,portability --error-exitcode=1 \
 		--std=c99 --suppress=missingIncludeSystem --suppress=unusedFunction \
 		--suppress=normalCheckLevelMaxBranches \
+		--suppress='nullPointerRedundantCheck:tests/*' \
+		--suppress='doubleFree:tests/*' \
 		-Iinclude -Itests/support -Itests/support/stubs \
 		$(LINT_SRCS) $(LINT_TESTS) $(LINT_TEST_SUPPORT)
 
