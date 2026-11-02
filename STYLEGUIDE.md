@@ -171,7 +171,8 @@ allocations, locks, platform handles) use a single exit point and unwind in
 LIFO order:
 
 ```c
-bool example(void) {
+bool example(void)
+{
     int fd = -1;
     char *buf = NULL;
     bool ok = false;
