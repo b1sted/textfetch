@@ -38,6 +38,9 @@ TEST_NAMES += \
 ASAN_OPTIONS := detect_leaks=1:abort_on_error=1
 else
 # Apple's AddressSanitizer runtime does not implement leak detection.
+TEST_NAMES += test_macos_hardware
+# Expose BSD/POSIX extensions such as _SC_NPROCESSORS_CONF on Darwin.
+TEST_CFLAGS += -D_DARWIN_C_SOURCE
 ASAN_OPTIONS := abort_on_error=1
 endif
 
@@ -138,6 +141,14 @@ $(TEST_BINDIR)/test_linux_terminal: test_linux_terminal.c \
 $(TEST_BINDIR)/test_linux_hardware: test_linux_hardware.c $(CORE_BASE)
 	@mkdir -p $(TEST_BINDIR)
 	$(CC) $(TEST_CPPFLAGS) $(TEST_CFLAGS) $^ -o $@ $(TEST_LDFLAGS)
+
+ifeq ($(UNAME_S),Darwin)
+$(TEST_BINDIR)/test_macos_hardware: test_macos_hardware.c \
+		../src/platform/posix/hardware.c $(CORE_BASE)
+	@mkdir -p $(TEST_BINDIR)
+	$(CC) $(TEST_CPPFLAGS) $(TEST_CFLAGS) $^ -o $@ \
+		$(TEST_LDFLAGS) -framework IOKit -framework CoreFoundation
+endif
 
 $(TEST_BINDIR)/test_linux_common_hardware: test_linux_common_hardware.c \
 		../src/platform/posix/hardware.c $(CORE_BASE)
