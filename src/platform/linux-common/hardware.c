@@ -172,24 +172,34 @@ void hw_get_drives_info(void) {
     fclose(mounts_file);
 }
 
+/**
+ * Checks whether a mount point matches an ignored path at a component boundary.
+ *
+ * @param mnt_dir The mount point to evaluate.
+ * @param ignore The ignored path prefix.
+ * @return true if the mount point is the ignored path or one of its children.
+ */
+static bool is_ignored_mount_point(const char *mnt_dir, const char *ignore) {
+    size_t len = strlen(ignore);
+
+    return strncmp(mnt_dir, ignore, len) == 0 &&
+           (mnt_dir[len] == '\0' || mnt_dir[len] == '/');
+}
+
 static bool is_valid_mount(const struct mntent *ent) {
     if (strncmp(ent->mnt_fsname, "/dev/", 5) != 0) return false;
     if (strncmp(ent->mnt_fsname, "/dev/loop", 9) == 0) return false;
 
-    if (strcmp(ent->mnt_type, "fuse") == 0 ||
+    if (strncmp(ent->mnt_type, "fuse", 4) == 0 ||
         strcmp(ent->mnt_type, "erofs") == 0) return false;
 
     const char *ignore_mount_points[] = IGNORE_MOUNT_POINTS;
-    bool is_ignore = false;
 
     for (int i = 0; ignore_mount_points[i] != NULL; i++) {
-        if (strncmp(ent->mnt_dir, ignore_mount_points[i],
-                    strlen(ignore_mount_points[i])) == 0) {
-            is_ignore = true;
+        if (is_ignored_mount_point(ent->mnt_dir, ignore_mount_points[i])) {
+            return false;
         }
     }
-
-    if (is_ignore) return false;
 
     return true;
 }

@@ -39,6 +39,9 @@ static void test_valid_mount(void) {
     entry.mnt_type = "fuse";
     TEST_CHECK(!is_valid_mount(&entry));
 
+    entry.mnt_type = "fuse.sshfs";
+    TEST_CHECK(!is_valid_mount(&entry));
+
     entry.mnt_type = "erofs";
     TEST_CHECK(!is_valid_mount(&entry));
 
@@ -46,14 +49,20 @@ static void test_valid_mount(void) {
     entry.mnt_dir = "/boot";
     TEST_CHECK(!is_valid_mount(&entry));
 
-    entry.mnt_dir = "/bootloader";
+    entry.mnt_dir = "/boot/efi";
     TEST_CHECK(!is_valid_mount(&entry));
+
+    entry.mnt_dir = "/bootloader";
+    TEST_CHECK(is_valid_mount(&entry));
 
     entry.mnt_dir = "/run/user/1000";
     TEST_CHECK(!is_valid_mount(&entry));
 
     entry.mnt_dir = "/var/lib";
     TEST_CHECK(!is_valid_mount(&entry));
+
+    entry.mnt_dir = "/varbackup";
+    TEST_CHECK(is_valid_mount(&entry));
 
     entry.mnt_dir = "/mnt/wslg/distro";
     TEST_CHECK(!is_valid_mount(&entry));
