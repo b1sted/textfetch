@@ -143,6 +143,34 @@ static void hw_get_cpu_freq(const char *cpu_dir, cpu_data_t *cpus,
                             const int16_t package, const char *cpu_name);
 
 /**
+ * Checks whether a logical CPU is currently online.
+ *
+ * A missing online attribute means the CPU cannot be hotplugged and is
+ * therefore always online, as is the case for CPU 0 on all Linux kernels.
+ *
+ * @param cpu_dir Base sysfs CPU directory containing the node.
+ * @param node_name The directory name of the CPU node (e.g., "cpu0").
+ * @return true if the CPU is online or its state cannot be determined.
+ */
+static bool hw_cpu_is_online(const char *cpu_dir, const char *node_name);
+
+/**
+ * Applies a package 0 fallback when no usable CPU topology was discovered.
+ *
+ * This keeps uniprocessor and embedded ARM systems with no topology sysfs
+ * nodes from reporting an empty CPU field.
+ *
+ * @param cpu_dir Base sysfs CPU directory to scan.
+ * @param cpus Array of CPU data structures to update.
+ * @param cpu_map Array mapping logical CPU IDs to physical sockets.
+ * @param packages Pointer to the total number of CPU packages found.
+ */
+static void hw_cpu_apply_single_core_fallback(const char *cpu_dir,
+                                              cpu_data_t *cpus,
+                                              uint16_t *cpu_map,
+                                              uint8_t *packages);
+
+/**
  * Parses /proc/cpuinfo to determine the CPU model name using architecture-specific strategies.
  *
  * @param cpus Array of CPU data structures to update.
@@ -264,6 +292,36 @@ static hw_node_t *add_element(hw_node_t *head, const char *name);
  */
 static void free_data_list(hw_node_t *head);
 
+/**
+ * Formats one CPU package for display.
+ *
+ * The frequency suffix is only appended when cpufreq data is available, so
+ * embedded systems without cpufreq nodes still show a clean model name.
+ *
+ * @param cpu CPU package data to format.
+ * @param out_buf Buffer to store the formatted string.
+ * @param buf_size Maximum size of the output buffer.
+ * @return true if the package was formatted, false otherwise.
+ */
+static bool hw_format_cpu_package(cpu_data_t *cpu, char *out_buf,
+                                  const size_t buf_size) {
+    if (!cpu || !cpu->exists || !out_buf || buf_size == 0) return false;
+
+    uint32_t cores = count_set_bits(&(bitset_t){.bits = cpu->core_bits,
+                                                .capacity = MAX_CPU_CORES},
+                                    CORES_SET_BLOCKS);
+
+    if (cpu->frequency > 0.0) {
+        snprintf(out_buf, buf_size, "%.*s (%" PRIu32 ") @ %.03f GHz",
+                 (int)sizeof(cpu->model), cpu->model, cores, cpu->frequency);
+    } else {
+        snprintf(out_buf, buf_size, "%.*s (%" PRIu32 ")",
+                 (int)sizeof(cpu->model), cpu->model, cores);
+    }
+
+    return true;
+}
+
 void hw_get_cpu_info(void) {
     cpu_data_t cpus[MAX_CPU_PACKAGES];
     memset(cpus, 0, sizeof(cpus));
@@ -283,23 +341,9 @@ void hw_get_cpu_info(void) {
     uint8_t formatted_count = 0;
 
     for (uint8_t i = 0; i < MAX_CPU_PACKAGES; i++) {
-        if (!cpus[i].exists) continue;
-
-        uint32_t cores = count_set_bits(&(bitset_t){.bits = cpus[i].core_bits,
-                                                    .capacity = MAX_CPU_CORES},
-                                        CORES_SET_BLOCKS);
-
-        if (cpus[i].frequency > 0.0) {
-            snprintf(cpu_formatted[formatted_count],
-                     sizeof(cpu_formatted[formatted_count]),
-                     "%.*s (%" PRIu32 ") @ %.03f GHz",
-                     (int)sizeof(cpus[i].model), cpus[i].model, cores,
-                     cpus[i].frequency);
-        } else {
-            snprintf(cpu_formatted[formatted_count],
-                     sizeof(cpu_formatted[formatted_count]),
-                     "%.*s (%" PRIu32 ")",
-                     (int)sizeof(cpus[i].model), cpus[i].model, cores);
+        if (!hw_format_cpu_package(&cpus[i], cpu_formatted[formatted_count],
+                                   sizeof(cpu_formatted[formatted_count]))) {
+            continue;
         }
 
         cpu_strings[formatted_count] = cpu_formatted[formatted_count];
@@ -322,25 +366,51 @@ static void hw_parse_cpu_topology(const char *cpu_dir, cpu_data_t *cpus,
     if (!dir) {
         V_PRINTF("[ERROR] Failed to open sysfs CPU directory %s: %s\n",
                  cpu_dir, strerror(errno));
-        return;
+    } else {
+        struct dirent *entry;
+        while ((entry = readdir(dir)) != NULL) {
+            if (strncmp(entry->d_name, prefix, prefix_len) != 0) continue;
+
+            const char *suffix = entry->d_name + prefix_len;
+            if (!util_is_numeric_string(suffix)) continue;
+
+            hw_cpu_process_core_node(cpu_dir, entry->d_name, cpus, cpu_map,
+                                     packages);
+        }
+
+        closedir(dir);
     }
 
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (strncmp(entry->d_name, prefix, prefix_len) != 0) continue;
+    hw_cpu_apply_single_core_fallback(cpu_dir, cpus, cpu_map, packages);
+}
 
-        const char *suffix = entry->d_name + prefix_len;
-        if (!util_is_numeric_string(suffix)) continue;
+static bool hw_cpu_is_online(const char *cpu_dir, const char *node_name) {
+    char online_path[PATH_BUFFER] = {0};
+    snprintf(online_path, sizeof(online_path), "%s%s/online",
+             cpu_dir, node_name);
 
-        hw_cpu_process_core_node(cpu_dir, entry->d_name, cpus, cpu_map, packages);
+    if (!util_is_file_exist(online_path)) {
+        /* CPU 0 has no hotplug node and is always online. */
+        return true;
     }
 
-    closedir(dir);
+    uint8_t online = 1;
+    if (!util_read_uint8(online_path, &online)) {
+        /* Keep the core when the hotplug state cannot be read. */
+        return true;
+    }
+
+    return online != 0;
 }
 
 static void hw_cpu_process_core_node(const char *cpu_dir, const char *node_name,
                                      cpu_data_t *cpus, uint16_t *cpu_map,
                                      uint8_t *packages) {
+    if (!hw_cpu_is_online(cpu_dir, node_name)) {
+        V_PRINTF("[WARNING] Skipping CPU %s: offline\n", node_name);
+        return;
+    }
+
     int16_t physical_package_id = 0;
     uint16_t core_id = 0;
     char full_path[PATH_BUFFER] = {0};
@@ -348,22 +418,25 @@ static void hw_cpu_process_core_node(const char *cpu_dir, const char *node_name,
     snprintf(full_path, sizeof(full_path),
              "%s%s/topology/physical_package_id", cpu_dir, node_name);
     if (!util_read_int16(full_path, &physical_package_id)) {
-        V_PRINTF("[WARNING] Skipping CPU %s: missing physical package ID\n",
-                 node_name);
-        return;
+        V_PRINTF("[WARNING] CPU %s: missing physical package ID, "
+                 "falling back to package 0\n", node_name);
+        physical_package_id = 0;
     }
 
     if (physical_package_id < 0 || physical_package_id >= MAX_CPU_PACKAGES) {
-        V_PRINTF("[WARNING] Skipping CPU %s: invalid physical package ID %d\n",
-                 node_name, physical_package_id);
-        return;
+        V_PRINTF("[WARNING] CPU %s: invalid physical package ID %d, "
+                 "falling back to package 0\n", node_name, physical_package_id);
+        physical_package_id = 0;
     }
 
     snprintf(full_path, sizeof(full_path), "%s%s/topology/core_id",
              cpu_dir, node_name);
+
+    uint16_t current_id = (uint16_t)strtoul(node_name + 3, NULL, 10);
     if (!util_read_uint16(full_path, &core_id)) {
-        V_PRINTF("[WARNING] Skipping CPU %s: missing core ID\n", node_name);
-        return;
+        V_PRINTF("[WARNING] CPU %s: missing core ID, using logical ID\n",
+                 node_name);
+        core_id = current_id;
     }
 
     if (!cpus[physical_package_id].exists) {
@@ -373,13 +446,40 @@ static void hw_cpu_process_core_node(const char *cpu_dir, const char *node_name,
         hw_get_cpu_freq(cpu_dir, cpus, physical_package_id, node_name);
     }
 
-    uint16_t current_id = (uint16_t)strtoul(node_name + 3, NULL, 10);
-    if (cpu_map[physical_package_id] == 0xFFFF || current_id < cpu_map[physical_package_id]) {
+    if (cpu_map[physical_package_id] == 0xFFFF ||
+        current_id < cpu_map[physical_package_id]) {
         cpu_map[physical_package_id] = current_id;
     }
 
     set_add(&(bitset_t){.bits = cpus[physical_package_id].core_bits,
                         .capacity = MAX_CPU_CORES}, core_id);
+}
+
+static void hw_cpu_apply_single_core_fallback(const char *cpu_dir,
+                                              cpu_data_t *cpus,
+                                              uint16_t *cpu_map,
+                                              uint8_t *packages) {
+    if (*packages > 0 && cpus[0].exists) return;
+
+    char cpu0_path[PATH_BUFFER] = {0};
+    snprintf(cpu0_path, sizeof(cpu0_path), "%scpu0", cpu_dir);
+
+    if (!util_is_file_exist(cpu0_path) && !util_is_file_exist(CPUINFO_PATH)) {
+        return;
+    }
+
+    if (!cpus[0].exists) {
+        cpus[0].exists = true;
+        (*packages)++;
+    }
+
+    set_add(&(bitset_t){.bits = cpus[0].core_bits,
+                        .capacity = MAX_CPU_CORES}, 0);
+
+    if (cpu_map[0] == 0xFFFF) cpu_map[0] = 0;
+    if (*packages == 0) *packages = 1;
+
+    hw_get_cpu_freq(cpu_dir, cpus, 0, "cpu0");
 }
 
 /**
