@@ -399,7 +399,7 @@ static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *node) {
     *flags |= MEM_RAM;
 
     mach_port_t host = mach_host_self();
-    vm_statistics64_data_t vm;
+    vm_statistics64_data_t vm = {0};
     mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
     vm_size_t pg;
 

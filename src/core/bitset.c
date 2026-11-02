@@ -8,6 +8,10 @@
 #include "sys_utils.h"
 
 void set_add(bitset_t *set, size_t num) {
+    if (!set) {
+        return;
+    }
+
     if (num < set->capacity) {
         set->bits[num / 32] |= (1U << (num % 32));
         return;
@@ -17,6 +21,10 @@ void set_add(bitset_t *set, size_t num) {
 }
 
 bool set_contains(const bitset_t *set, size_t num) {
+    if (!set) {
+        return false;
+    }
+
     if (num < set->capacity) {
         return (set->bits[num / 32] & (1U << (num % 32))) != 0;
     }
@@ -26,6 +34,10 @@ bool set_contains(const bitset_t *set, size_t num) {
 }
 
 void set_remove(bitset_t *set, size_t num) {
+    if (!set) {
+        return;
+    }
+
     if (num < set->capacity) {
         set->bits[num / 32] &= ~(1U << (num % 32));
         return;
@@ -35,6 +47,10 @@ void set_remove(bitset_t *set, size_t num) {
 }
 
 uint32_t count_set_bits(bitset_t *set, size_t blocks) {
+    if (!set) {
+        return 0;
+    }
+
     uint32_t total = 0;
 
     for (size_t i = 0; i < blocks; i++) {

@@ -1,0 +1,9 @@
+---
+InheritParentConfig: true
+Checks: >
+  -clang-analyzer-unix.Stream,
+  -clang-analyzer-unix.Malloc,
+  -clang-analyzer-unix.StdCLibraryFunctions,
+  -clang-analyzer-core.CallAndMessage,
+  -clang-analyzer-optin.taint.GenericTaint
+...
