@@ -35,6 +35,10 @@ TEST_NAMES += \
 	test_linux_terminal \
 	test_linux_hardware \
 	test_linux_common_hardware
+ASAN_OPTIONS := detect_leaks=1:abort_on_error=1
+else
+# Apple's AddressSanitizer runtime does not implement leak detection.
+ASAN_OPTIONS := abort_on_error=1
 endif
 
 TEST_BINS := $(addprefix $(TEST_BINDIR)/,$(TEST_NAMES))
@@ -55,7 +59,7 @@ test: $(TEST_BINS)
 	@set -e; \
 	for test_binary in $(TEST_BINS); do \
 		echo "== $$test_binary"; \
-		ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 \
+		ASAN_OPTIONS=$(ASAN_OPTIONS) \
 		UBSAN_OPTIONS=halt_on_error=1 \
 		$$test_binary $(TEXTFETCH_BIN); \
 	done
