@@ -268,7 +268,9 @@ void hw_get_cpu_info(void) {
     memset(cpus, 0, sizeof(cpus));
 
     uint16_t cpu_map[MAX_CPU_PACKAGES];
-    memset(cpu_map, 0xFFFF, sizeof(cpu_map));
+    for (size_t i = 0; i < MAX_CPU_PACKAGES; i++) {
+        cpu_map[i] = 0xFFFF;
+    }
 
     uint8_t packages = 0;
 
@@ -729,7 +731,7 @@ void hw_get_bat_info(void) {
         snprintf(label_buf, sizeof(label_buf),
                  "Battery (%s)", (bat_info.model[0] == '\0') ? "Unknown" : bat_info.model);
 
-        const char *health = "";
+        const char *health;
         if (bat_info.health & HEALTH_GOOD)      health = "Good";
         else if (bat_info.health & HEALTH_FAIR) health = "Fair";
         else if (bat_info.health & HEALTH_POOR) health = "Poor";
