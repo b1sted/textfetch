@@ -35,7 +35,7 @@ static void hw_get_cpu_model(cpu_info_t *node);
 static void hw_get_cpu_cores(cpu_info_t *node);
 
 /**
- * Reads scaling frequency from sysfs for CPU0.
+ * Reads the maximum frequency from sysfs for CPU0.
  *
  * @param node Pointer to the CPU info structure.
  */
@@ -75,11 +75,28 @@ static void hw_get_cpu_cores(cpu_info_t *node) {
 }
 
 static void hw_get_cpu_freq(cpu_info_t *node) {
-    uint32_t freq_khz = 0;
-    util_read_uint32("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq", &freq_khz);
+    static const char *const freq_files[] = {
+        "cpuinfo_max_freq",
+        "scaling_max_freq",
+        "scaling_cur_freq",
+        "cpuinfo_cur_freq",
+    };
 
-    double freq_ghz = (double)freq_khz / KHZ_PER_GHZ;
-    snprintf(node->frequency, sizeof(node->frequency), " @ %.03f GHz", freq_ghz);
+    char freq_path[PATH_BUFFER] = {0};
+    uint32_t freq_khz = 0;
+
+    node->frequency[0] = '\0';
+
+    for (size_t i = 0; i < sizeof(freq_files) / sizeof(freq_files[0]); i++) {
+        snprintf(freq_path, sizeof(freq_path),
+                 "/sys/devices/system/cpu/cpu0/cpufreq/%s", freq_files[i]);
+
+        if (util_read_uint32(freq_path, &freq_khz) && freq_khz > 0) {
+            snprintf(node->frequency, sizeof(node->frequency), " @ %.03f GHz",
+                     (double)freq_khz / KHZ_PER_GHZ);
+            return;
+        }
+    }
 }
 
 void hw_get_gpu_info(void) {
