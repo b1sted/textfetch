@@ -249,27 +249,40 @@ static CFPropertyListRef create_plist_from_file(const char *path) {
         return NULL;
     }
 
-    if (sb.st_size == 0) {
+    if (sb.st_size <= 0) {
         V_PRINTF("[ERROR] create_plist_from_file(%s): file is empty\n", path);
         close(fd);
         return NULL;
     }
 
-    void *ptr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    size_t file_size = (size_t)sb.st_size;
+
+    void *ptr = mmap(NULL, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
     if (ptr == MAP_FAILED) {
         close(fd);
         return NULL;
     }
 
     CFDataRef data_ref = CFDataCreateWithBytesNoCopy(kCFAllocatorDefault, ptr,
-                                                     sb.st_size, kCFAllocatorNull);
+                                                     (CFIndex)file_size, kCFAllocatorNull);
+    if (!data_ref) {
+        V_PRINTF("[ERROR] create_plist_from_file(%s): CFDataCreateWithBytesNoCopy failed\n",
+                 path);
+        munmap(ptr, file_size);
+        close(fd);
+        return NULL;
+    }
 
     CFPropertyListRef plist = CFPropertyListCreateWithData(kCFAllocatorDefault, data_ref,
                                                            kCFPropertyListImmutable, NULL,
                                                            NULL);
+    if (!plist) {
+        V_PRINTF("[ERROR] create_plist_from_file(%s): CFPropertyListCreateWithData failed\n",
+                 path);
+    }
 
     CFRelease(data_ref);
-    munmap(ptr, sb.st_size);
+    munmap(ptr, file_size);
     close(fd);
 
     return plist;
