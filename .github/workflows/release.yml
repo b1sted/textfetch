@@ -197,6 +197,7 @@ jobs:
                    apt update -yq && \
                    apt upgrade -yq -o Dpkg::Options::='--force-confnew' && \
                    apt install -yq clang make mesa mesa-dev && \
+                   mkdir -p /tmp && \
                    cp -r /src /tmp/build && \
                    cd /tmp/build && \
                    make"

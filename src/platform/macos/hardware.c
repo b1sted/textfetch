@@ -1,5 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 
+#ifndef _DARWIN_C_SOURCE
+#define _DARWIN_C_SOURCE
+#endif
+
 #include "pal/hardware_os.h"
 
 #include <stdbool.h>
@@ -11,6 +15,8 @@
 #include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
+
+#include <sys/types.h>
 
 #include <sys/mount.h>
 #include <sys/sysctl.h>

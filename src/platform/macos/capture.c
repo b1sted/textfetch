@@ -1,5 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 
+#ifndef _DARWIN_C_SOURCE
+#define _DARWIN_C_SOURCE
+#endif
+
 #define _POSIX_C_SOURCE 200809L
 
 #include "capture.h"
