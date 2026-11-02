@@ -245,6 +245,10 @@ static void test_sparse_cpu_packages(void) {
     snprintf(offline_path, sizeof(offline_path), "%scpu4", cpu_dir);
     TEST_CHECK(mkdir(offline_path, 0700) == 0);
 
+    char online_path[PATH_BUFFER + 32];
+    snprintf(online_path, sizeof(online_path), "%scpu4/online", cpu_dir);
+    TEST_CHECK(fake_sysfs_write(online_path, "0\n"));
+
     cpu_data_t cpus[MAX_CPU_PACKAGES];
     uint16_t cpu_map[MAX_CPU_PACKAGES];
     uint8_t packages = 0;
@@ -276,11 +280,87 @@ static void test_sparse_cpu_packages(void) {
     TEST_CHECK(cpus[0].frequency > 3.19 && cpus[0].frequency < 3.21);
     TEST_CHECK(cpus[2].frequency > 3.99 && cpus[2].frequency < 4.01);
 
+    unlink(online_path);
     fake_sysfs_remove_cpu(cpu_dir, "cpu4", false, false);
     fake_sysfs_remove_cpu(cpu_dir, "cpu3", true, true);
     fake_sysfs_remove_cpu(cpu_dir, "cpu2", true, false);
     fake_sysfs_remove_cpu(cpu_dir, "cpu1", true, true);
     fake_sysfs_remove_cpu(cpu_dir, "cpu0", true, true);
+    rmdir(root);
+}
+
+static void test_uniprocessor_without_topology(void) {
+    char template[] = "/tmp/textfetch-cpu-uni-XXXXXX";
+    char *root = mkdtemp(template);
+    TEST_CHECK(root != NULL);
+    if (!root) return;
+
+    char cpu_dir[PATH_BUFFER];
+    snprintf(cpu_dir, sizeof(cpu_dir), "%s/", root);
+
+    char cpu0_path[PATH_BUFFER + 16];
+    snprintf(cpu0_path, sizeof(cpu0_path), "%scpu0", cpu_dir);
+    TEST_CHECK(mkdir(cpu0_path, 0700) == 0);
+
+    cpu_data_t cpus[MAX_CPU_PACKAGES];
+    uint16_t cpu_map[MAX_CPU_PACKAGES];
+    uint8_t packages = 0;
+
+    memset(cpus, 0, sizeof(cpus));
+    memset(cpu_map, 0xFF, sizeof(cpu_map));
+
+    hw_parse_cpu_topology(cpu_dir, cpus, cpu_map, &packages);
+
+    /* A topology-less online cpu0 must still be detected as package 0. */
+    TEST_INT_EQ(packages, 1);
+    TEST_CHECK(cpus[0].exists);
+    TEST_INT_EQ(cpu_map[0], 0);
+    TEST_INT_EQ(count_set_bits(&(bitset_t){.bits = cpus[0].core_bits,
+                                           .capacity = MAX_CPU_CORES},
+                               CORES_SET_BLOCKS), 1);
+
+    /* No cpufreq nodes: the model must survive and print without a suffix. */
+    snprintf(cpus[0].model, sizeof(cpus[0].model), "%s", "ARM Cortex-A7");
+    hw_get_cpu_freq(cpu_dir, cpus, 0, "cpu0");
+
+    TEST_STR_EQ(cpus[0].model, "ARM Cortex-A7");
+    TEST_CHECK(cpus[0].frequency == 0.0);
+
+    char formatted[LINE_BUFFER];
+    TEST_CHECK(hw_format_cpu_package(&cpus[0], formatted, sizeof(formatted)));
+    TEST_STR_EQ(formatted, "ARM Cortex-A7 (1)");
+    TEST_CHECK(strstr(formatted, "@") == NULL);
+
+    rmdir(cpu0_path);
+    rmdir(root);
+}
+
+static void test_cpu_fallback_without_nodes(void) {
+    char template[] = "/tmp/textfetch-cpu-empty-XXXXXX";
+    char *root = mkdtemp(template);
+    TEST_CHECK(root != NULL);
+    if (!root) return;
+
+    char cpu_dir[PATH_BUFFER];
+    snprintf(cpu_dir, sizeof(cpu_dir), "%s/", root);
+
+    cpu_data_t cpus[MAX_CPU_PACKAGES];
+    uint16_t cpu_map[MAX_CPU_PACKAGES];
+    uint8_t packages = 0;
+
+    memset(cpus, 0, sizeof(cpus));
+    memset(cpu_map, 0xFF, sizeof(cpu_map));
+
+    hw_parse_cpu_topology(cpu_dir, cpus, cpu_map, &packages);
+
+    /* /proc/cpuinfo is readable, so the single-core fallback must kick in. */
+    TEST_INT_EQ(packages, 1);
+    TEST_CHECK(cpus[0].exists);
+    TEST_INT_EQ(cpu_map[0], 0);
+    TEST_INT_EQ(count_set_bits(&(bitset_t){.bits = cpus[0].core_bits,
+                                           .capacity = MAX_CPU_CORES},
+                               CORES_SET_BLOCKS), 1);
+
     rmdir(root);
 }
 
@@ -338,6 +418,8 @@ int main(void) {
     test_battery_metrics();
     test_hardware_lists();
     test_sparse_cpu_packages();
+    test_uniprocessor_without_topology();
+    test_cpu_fallback_without_nodes();
     test_actual_cpu();
     test_actual_hardware();
 
