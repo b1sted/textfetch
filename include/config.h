@@ -24,7 +24,7 @@
 #define APP_VERSION "1.0"
 
 /* Global constant containing the compiled application version string. */
-extern const char version_string[];
+extern const char cfg_version_string[];
 
 /**
  * Checks if force kibibytes (KiB) output is enabled.

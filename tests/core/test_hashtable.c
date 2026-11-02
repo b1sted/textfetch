@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "hashtable.h"
+
 #include <stdio.h>
 
 #include "../support/test_framework.h"
-#include "hashtable.h"
 
 static void test_create(void)
 {

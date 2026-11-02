@@ -17,8 +17,9 @@
  */
 #define V_PRINTF(...)                                                                              \
     do {                                                                                           \
-        if (cfg_get_verbose())                                                                     \
+        if (cfg_get_verbose()) {                                                                   \
             fprintf(stderr, __VA_ARGS__);                                                          \
+        }                                                                                          \
     } while (0)
 
 /* Enumeration of standard byte capacity units for formatting sizes. */
@@ -65,7 +66,8 @@ const char *util_string_in_array(const char *str, const char *const array[]);
  * @param dict_size The number of pairs in the dictionary.
  * @return The mapped value string, or NULL if the key is not found.
  */
-const char *util_string_lookup(const char *str, const char *dict[][2], const size_t dict_size);
+const char *util_string_lookup(const char *str, const char *const dict[][2],
+                               const size_t dict_size);
 
 /**
  * Reads the first line of a file into a buffer.
@@ -166,7 +168,7 @@ bool util_is_numeric_string(const char *str);
  * @param out_buf Buffer to store the formatted multi-line output.
  * @param buf_size Maximum size of the output buffer.
  */
-void util_format_duplicate_hardware(const char **strings, uint8_t count, char *out_buf,
+void util_format_duplicate_hardware(const char *const strings[], uint8_t count, char *out_buf,
                                     size_t buf_size);
 
 /**
@@ -188,6 +190,6 @@ void util_format_size(double total_size, double used_size, char *out_buf, const 
  * @param capacity The expected number of top-level nodes (vendors).
  * @return A tree containing the parsed hardware mappings, or NULL on failure.
  */
-forest *util_parse_ids_file(FILE *fp, size_t capacity);
+tree_forest_t *util_parse_ids_file(FILE *fp, size_t capacity);
 
 #endif /* SYS_UTILS_H */

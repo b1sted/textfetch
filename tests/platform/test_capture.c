@@ -1,5 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "capture.h"
+
+#include <stdint.h>
 #include <string.h>
 
 #include <dirent.h>
@@ -8,18 +11,17 @@
 #include <sys/resource.h>
 
 #include "../support/test_framework.h"
-#include "capture.h"
 
 /* Counts open descriptors, excluding the descriptor used to read the directory. */
-static int count_open_fds(void)
+static int32_t count_open_fds(void)
 {
     DIR *dir = opendir("/proc/self/fd");
     if (!dir) {
         return -1;
     }
 
-    int count = 0;
-    struct dirent *entry;
+    int32_t count = 0;
+    struct dirent *entry = NULL;
 
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_name[0] != '.') {
@@ -99,7 +101,7 @@ static void test_capture_failures(void)
 
 static void test_fork_failure_closes_pipe(void)
 {
-    struct rlimit original;
+    struct rlimit original = {0};
 
     if (getrlimit(RLIMIT_NPROC, &original) != 0) {
         return;
@@ -115,10 +117,10 @@ static void test_fork_failure_closes_pipe(void)
         return;
     }
 
-    int before = count_open_fds();
+    int32_t before = count_open_fds();
     char buffer[32] = {'X'};
     int result = capture_line("echo", "hello", buffer, sizeof(buffer));
-    int after = count_open_fds();
+    int32_t after = count_open_fds();
 
     setrlimit(RLIMIT_NPROC, &original);
 

@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "pal/hardware_os.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -29,8 +31,6 @@
 #include "hashtable.h"
 #include "sys_utils.h"
 #include "ui.h"
-
-#include "pal/hardware_os.h"
 
 /**
  * Compatibility shim for kIOMainPortDefault.
@@ -79,7 +79,7 @@ typedef struct {
 #endif
 
 /* System power status bitmask flags indicating charging state. */
-typedef enum { FLAG_AC = 1 << 0, FLAG_CHARGING = 1 << 1, FLAG_FULL = 1 << 2 } power_flags;
+typedef enum { FLAG_AC = 1 << 0, FLAG_CHARGING = 1 << 1, FLAG_FULL = 1 << 2 } power_flags_t;
 
 /**
  * Retrieves the total count of physical CPU packages via sysctl.
@@ -182,8 +182,7 @@ static io_iterator_t get_matching_iterator(const char *class_name);
 
 void hw_get_cpu_info(void)
 {
-    cpu_info_t cpu;
-    memset(&cpu, 0, sizeof(cpu_info_t));
+    cpu_info_t cpu = {0};
 
     hw_get_cpu_package(&cpu);
     hw_get_cpu_model(&cpu);
@@ -381,18 +380,18 @@ static uint64_t dvfs_peak_from_properties(CFDictionaryRef properties)
         return 0;
     }
 
-    const void **keys = malloc((size_t)count * sizeof(*keys));
-    const void **values = malloc((size_t)count * sizeof(*values));
+    const void **keys = NULL;
+    const void **values = NULL;
+    uint64_t peak = 0;
+
+    keys = malloc((size_t)count * sizeof(*keys));
+    values = malloc((size_t)count * sizeof(*values));
 
     if (!keys || !values) {
-        free(keys);
-        free(values);
-        return 0;
+        goto cleanup;
     }
 
     CFDictionaryGetKeysAndValues(properties, keys, values);
-
-    uint64_t peak = 0;
 
     for (CFIndex i = 0; i < count; i++) {
         if (!dvfs_is_property_name(keys[i])) {
@@ -410,6 +409,7 @@ static uint64_t dvfs_peak_from_properties(CFDictionaryRef properties)
         }
     }
 
+cleanup:
     free(keys);
     free(values);
 
@@ -433,13 +433,14 @@ static bool is_pmgr_node_name(const char *name)
 
 static uint64_t hw_get_arm_cpu_freq(void)
 {
-    io_iterator_t iterator = get_matching_iterator(PMGR_SERVICE_CLASS);
-    if (iterator == IO_OBJECT_NULL) {
-        return 0;
-    }
-
+    io_iterator_t iterator = IO_OBJECT_NULL;
+    io_service_t service = IO_OBJECT_NULL;
     uint64_t peak = 0;
-    io_service_t service;
+
+    iterator = get_matching_iterator(PMGR_SERVICE_CLASS);
+    if (iterator == IO_OBJECT_NULL) {
+        goto cleanup;
+    }
 
     while ((service = IOIteratorNext(iterator))) {
         char name[MEDIUM_BUFFER] = {0};
@@ -460,14 +461,20 @@ static uint64_t hw_get_arm_cpu_freq(void)
         }
 
         IOObjectRelease(service);
+        service = IO_OBJECT_NULL;
 
         if (peak > 0) {
-            break;
+            goto cleanup;
         }
     }
 
-    IOObjectRelease(iterator);
-
+cleanup:
+    if (service) {
+        IOObjectRelease(service);
+    }
+    if (iterator) {
+        IOObjectRelease(iterator);
+    }
     return peak;
 }
 
@@ -620,13 +627,13 @@ static void hw_get_gpu_accelerator(char *out_buf, const size_t buf_size)
 {
     io_iterator_t iterator = get_matching_iterator("IOAccelerator");
     if (iterator != IO_OBJECT_NULL) {
-        io_service_t service;
+        io_service_t service = IO_OBJECT_NULL;
         while ((service = IOIteratorNext(iterator))) {
             CFTypeRef model =
                 IORegistryEntryCreateCFProperty(service, CFSTR("model"), kCFAllocatorDefault, 0);
 
             if (!model) {
-                io_registry_entry_t parent;
+                io_registry_entry_t parent = IO_OBJECT_NULL;
                 if (IORegistryEntryGetParentEntry(service, kIOServicePlane, &parent) ==
                     kIOReturnSuccess) {
                     model = IORegistryEntryCreateCFProperty(parent, CFSTR("model"),
@@ -659,7 +666,7 @@ static void hw_get_gpu_pci(char *out_buf, const size_t buf_size)
 {
     io_iterator_t iterator = get_matching_iterator("IOPCIDevice");
     if (iterator != IO_OBJECT_NULL) {
-        io_registry_entry_t entry;
+        io_registry_entry_t entry = IO_OBJECT_NULL;
         while ((entry = IOIteratorNext(iterator))) {
             CFTypeRef class_code =
                 IORegistryEntryCreateCFProperty(entry, CFSTR("class-code"), kCFAllocatorDefault, 0);
@@ -698,9 +705,7 @@ static void hw_get_gpu_pci(char *out_buf, const size_t buf_size)
 
 void hw_get_mem_info(void)
 {
-    mem_info_t mem;
-    memset(&mem, 0, sizeof(mem_info_t));
-
+    mem_info_t mem = {0};
     mem_flags_t flags = 0;
 
     hw_get_ram_info(&flags, &mem);
@@ -724,21 +729,17 @@ static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *mem)
     mach_port_t host = mach_host_self();
     vm_statistics64_data_t vm = {0};
     mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
-    vm_size_t pg;
+    vm_size_t pg = 0;
 
     if (host_page_size(host, &pg) != KERN_SUCCESS) {
         V_PRINTF("[ERROR] Mach host_page_size() failed\n");
-        mach_port_deallocate(mach_task_self(), host);
-        return;
+        goto cleanup;
     }
 
     if (host_statistics64(host, HOST_VM_INFO64, (host_info64_t)&vm, &count) != KERN_SUCCESS) {
         V_PRINTF("[ERROR] Mach host_statistics64() failed\n");
-        mach_port_deallocate(mach_task_self(), host);
-        return;
+        goto cleanup;
     }
-
-    mach_port_deallocate(mach_task_self(), host);
 
     int64_t wired = (int64_t)vm.wire_count * pg;
 
@@ -762,11 +763,14 @@ static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *mem)
     }
 
     *flags |= MEM_RAM;
+
+cleanup:
+    mach_port_deallocate(mach_task_self(), host);
 }
 
 static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *mem)
 {
-    struct xsw_usage xsw;
+    struct xsw_usage xsw = {0};
     size_t xsw_len = sizeof(struct xsw_usage);
 
     if (sysctlbyname("vm.swapusage", &xsw, &xsw_len, NULL, 0) != 0) {
@@ -786,29 +790,32 @@ static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *mem)
 
 void hw_get_drives_info(void)
 {
-    int n = getfsstat(NULL, 0, MNT_WAIT);
+    int32_t n = 0;
+    struct statfs *st = NULL;
+    string_set_t *outputted_disks = NULL;
+
+    n = getfsstat(NULL, 0, MNT_WAIT);
     if (n <= 0) {
         V_PRINTF("[ERROR] getfsstat() size query failed: %s\n", strerror(errno));
-        return;
+        goto cleanup;
     }
 
-    struct statfs *st = malloc(sizeof(struct statfs) * n);
+    st = malloc(sizeof(struct statfs) * (size_t)n);
     if (!st) {
-        V_PRINTF("[ERROR] malloc(%zu) for statfs failed: %s\n", sizeof(struct statfs) * n,
+        V_PRINTF("[ERROR] malloc(%zu) for statfs failed: %s\n", sizeof(struct statfs) * (size_t)n,
                  strerror(errno));
-        return;
+        goto cleanup;
     }
 
-    n = getfsstat(st, (int)(sizeof(struct statfs) * n), MNT_NOWAIT);
+    n = getfsstat(st, (int)(sizeof(struct statfs) * (size_t)n), MNT_NOWAIT);
     if (n <= 0) {
         V_PRINTF("[ERROR] getfsstat() data fetch failed: %s\n", strerror(errno));
-        free(st);
-        return;
+        goto cleanup;
     }
 
-    string_set_t *outputted_disks = strset_create(INITIAL_CAPACITY);
+    outputted_disks = strset_create(INITIAL_CAPACITY);
 
-    for (int i = 0; i < n; i++) {
+    for (size_t i = 0; i < (size_t)n; i++) {
         if (strcmp(st[i].f_mntonname, "/") != 0 &&
             strncmp(st[i].f_mntonname, "/Volumes/", 9) != 0) {
             continue;
@@ -823,7 +830,8 @@ void hw_get_drives_info(void)
         uint64_t total = (uint64_t)st[i].f_blocks * st[i].f_bsize;
         uint64_t used = total - ((uint64_t)st[i].f_bfree * st[i].f_bsize);
 
-        char label[LINE_BUFFER], info[LINE_BUFFER];
+        char label[LINE_BUFFER] = {0};
+        char info[LINE_BUFFER] = {0};
         snprintf(label, sizeof(label), "Disk (%s)", st[i].f_mntonname);
         util_format_size((double)total, (double)used, info, sizeof(info), UNIT_B);
 
@@ -832,33 +840,34 @@ void hw_get_drives_info(void)
         ui_print_info(label, info);
     }
 
-    strset_destroy(outputted_disks);
+cleanup:
+    if (outputted_disks) {
+        strset_destroy(outputted_disks);
+    }
     free(st);
 }
 
 void hw_get_bat_info(void)
 {
-    CFTypeRef info = IOPSCopyPowerSourcesInfo();
+    CFTypeRef info = NULL;
+    CFArrayRef list = NULL;
+    CFDictionaryRef dict = NULL;
+
+    info = IOPSCopyPowerSourcesInfo();
     if (!info) {
         V_PRINTF("[ERROR] IOPSCopyPowerSourcesInfo() failed (no power sources found)\n");
-        return;
+        goto cleanup;
     }
 
-    CFArrayRef list = IOPSCopyPowerSourcesList(info);
+    list = IOPSCopyPowerSourcesList(info);
     if (!list || CFArrayGetCount(list) == 0) {
-        if (list) {
-            CFRelease(list);
-        }
-        CFRelease(info);
-        return;
+        goto cleanup;
     }
 
-    CFDictionaryRef dict = IOPSGetPowerSourceDescription(info, CFArrayGetValueAtIndex(list, 0));
+    dict = IOPSGetPowerSourceDescription(info, CFArrayGetValueAtIndex(list, 0));
     if (!dict || CFGetTypeID(dict) != CFDictionaryGetTypeID()) {
         V_PRINTF("[ERROR] IOPSGetPowerSourceDescription() returned an invalid description\n");
-        CFRelease(list);
-        CFRelease(info);
-        return;
+        goto cleanup;
     }
 
     char model[SMALL_BUFFER] = "Unknown";
@@ -886,12 +895,17 @@ void hw_get_bat_info(void)
     char info_buf[MEDIUM_BUFFER] = {0};
 
     snprintf(label_buf, sizeof(label_buf), "Battery (%s)", model);
-    snprintf(info_buf, sizeof(info_buf), "%u%% (%s, Health: %s)", pct, status, health);
+    snprintf(info_buf, sizeof(info_buf), "%" PRIu8 "%% (%s, Health: %s)", pct, status, health);
 
     ui_print_info(label_buf, info_buf);
 
-    CFRelease(list);
-    CFRelease(info);
+cleanup:
+    if (list) {
+        CFRelease(list);
+    }
+    if (info) {
+        CFRelease(info);
+    }
 }
 
 static uint8_t hw_get_bat_percentage(const CFDictionaryRef power_source)
@@ -900,7 +914,8 @@ static uint8_t hw_get_bat_percentage(const CFDictionaryRef power_source)
         return 0;
     }
 
-    int cur_cap = 0, max_cap = 0;
+    int32_t cur_cap = 0;
+    int32_t max_cap = 0;
 
     CFNumberRef cur_ref = CFDictionaryGetValue(power_source, CFSTR(kIOPSCurrentCapacityKey));
     CFNumberRef max_ref = CFDictionaryGetValue(power_source, CFSTR(kIOPSMaxCapacityKey));
@@ -974,7 +989,7 @@ static io_iterator_t get_matching_iterator(const char *class_name)
         return IO_OBJECT_NULL;
     }
 
-    io_iterator_t iterator;
+    io_iterator_t iterator = IO_OBJECT_NULL;
     if (IOServiceGetMatchingServices(kIOMainPortDefault, matching_dict, &iterator) !=
         kIOReturnSuccess) {
         V_PRINTF("[ERROR] IOServiceGetMatchingServices failed to find %s\n", class_name);

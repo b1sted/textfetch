@@ -45,28 +45,28 @@ static void test_sanitize_cpu_name(void)
     hw_sanitize_cpu_name(NULL);
 }
 
-static forest *make_pci_forest(void)
+static tree_forest_t *make_pci_forest(void)
 {
-    forest *ids = create_forest(2);
+    tree_forest_t *ids = tree_create_forest(2);
     if (!ids) {
         return NULL;
     }
 
-    node *nvidia = create_node(0x10de, "NVIDIA");
-    add_child(nvidia, 0x1c82, "GeForce GTX 1050 Ti");
-    add_child(nvidia, 0x0de1, "GeForce GT 630");
-    add_tree_to_forest(ids, nvidia);
+    tree_node_t *nvidia = tree_create_node(0x10de, "NVIDIA");
+    tree_add_child(nvidia, 0x1c82, "GeForce GTX 1050 Ti");
+    tree_add_child(nvidia, 0x0de1, "GeForce GT 630");
+    tree_add_to_forest(ids, nvidia);
 
-    node *amd = create_node(0x1002, "AMD");
-    add_child(amd, 0x73ff, "Navi 23");
-    add_tree_to_forest(ids, amd);
+    tree_node_t *amd = tree_create_node(0x1002, "AMD");
+    tree_add_child(amd, 0x73ff, "Navi 23");
+    tree_add_to_forest(ids, amd);
 
     return ids;
 }
 
 static void test_gpu_lookup(void)
 {
-    char buffer[256];
+    char buffer[256] = {0};
     gpu_node_t *list = NULL;
 
     list = add_gpu(list, 0x10de, 0x1c82);
@@ -75,11 +75,12 @@ static void test_gpu_lookup(void)
     TEST_INT_EQ(list->part_id, 0x1c82);
     TEST_CHECK(list->next == NULL);
 
-    forest *ids = make_pci_forest();
+    tree_forest_t *ids = make_pci_forest();
     TEST_CHECK(ids != NULL);
     memset(buffer, 0, sizeof(buffer));
     hw_gpu_lookup_names(buffer, sizeof(buffer), ids, list);
     TEST_STR_EQ(buffer, "NVIDIA GeForce GTX 1050 Ti [0x1C82]");
+    tree_destroy_forest(ids);
     free_gpu_list(list);
 
     list = add_gpu(NULL, 0x10de, 0x1c82);
@@ -88,6 +89,7 @@ static void test_gpu_lookup(void)
     memset(buffer, 0, sizeof(buffer));
     hw_gpu_lookup_names(buffer, sizeof(buffer), ids, list);
     TEST_STR_EQ(buffer, "2 x NVIDIA GeForce GTX 1050 Ti [0x1C82]");
+    tree_destroy_forest(ids);
     free_gpu_list(list);
 
     list = add_gpu(NULL, 0x10de, 0x9999);
@@ -95,6 +97,7 @@ static void test_gpu_lookup(void)
     memset(buffer, 0, sizeof(buffer));
     hw_gpu_lookup_names(buffer, sizeof(buffer), ids, list);
     TEST_STR_EQ(buffer, "NVIDIA [0x9999]");
+    tree_destroy_forest(ids);
     free_gpu_list(list);
 
     list = add_gpu(NULL, 0x1234, 0x5678);
@@ -113,11 +116,13 @@ static void test_gpu_lookup(void)
     list = add_gpu(NULL, 0x1234, 0x5678);
     ids = make_pci_forest();
     hw_gpu_lookup_names(NULL, 0, ids, list);
+    tree_destroy_forest(ids);
     free_gpu_list(list);
 
     list = add_gpu(NULL, 0x1234, 0x5678);
     ids = make_pci_forest();
     hw_gpu_lookup_names(buffer, sizeof(buffer), ids, list);
+    tree_destroy_forest(ids);
     free_gpu_list(list);
 
     free_gpu_list(NULL);
@@ -125,8 +130,7 @@ static void test_gpu_lookup(void)
 
 static void test_battery_metrics(void)
 {
-    bat_data_t data;
-    memset(&data, 0, sizeof(data));
+    bat_data_t data = {0};
 
     hw_battery_read_metrics("textfetch-missing-battery", &data);
 
@@ -312,10 +316,10 @@ static void test_sparse_cpu_packages(void)
     TEST_INT_EQ(cpu_map[1], 0xFFFF);
     TEST_INT_EQ(cpu_map[2], 2);
 
-    TEST_INT_EQ(count_set_bits(&(bitset_t){.bits = cpus[0].core_bits, .capacity = MAX_CPU_CORES},
+    TEST_INT_EQ(set_count_bits(&(bitset_t){.bits = cpus[0].core_bits, .capacity = MAX_CPU_CORES},
                                CORES_SET_BLOCKS),
                 2);
-    TEST_INT_EQ(count_set_bits(&(bitset_t){.bits = cpus[2].core_bits, .capacity = MAX_CPU_CORES},
+    TEST_INT_EQ(set_count_bits(&(bitset_t){.bits = cpus[2].core_bits, .capacity = MAX_CPU_CORES},
                                CORES_SET_BLOCKS),
                 2);
 
@@ -361,7 +365,7 @@ static void test_uniprocessor_without_topology(void)
     TEST_INT_EQ(packages, 1);
     TEST_CHECK(cpus[0].exists);
     TEST_INT_EQ(cpu_map[0], 0);
-    TEST_INT_EQ(count_set_bits(&(bitset_t){.bits = cpus[0].core_bits, .capacity = MAX_CPU_CORES},
+    TEST_INT_EQ(set_count_bits(&(bitset_t){.bits = cpus[0].core_bits, .capacity = MAX_CPU_CORES},
                                CORES_SET_BLOCKS),
                 1);
 
@@ -497,7 +501,7 @@ static void test_cpu_fallback_without_nodes(void)
     TEST_INT_EQ(packages, 1);
     TEST_CHECK(cpus[0].exists);
     TEST_INT_EQ(cpu_map[0], 0);
-    TEST_INT_EQ(count_set_bits(&(bitset_t){.bits = cpus[0].core_bits, .capacity = MAX_CPU_CORES},
+    TEST_INT_EQ(set_count_bits(&(bitset_t){.bits = cpus[0].core_bits, .capacity = MAX_CPU_CORES},
                                CORES_SET_BLOCKS),
                 1);
 

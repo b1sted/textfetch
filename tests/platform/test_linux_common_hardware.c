@@ -1,16 +1,18 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "pal/hardware_os.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
 #include <mntent.h>
+
 #include <sys/statvfs.h>
 
 #include "../support/test_framework.h"
 #include "../support/test_helpers.h"
-#include "pal/hardware_os.h"
 
 /* Include the translation unit to exercise its static helpers directly. */
 // NOLINTNEXTLINE(bugprone-suspicious-include)
@@ -18,9 +20,8 @@
 
 static void test_valid_mount(void)
 {
-    struct mntent entry;
+    struct mntent entry = {0};
 
-    memset(&entry, 0, sizeof(entry));
     entry.mnt_fsname = "/dev/sda1";
     entry.mnt_dir = "/";
     entry.mnt_type = "ext4";
@@ -83,12 +84,10 @@ static void test_valid_mount(void)
 
 static void test_print_disk(void)
 {
-    struct statvfs fs;
-    struct mntent entry;
+    struct statvfs fs = {0};
+    struct mntent entry = {0};
     test_capture_t capture = {0};
 
-    memset(&fs, 0, sizeof(fs));
-    memset(&entry, 0, sizeof(entry));
     entry.mnt_type = "ext4";
 
     fs.f_frsize = 4096;
@@ -164,9 +163,8 @@ static void test_meminfo_parsing(void)
                                "SReclaimable:     50 kB\n"
                                "SwapTotal:       500 kB\n"
                                "SwapFree:        200 kB\n";
-    mem_info_t mem;
+    mem_info_t mem = {0};
     mem_flags_t flags = 0;
-    memset(&mem, 0, sizeof(mem));
 
     FILE *fp = fmemopen(without_available, strlen(without_available), "r");
     TEST_CHECK(fp != NULL);
@@ -220,7 +218,7 @@ static void test_actual_drives(void)
     hw_get_drives_info();
     char *output = test_capture_end(&capture);
     TEST_CHECK(output != NULL);
-    if (output[0] != '\0') {
+    if (output && output[0] != '\0') {
         TEST_STR_CONTAINS(output, "Disk (");
     }
     free(output);

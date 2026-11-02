@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: MIT */
 
-#include <stdbool.h>
-
 #include "config.h"
 
+#include <stdbool.h>
+
 /* Compiled application version string exposed to runtime consumers. */
-const char version_string[] = APP_VERSION;
+const char cfg_version_string[] = APP_VERSION;
 
 static struct {
     bool kib_format : 1;

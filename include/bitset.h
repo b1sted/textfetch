@@ -61,6 +61,6 @@ void set_remove(bitset_t *set, size_t num);
  * @param blocks Number of uint32_t blocks in the array (e.g., SET_SIZE).
  * @return The total count of bits set to 1.
  */
-uint32_t count_set_bits(const bitset_t *set, size_t blocks);
+uint32_t set_count_bits(const bitset_t *set, size_t blocks);
 
 #endif /* BITSET_H */

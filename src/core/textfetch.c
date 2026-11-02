@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
 
     opterr = 0;
 
-    int opt;
+    int opt = 0;
     while ((opt = getopt_long(argc, argv, "hkmgvV", long_options, NULL)) != -1) {
         switch (opt) {
         case 'h':
@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
             ui_print_help(argv[0]);
             exit(EXIT_SUCCESS);
         case 'V':
-            ui_print_version(version_string);
+            ui_print_version(cfg_version_string);
             exit(EXIT_SUCCESS);
         default:
             fprintf(stderr, "[ERROR] Unknown option. Try '%s --help' for more information\n",
@@ -65,13 +65,13 @@ int main(int argc, char *argv[])
         }
     }
 
-    system_init();
-    system_print_header();
-    system_print_info();
+    sys_init();
+    sys_print_header();
+    sys_print_info();
 
-    terminal_print_info();
+    term_print_info();
 
-    hardware_print_info();
+    hw_print_info();
 
     return 0;
 }

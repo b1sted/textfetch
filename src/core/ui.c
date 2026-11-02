@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: MIT */
 
-#include <stdio.h>
-#include <string.h>
+#include "ui.h"
 
 #include <errno.h>
+#include <stdio.h>
+#include <string.h>
 
 #include <sys/utsname.h>
 
 #include "sys_utils.h"
-#include "ui.h"
 
 #define COLOR_BOLD "\x1b[1m"
 #define COLOR_RESET "\x1b[0m"
@@ -57,8 +57,7 @@ void ui_print_help(const char *prog_name)
 
 void ui_print_version(const char *app_version)
 {
-    struct utsname sys_info;
-    memset(&sys_info, 0, sizeof(struct utsname));
+    struct utsname sys_info = {0};
 
     if (uname(&sys_info) != 0) {
         V_PRINTF("[ERROR] uname failed: %s\n", strerror(errno));

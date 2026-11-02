@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "pal/system_os.h"
+
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -15,8 +17,6 @@
 #include "defs.h"
 #include "sys_utils.h"
 
-#include "pal/system_os.h"
-
 void sys_get_identity(char *out_buf, const size_t buf_size)
 {
     if (!out_buf || buf_size == 0) {
@@ -24,11 +24,11 @@ void sys_get_identity(char *out_buf, const size_t buf_size)
         return;
     }
 
-    struct passwd *pwd;
+    struct passwd *pwd = NULL;
     uid_t uid = geteuid();
 
     if ((pwd = getpwuid(uid)) == NULL) {
-        V_PRINTF("[ERROR] getpwuid(%u) failed: %s\n", uid, strerror(errno));
+        V_PRINTF("[ERROR] getpwuid(%" PRIuMAX ") failed: %s\n", (uintmax_t)uid, strerror(errno));
         snprintf(out_buf, buf_size, "unknown");
         return;
     }

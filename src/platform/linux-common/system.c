@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "pal/system_os.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -14,13 +16,11 @@
 #include "sys_utils.h"
 #include "system.h"
 
-#include "pal/system_os.h"
-
-void system_init(void)
+void sys_init(void)
 {
     const char *fallback = "unknown";
-    struct utsname uts;
-    struct sysinfo si;
+    struct utsname uts = {0};
+    struct sysinfo si = {0};
 
     bool uname_ok = (uname(&uts) == 0);
     if (!uname_ok) {

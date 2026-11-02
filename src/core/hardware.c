@@ -7,7 +7,7 @@
 
 #include "pal/hardware_os.h"
 
-void hardware_print_info(void)
+void hw_print_info(void)
 {
     hw_get_cpu_info();
     hw_get_gpu_info();

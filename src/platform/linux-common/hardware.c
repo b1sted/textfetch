@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "pal/hardware_os.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -17,8 +19,6 @@
 #include "hashtable.h"
 #include "sys_utils.h"
 #include "ui.h"
-
-#include "pal/hardware_os.h"
 
 /* Temporary or pseudo-filesystems to ignore when summarizing disk space. */
 #define IGNORE_MOUNT_POINTS                                                                        \
@@ -61,7 +61,7 @@ static void hw_parse_meminfo(FILE *memory_file, mem_info_t *mem_node, mem_flags_
     uint64_t mem_free = 0, buffers = 0, cached = 0, sreclaimable = 0;
     bool has_mem_available = false;
 
-    char file_line[LINE_BUFFER];
+    char file_line[LINE_BUFFER] = {0};
     while (fgets(file_line, LINE_BUFFER, memory_file)) {
         char *delimiter_ptr = strstr(file_line, ":");
         if (!delimiter_ptr) {
@@ -117,37 +117,39 @@ static void hw_parse_meminfo(FILE *memory_file, mem_info_t *mem_node, mem_flags_
 
 void hw_get_mem_info(void)
 {
-    mem_info_t mem_node;
-    memset(&mem_node, 0, sizeof(mem_info_t));
-
+    mem_info_t mem_node = {0};
     mem_flags_t flags = 0;
+    FILE *memory_file = NULL;
 
-    FILE *memory_file = fopen(MEMINFO_PATH, "r");
+    memory_file = fopen(MEMINFO_PATH, "r");
     if (!memory_file) {
         V_PRINTF("[ERROR] Failed to open %s: %s\n", MEMINFO_PATH, strerror(errno));
-        return;
+        goto cleanup;
     }
 
     hw_parse_meminfo(memory_file, &mem_node, &flags);
-
-    fclose(memory_file);
-
     hw_print_mem_info(flags, &mem_node);
+
+cleanup:
+    if (memory_file) {
+        fclose(memory_file);
+    }
 }
 
 void hw_get_drives_info(void)
 {
-    struct mntent *mnt_entry;
-    struct statvfs fs;
-    memset(&fs, 0, sizeof(struct statvfs));
+    struct mntent *mnt_entry = NULL;
+    struct statvfs fs = {0};
+    FILE *mounts_file = NULL;
+    string_set_t *outputted_partitions = NULL;
 
-    FILE *mounts_file = fopen(MOUNTS_PATH, "r");
+    mounts_file = fopen(MOUNTS_PATH, "r");
     if (!mounts_file) {
         V_PRINTF("[ERROR] Failed to open %s: %s\n", MOUNTS_PATH, strerror(errno));
-        return;
+        goto cleanup;
     }
 
-    string_set_t *outputted_partitions = strset_create(INITIAL_CAPACITY);
+    outputted_partitions = strset_create(INITIAL_CAPACITY);
 
     while ((mnt_entry = getmntent(mounts_file)) != NULL) {
         if (!is_valid_mount(mnt_entry)) {
@@ -169,8 +171,13 @@ void hw_get_drives_info(void)
         }
     }
 
-    strset_destroy(outputted_partitions);
-    fclose(mounts_file);
+cleanup:
+    if (outputted_partitions) {
+        strset_destroy(outputted_partitions);
+    }
+    if (mounts_file) {
+        fclose(mounts_file);
+    }
 }
 
 /**
@@ -202,7 +209,7 @@ static bool is_valid_mount(const struct mntent *ent)
 
     const char *ignore_mount_points[] = IGNORE_MOUNT_POINTS;
 
-    for (int i = 0; ignore_mount_points[i] != NULL; i++) {
+    for (size_t i = 0; ignore_mount_points[i] != NULL; i++) {
         if (is_ignored_mount_point(ent->mnt_dir, ignore_mount_points[i])) {
             return false;
         }
@@ -218,10 +225,10 @@ static void hw_print_disk(const char *mnt, const struct statvfs *fs, const struc
     double free_size = (double)((uint64_t)fs->f_bfree * block_size);
     double used_size = total_size - free_size;
 
-    char label[LINE_BUFFER];
+    char label[LINE_BUFFER] = {0};
     snprintf(label, LINE_BUFFER, "Disk (%s)", mnt);
 
-    char usage_info[LINE_BUFFER];
+    char usage_info[LINE_BUFFER] = {0};
     size_t usage_len = sizeof(usage_info);
 
     util_format_size(total_size, used_size, usage_info, usage_len, UNIT_B);

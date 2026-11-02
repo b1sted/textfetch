@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "bitset.h"
+
 #include <stdint.h>
 
 #include "../support/test_framework.h"
-#include "bitset.h"
 
 static void test_size_macros(void)
 {
@@ -43,21 +44,21 @@ static void test_add_contains_remove(void)
     TEST_CHECK(set_contains(&set, 127));
     TEST_CHECK(!set_contains(&set, 1));
     TEST_CHECK(!set_contains(&set, 126));
-    TEST_INT_EQ(count_set_bits(&set, SET_SIZE(128)), 4);
+    TEST_INT_EQ(set_count_bits(&set, SET_SIZE(128)), 4);
 
     set_remove(&set, 31);
     TEST_CHECK(!set_contains(&set, 31));
     TEST_CHECK(set_contains(&set, 32));
-    TEST_INT_EQ(count_set_bits(&set, SET_SIZE(128)), 3);
+    TEST_INT_EQ(set_count_bits(&set, SET_SIZE(128)), 3);
 
     set_remove(&set, 31);
     set_remove(&set, 100);
-    TEST_INT_EQ(count_set_bits(&set, SET_SIZE(128)), 3);
+    TEST_INT_EQ(set_count_bits(&set, SET_SIZE(128)), 3);
 
     set_add(&set, 31);
     set_add(&set, 31);
     TEST_CHECK(set_contains(&set, 31));
-    TEST_INT_EQ(count_set_bits(&set, SET_SIZE(128)), 4);
+    TEST_INT_EQ(set_count_bits(&set, SET_SIZE(128)), 4);
 }
 
 static void test_out_of_range(void)
@@ -69,13 +70,13 @@ static void test_out_of_range(void)
     set_add(&set, 1000);
     TEST_CHECK(!set_contains(&set, 64));
     TEST_CHECK(!set_contains(&set, 1000));
-    TEST_INT_EQ(count_set_bits(&set, SET_SIZE(64)), 0);
+    TEST_INT_EQ(set_count_bits(&set, SET_SIZE(64)), 0);
 
     set_add(&set, 63);
     TEST_CHECK(set_contains(&set, 63));
     set_remove(&set, 64);
     TEST_CHECK(set_contains(&set, 63));
-    TEST_INT_EQ(count_set_bits(&set, SET_SIZE(64)), 1);
+    TEST_INT_EQ(set_count_bits(&set, SET_SIZE(64)), 1);
 }
 
 static void test_zero_capacity(void)
@@ -85,7 +86,7 @@ static void test_zero_capacity(void)
     set_add(&set, 0);
     TEST_CHECK(!set_contains(&set, 0));
     set_remove(&set, 0);
-    TEST_INT_EQ(count_set_bits(&set, 0), 0);
+    TEST_INT_EQ(set_count_bits(&set, 0), 0);
 }
 
 static void test_null_set(void)
@@ -93,7 +94,7 @@ static void test_null_set(void)
     set_add(NULL, 0);
     set_remove(NULL, 0);
     TEST_CHECK(!set_contains(NULL, 0));
-    TEST_INT_EQ(count_set_bits(NULL, 4), 0);
+    TEST_INT_EQ(set_count_bits(NULL, 4), 0);
 }
 
 static void test_count_blocks(void)
@@ -105,10 +106,10 @@ static void test_count_blocks(void)
         set_add(&set, i);
     }
 
-    TEST_INT_EQ(count_set_bits(&set, 0), 0);
-    TEST_INT_EQ(count_set_bits(&set, 1), 16);
-    TEST_INT_EQ(count_set_bits(&set, 2), 32);
-    TEST_INT_EQ(count_set_bits(&set, SET_SIZE(128)), 64);
+    TEST_INT_EQ(set_count_bits(&set, 0), 0);
+    TEST_INT_EQ(set_count_bits(&set, 1), 16);
+    TEST_INT_EQ(set_count_bits(&set, 2), 32);
+    TEST_INT_EQ(set_count_bits(&set, SET_SIZE(128)), 64);
 }
 
 int main(void)

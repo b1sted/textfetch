@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "pal/system_os.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -25,8 +27,6 @@
 #include "defs.h"
 #include "sys_utils.h"
 
-#include "pal/system_os.h"
-
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_VERSION_11_0
 /* Multiplier to convert clock_gettime_nsec_np nanosecond ticks into seconds. */
 #define NANOSECONDS_IN_SECONDS 1000000000ULL
@@ -37,7 +37,7 @@
  * with macOS marketing/release names.
  */
 typedef struct {
-    int major;
+    uint32_t major;
     const char *name;
 } macos_name_map_t;
 
@@ -101,7 +101,7 @@ static void sys_get_uptime(void);
  */
 static void sys_get_procs_count(void);
 
-void system_init(void)
+void sys_init(void)
 {
     const char *fallback = "unknown";
     static struct utsname uts;
@@ -154,9 +154,9 @@ void sys_get_distro(char *out_buf, const size_t buf_size)
 
 static const char *sys_get_os_name(void)
 {
-    int kern_major_number = atoi(sys_data.release);
+    uint32_t kern_major_number = (uint32_t)atoi(sys_data.release);
 
-    for (int i = 0; darwin_map[i].name != NULL; i++) {
+    for (size_t i = 0; darwin_map[i].name != NULL; i++) {
         if (darwin_map[i].major == kern_major_number) {
             return darwin_map[i].name;
         }
@@ -247,50 +247,57 @@ void sys_get_model_name(char *out_buf, const size_t buf_size)
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_9
 static CFPropertyListRef create_plist_from_file(const char *path)
 {
-    int fd = open(path, O_RDONLY);
+    int fd = -1;
+    struct stat sb = {0};
+    size_t file_size = 0;
+    void *ptr = MAP_FAILED;
+    CFDataRef data_ref = NULL;
+    CFPropertyListRef plist = NULL;
+
+    fd = open(path, O_RDONLY);
     if (fd < 0) {
-        return NULL;
+        goto cleanup;
     }
 
-    struct stat sb;
     if (fstat(fd, &sb) == -1) {
-        close(fd);
-        return NULL;
+        goto cleanup;
     }
 
     if (sb.st_size <= 0) {
         V_PRINTF("[ERROR] create_plist_from_file(%s): file is empty\n", path);
-        close(fd);
-        return NULL;
+        goto cleanup;
     }
 
-    size_t file_size = (size_t)sb.st_size;
+    file_size = (size_t)sb.st_size;
 
-    void *ptr = mmap(NULL, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    ptr = mmap(NULL, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
     if (ptr == MAP_FAILED) {
-        close(fd);
-        return NULL;
+        goto cleanup;
     }
 
-    CFDataRef data_ref =
+    data_ref =
         CFDataCreateWithBytesNoCopy(kCFAllocatorDefault, ptr, (CFIndex)file_size, kCFAllocatorNull);
     if (!data_ref) {
         V_PRINTF("[ERROR] create_plist_from_file(%s): CFDataCreateWithBytesNoCopy failed\n", path);
-        munmap(ptr, file_size);
-        close(fd);
-        return NULL;
+        goto cleanup;
     }
 
-    CFPropertyListRef plist = CFPropertyListCreateWithData(kCFAllocatorDefault, data_ref,
-                                                           kCFPropertyListImmutable, NULL, NULL);
+    plist = CFPropertyListCreateWithData(kCFAllocatorDefault, data_ref, kCFPropertyListImmutable,
+                                         NULL, NULL);
     if (!plist) {
         V_PRINTF("[ERROR] create_plist_from_file(%s): CFPropertyListCreateWithData failed\n", path);
     }
 
-    CFRelease(data_ref);
-    munmap(ptr, file_size);
-    close(fd);
-
+cleanup:
+    if (data_ref) {
+        CFRelease(data_ref);
+    }
+    if (ptr != MAP_FAILED) {
+        munmap(ptr, file_size);
+    }
+    if (fd >= 0) {
+        close(fd);
+    }
     return plist;
 }
 #endif
@@ -314,7 +321,7 @@ static void sys_get_uptime(void)
     int mib[2] = {CTL_KERN, KERN_BOOTTIME};
 
     if (sysctl(mib, 2, &boottime, &size, NULL, 0) == 0) {
-        struct timeval now;
+        struct timeval now = {0};
         gettimeofday(&now, NULL);
 
         if (now.tv_sec >= boottime.tv_sec) {
@@ -329,27 +336,29 @@ static void sys_get_uptime(void)
 static void sys_get_procs_count(void)
 {
     int mib[3] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
-    size_t len;
+    size_t len = 0;
+    struct kinfo_proc *procs = NULL;
 
     /* First call to get the required buffer size */
     if (sysctl(mib, 3, NULL, &len, NULL, 0) < 0) {
         V_PRINTF("[ERROR] sysctl(KERN_PROC_ALL) size query failed: %s\n", strerror(errno));
-        return;
+        goto cleanup;
     }
 
-    struct kinfo_proc *procs = malloc(len);
+    procs = malloc(len);
     if (!procs) {
         V_PRINTF("[ERROR] malloc(%zu) for kinfo_proc failed: %s\n", len, strerror(errno));
-        return;
+        goto cleanup;
     }
 
     /* Second call to fetch the actual process list */
     if (sysctl(mib, 3, procs, &len, NULL, 0) < 0) {
         V_PRINTF("[ERROR] sysctl(KERN_PROC_ALL) data fetch failed: %s\n", strerror(errno));
-        free(procs);
-        return;
+        goto cleanup;
     }
 
     sys_data.procs = (uint32_t)(len / sizeof(struct kinfo_proc));
+
+cleanup:
     free(procs);
 }

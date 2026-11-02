@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "sys_utils.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -12,7 +14,6 @@
 #include "../support/test_helpers.h"
 #include "binary_trees.h"
 #include "config.h"
-#include "sys_utils.h"
 
 static void test_string_in_array(void)
 {
@@ -309,20 +310,24 @@ static void test_duplicate_hardware(void)
 static bool format_size_in_child(bool kib, bool mib, bool gib, double total, double used,
                                  data_unit_t from_unit, char *out_buf, size_t out_size)
 {
-    int pipe_fds[2];
+    int pipe_fds[2] = {-1, -1};
+    pid_t pid = -1;
+    int status = 0;
+    ssize_t read_count = 0;
+    bool result = false;
+
     if (pipe(pipe_fds) != 0) {
-        return false;
+        goto cleanup;
     }
 
-    pid_t pid = fork();
+    pid = fork();
     if (pid < 0) {
-        close(pipe_fds[0]);
-        close(pipe_fds[1]);
-        return false;
+        goto cleanup;
     }
 
     if (pid == 0) {
         close(pipe_fds[0]);
+        pipe_fds[0] = -1;
 
         if (kib) {
             util_set_output_unit(UNIT_KIB);
@@ -353,19 +358,29 @@ static bool format_size_in_child(bool kib, bool mib, bool gib, double total, dou
     }
 
     close(pipe_fds[1]);
+    pipe_fds[1] = -1;
 
-    ssize_t read_count = read(pipe_fds[0], out_buf, out_size - 1);
+    read_count = read(pipe_fds[0], out_buf, out_size - 1);
     close(pipe_fds[0]);
+    pipe_fds[0] = -1;
 
-    int status = 0;
     waitpid(pid, &status, 0);
 
     if (read_count <= 0 || !WIFEXITED(status) || WEXITSTATUS(status) != EXIT_SUCCESS) {
-        return false;
+        goto cleanup;
     }
 
     out_buf[read_count] = '\0';
-    return true;
+    result = true;
+
+cleanup:
+    if (pipe_fds[0] != -1) {
+        close(pipe_fds[0]);
+    }
+    if (pipe_fds[1] != -1) {
+        close(pipe_fds[1]);
+    }
+    return result;
 }
 
 static void test_format_size(void)
@@ -428,6 +443,36 @@ static void test_format_size(void)
     TEST_CHECK(small[sizeof(small) - 1] == '\0');
 }
 
+static tree_forest_t *parse_ids_from_content(const char *content, size_t capacity)
+{
+    char *path = NULL;
+    FILE *fp = NULL;
+    tree_forest_t *ids = NULL;
+
+    path = test_write_temp_file(content);
+    if (!path) {
+        goto cleanup;
+    }
+
+    fp = fopen(path, "r");
+    if (!fp) {
+        goto cleanup;
+    }
+
+    ids = util_parse_ids_file(fp, capacity);
+    fp = NULL;
+
+cleanup:
+    if (fp) {
+        fclose(fp);
+    }
+    if (path) {
+        unlink(path);
+        free(path);
+    }
+    return ids;
+}
+
 static void test_parse_ids_file(void)
 {
     const char *content = "# comment line\n"
@@ -438,101 +483,61 @@ static void test_parse_ids_file(void)
                           "1002  AMD\n"
                           "\t73ff  Navi 23\n";
 
-    char *path = test_write_temp_file(content);
-    TEST_CHECK(path != NULL);
+    tree_forest_t *ids = parse_ids_from_content(content, 2);
+    TEST_CHECK(ids != NULL);
+    if (ids) {
+        TEST_INT_EQ(ids->count, 2);
+        TEST_CHECK(ids->capacity >= 2);
 
-    FILE *fp = fopen(path, "r");
-    TEST_CHECK(fp != NULL);
-    if (!fp) {
-        return;
+        tree_node_t *nvidia = tree_find_root(ids, 0x10de);
+        tree_node_t *amd = tree_find_root(ids, 0x1002);
+        TEST_CHECK(nvidia != NULL);
+        TEST_CHECK(amd != NULL);
+        if (nvidia && amd) {
+            TEST_STR_EQ(nvidia->name, "NVIDIA");
+            TEST_STR_EQ(amd->name, "AMD");
+
+            const tree_node_t *gtx = tree_find(nvidia, 0x1c82);
+            const tree_node_t *gt630 = tree_find(nvidia, 0x0de1);
+            const tree_node_t *navi = tree_find(amd, 0x73ff);
+            TEST_CHECK(gtx != NULL);
+            TEST_CHECK(gt630 != NULL);
+            TEST_CHECK(navi != NULL);
+            TEST_STR_EQ(gtx->name, "GeForce GTX 1050 Ti");
+            TEST_STR_EQ(gt630->name, "GeForce GT 630");
+            TEST_STR_EQ(navi->name, "Navi 23");
+        }
+
+        TEST_CHECK(tree_find(nvidia, 0xFFFF) == NULL);
+        TEST_CHECK(tree_find_root(ids, 0x1c82) == NULL);
+        tree_destroy_forest(ids);
     }
 
-    forest *ids = util_parse_ids_file(fp, 2);
+    ids = parse_ids_from_content("", 4);
     TEST_CHECK(ids != NULL);
-    TEST_INT_EQ(ids->count, 2);
-    TEST_CHECK(ids->capacity >= 2);
-
-    node *nvidia = find_in_forest(ids, 0x10de);
-    node *amd = find_in_forest(ids, 0x1002);
-    TEST_CHECK(nvidia != NULL);
-    TEST_CHECK(amd != NULL);
-    TEST_STR_EQ(nvidia->name, "NVIDIA");
-    TEST_STR_EQ(amd->name, "AMD");
-
-    node *gtx = find_in_tree(nvidia, 0x1c82);
-    node *gt630 = find_in_tree(nvidia, 0x0de1);
-    node *navi = find_in_tree(amd, 0x73ff);
-    TEST_CHECK(gtx != NULL);
-    TEST_CHECK(gt630 != NULL);
-    TEST_CHECK(navi != NULL);
-    TEST_STR_EQ(gtx->name, "GeForce GTX 1050 Ti");
-    TEST_STR_EQ(gt630->name, "GeForce GT 630");
-    TEST_STR_EQ(navi->name, "Navi 23");
-
-    TEST_CHECK(find_in_tree(nvidia, 0xFFFF) == NULL);
-    TEST_CHECK(find_in_forest(ids, 0x1c82) == NULL);
-
-    destroy_forest(ids);
-    unlink(path);
-    free(path);
-
-    path = test_write_temp_file("");
-    TEST_CHECK(path != NULL);
-    fp = fopen(path, "r");
-    TEST_CHECK(fp != NULL);
-    if (!fp) {
-        return;
+    if (ids) {
+        TEST_INT_EQ(ids->count, 0);
+        tree_destroy_forest(ids);
     }
-    ids = util_parse_ids_file(fp, 4);
-    TEST_CHECK(ids != NULL);
-    TEST_INT_EQ(ids->count, 0);
-    destroy_forest(ids);
-    unlink(path);
-    free(path);
 
-    path = test_write_temp_file("\t1c82  Device Without Vendor\n");
-    TEST_CHECK(path != NULL);
-    fp = fopen(path, "r");
-    TEST_CHECK(fp != NULL);
-    if (!fp) {
-        return;
-    }
-    ids = util_parse_ids_file(fp, 4);
+    ids = parse_ids_from_content("\t1c82  Device Without Vendor\n", 4);
     TEST_CHECK(ids != NULL);
-    TEST_INT_EQ(ids->count, 0);
-    destroy_forest(ids);
-    unlink(path);
-    free(path);
+    if (ids) {
+        TEST_INT_EQ(ids->count, 0);
+        tree_destroy_forest(ids);
+    }
 
-    path = test_write_temp_file("10de  NVIDIA\r\n\t1c82  Device\r\n");
-    TEST_CHECK(path != NULL);
-    fp = fopen(path, "r");
-    TEST_CHECK(fp != NULL);
-    if (!fp) {
-        return;
-    }
-    ids = util_parse_ids_file(fp, 1);
+    ids = parse_ids_from_content("10de  NVIDIA\r\n\t1c82  Device\r\n", 1);
     TEST_CHECK(ids != NULL);
-    TEST_INT_EQ(ids->count, 1);
-    TEST_STR_EQ(ids->roots[0]->name, "NVIDIA");
-    TEST_CHECK(find_in_tree(ids->roots[0], 0x1c82) != NULL);
-    destroy_forest(ids);
-    unlink(path);
-    free(path);
+    if (ids) {
+        TEST_INT_EQ(ids->count, 1);
+        TEST_STR_EQ(ids->roots[0]->name, "NVIDIA");
+        TEST_CHECK(tree_find(ids->roots[0], 0x1c82) != NULL);
+        tree_destroy_forest(ids);
+    }
 
     TEST_CHECK(util_parse_ids_file(NULL, 4) == NULL);
-
-    path = test_write_temp_file("10de  NVIDIA\n");
-    TEST_CHECK(path != NULL);
-    fp = fopen(path, "r");
-    TEST_CHECK(fp != NULL);
-    if (!fp) {
-        return;
-    }
-    TEST_CHECK(util_parse_ids_file(fp, 0) == NULL);
-    fclose(fp);
-    unlink(path);
-    free(path);
+    TEST_CHECK(parse_ids_from_content("10de  NVIDIA\n", 0) == NULL);
 }
 
 int main(void)

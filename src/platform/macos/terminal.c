@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: MIT */
 
-#include <stdio.h>
-#include <string.h>
+#include "pal/terminal_os.h"
 
 #include <errno.h>
+#include <stdio.h>
+#include <string.h>
 
 #include <unistd.h>
 
@@ -15,10 +16,12 @@
 #include "defs.h"
 #include "sys_utils.h"
 
-#include "pal/terminal_os.h"
-
 void term_get_shell(char *out_buf, const size_t buf_size)
 {
+    if (!out_buf || buf_size == 0) {
+        return;
+    }
+
     pid_t ppid = getppid();
 
     term_fallback_shell(out_buf, buf_size);
@@ -27,7 +30,7 @@ void term_get_shell(char *out_buf, const size_t buf_size)
     int ret = proc_pidpath(ppid, pathbuf, PROC_PIDPATHINFO_MAXSIZE);
 
     if (ret <= 0) {
-        V_PRINTF("[ERROR] proc_pidpath(pid: %d) failed: %s\n", ppid, strerror(errno));
+        V_PRINTF("[ERROR] proc_pidpath(pid: %d) failed: %s\n", (int)ppid, strerror(errno));
         return;
     }
 

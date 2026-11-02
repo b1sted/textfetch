@@ -2,14 +2,14 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include "hashtable.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <sys/types.h>
-
-#include "hashtable.h"
 
 /**
  * FNV-1a Hash Algorithm (64-bit variant).
@@ -44,30 +44,33 @@ static bool strset_resize(string_set_t *set, size_t new_capacity);
  * @param key The null-terminated string key to find.
  * @return The index containing the key, or the first available empty (NULL) index.
  */
-static size_t strset_find_index(string_set_t *set, const char *key);
+static size_t strset_find_index(const string_set_t *set, const char *key);
 
 string_set_t *strset_create(size_t capacity)
 {
-    string_set_t *set = malloc(sizeof(string_set_t));
+    string_set_t *set = NULL;
+
+    set = malloc(sizeof(*set));
     if (!set) {
-        return NULL;
+        goto cleanup;
     }
 
     set->capacity = next_pow2(capacity);
     if (set->capacity == 0) {
-        free(set);
-        return NULL;
+        goto cleanup;
     }
 
     set->count = 0;
     set->entries = calloc(set->capacity, sizeof(entry_t));
-
     if (!set->entries) {
-        free(set);
-        return NULL;
+        goto cleanup;
     }
 
     return set;
+
+cleanup:
+    free(set);
+    return NULL;
 }
 
 bool strset_add(string_set_t *set, const char *key)
@@ -102,7 +105,7 @@ bool strset_add(string_set_t *set, const char *key)
     return true;
 }
 
-bool strset_contains(string_set_t *set, const char *key)
+bool strset_contains(const string_set_t *set, const char *key)
 {
     if (!set || !key) {
         return false;
@@ -189,7 +192,7 @@ static bool strset_resize(string_set_t *set, size_t new_capacity)
     return true;
 }
 
-static size_t strset_find_index(string_set_t *set, const char *key)
+static size_t strset_find_index(const string_set_t *set, const char *key)
 {
     uint64_t hash = hash_key(key);
     size_t index = hash & (set->capacity - 1);

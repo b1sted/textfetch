@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "ui.h"
+
 #include <string.h>
 
 #include "../support/test_framework.h"
 #include "../support/test_helpers.h"
 #include "config.h"
-#include "ui.h"
 
 static char *capture_void_call(void (*callback)(void))
 {
@@ -90,7 +91,9 @@ static void test_version(void)
     TEST_CHECK(output != NULL);
 
     TEST_STR_CONTAINS(output, "textfetch v1.2.3");
-    TEST_CHECK(output[strlen(output) - 1] == '\n');
+    if (output) {
+        TEST_CHECK(output[strlen(output) - 1] == '\n');
+    }
 
     free(output);
 }

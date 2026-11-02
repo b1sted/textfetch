@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 
-#define _GNU_SOURCE
+#include "pal/system_os.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -15,8 +15,6 @@
 #include "bitset.h"
 #include "defs.h"
 #include "sys_utils.h"
-
-#include "pal/system_os.h"
 
 /* Standard paths for accessing OS release information. */
 #define OS_RELEASE_PATH {"/etc/os-release", "/usr/lib/os-release", NULL}
@@ -107,6 +105,15 @@ static void hw_sanitize_vendor_name(char *vendor_name, const size_t vendor_size)
  * @param device_name A pointer to the device string from which the vendor name will be stripped.
  */
 static void hw_remove_vendor_from_model(const char *vendor_name, char *device_name);
+
+/**
+ * Checks whether a haystack contains a needle using case-insensitive matching.
+ *
+ * @param haystack The null-terminated string to search.
+ * @param needle The null-terminated substring to find.
+ * @return true if the needle is present, false otherwise.
+ */
+static bool hw_contains_case_insensitive(const char *haystack, const char *needle);
 #endif
 
 void sys_get_distro(char *out_buf, const size_t buf_size)
@@ -128,10 +135,10 @@ void sys_get_distro(char *out_buf, const size_t buf_size)
     if (!fp) {
         V_PRINTF("[ERROR] Failed to open os-release file: %s\n", strerror(errno));
         snprintf(out_buf, buf_size, "%s %s", sys_data.sysname, sys_data.machine);
-        return;
+        goto cleanup;
     }
 
-    char line[LINE_BUFFER];
+    char line[LINE_BUFFER] = {0};
     while (fgets(line, sizeof(line), fp)) {
         char *delim = strchr(line, '=');
         if (!delim) {
@@ -165,9 +172,15 @@ void sys_get_distro(char *out_buf, const size_t buf_size)
     }
 
     fclose(fp);
+    fp = NULL;
 
     size_t len = strlen(out_buf);
     snprintf(out_buf + len, buf_size - len, " %s", sys_data.machine);
+
+cleanup:
+    if (fp) {
+        fclose(fp);
+    }
 }
 
 #if defined(__arm__) || defined(__aarch64__) || defined(__riscv) || defined(__powerpc__)
@@ -215,7 +228,7 @@ void sys_get_model_name(char *out_buf, const size_t buf_size)
         snprintf(out_buf, buf_size, "%s %s", vendor_buf, name_buf);
     } else {
         snprintf(out_buf, buf_size, "%s %s %s", vendor_buf,
-                 (strcasestr(name_buf, family_buf)) ? "" : family_buf, name_buf);
+                 hw_contains_case_insensitive(name_buf, family_buf) ? "" : family_buf, name_buf);
     }
 }
 
@@ -279,7 +292,7 @@ static void hw_sanitize_vendor_name(char *vendor_name, const size_t vendor_size)
 
     bool is_allcaps = util_string_in_array(vendor_name, allcaps_vendor);
 
-    for (uint8_t i = 1; i < strlen(vendor_name); i++) {
+    for (size_t i = 1; i < strlen(vendor_name); i++) {
         uint8_t ch = (uint8_t)vendor_name[i];
         if (ch > 127) {
             break;
@@ -308,5 +321,25 @@ static void hw_remove_vendor_from_model(const char *vendor_name, char *device_na
 
         memmove(dup_pos, dup_end, strlen(dup_end) + 1);
     }
+}
+
+static bool hw_contains_case_insensitive(const char *haystack, const char *needle)
+{
+    if (!haystack || !needle) {
+        return false;
+    }
+
+    size_t needle_len = strlen(needle);
+    if (needle_len == 0) {
+        return true;
+    }
+
+    for (const char *pos = haystack; *pos != '\0'; pos++) {
+        if (strncasecmp(pos, needle, needle_len) == 0) {
+            return true;
+        }
+    }
+
+    return false;
 }
 #endif

@@ -2,6 +2,8 @@
 
 #if defined(__APPLE__) && defined(__MACH__)
 
+#include "pal/hardware_os.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>

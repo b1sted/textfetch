@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "pal/hardware_os.h"
+
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -20,8 +22,6 @@
 #include "defs.h"
 #include "sys_utils.h"
 #include "ui.h"
-
-#include "pal/hardware_os.h"
 
 /**
  * Determines the SoC model name using Android system properties.
@@ -54,8 +54,7 @@ static void hw_get_cpu_freq(cpu_info_t *cpu);
 
 void hw_get_cpu_info(void)
 {
-    cpu_info_t cpu;
-    memset(&cpu, 0, sizeof(cpu_info_t));
+    cpu_info_t cpu = {0};
 
     hw_get_cpu_model(&cpu);
     hw_get_cpu_cores(&cpu);
@@ -123,7 +122,7 @@ static void hw_get_cpu_freq(cpu_info_t *cpu)
 
     DIR *dir = opendir(cpufreq_dir);
     if (dir) {
-        struct dirent *entry;
+        struct dirent *entry = NULL;
 
         while ((entry = readdir(dir)) != NULL) {
             if (strncmp(entry->d_name, "policy", 6) != 0) {
@@ -159,11 +158,21 @@ void hw_get_gpu_info(void)
 #if !defined(__ANDROID__)
     return;
 #else
-    EGLDisplay egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    EGLint major_version, minor_version;
+    EGLDisplay egl_display = EGL_NO_DISPLAY;
+    EGLContext egl_context = EGL_NO_CONTEXT;
+    EGLSurface egl_surface = EGL_NO_SURFACE;
+    EGLConfig egl_config = 0;
+    EGLint major_version = 0;
+    EGLint minor_version = 0;
+    EGLint num_configs = 0;
+
+    egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (egl_display == EGL_NO_DISPLAY) {
+        goto cleanup;
+    }
 
     if (!eglInitialize(egl_display, &major_version, &minor_version)) {
-        return;
+        goto cleanup;
     }
 
     const EGLint config_attributes[] = {EGL_RENDERABLE_TYPE,
@@ -182,34 +191,26 @@ void hw_get_gpu_info(void)
 
     eglBindAPI(EGL_OPENGL_ES_API);
 
-    EGLint num_configs;
-    EGLConfig egl_config;
-
     if (!eglChooseConfig(egl_display, config_attributes, &egl_config, 1, &num_configs) ||
         !num_configs) {
         V_PRINTF("[ERROR] Failed to choose EGL config: %04x\n", eglGetError());
-        eglTerminate(egl_display);
-        return;
+        goto cleanup;
     }
 
     const EGLint context_attributes[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE};
 
-    EGLContext egl_context =
-        eglCreateContext(egl_display, egl_config, EGL_NO_CONTEXT, context_attributes);
+    egl_context = eglCreateContext(egl_display, egl_config, EGL_NO_CONTEXT, context_attributes);
     if (egl_context == EGL_NO_CONTEXT) {
         V_PRINTF("[ERROR] Failed to create EGL context: %04x\n", eglGetError());
-        eglTerminate(egl_display);
-        return;
+        goto cleanup;
     }
 
     const EGLint surface_attributes[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
 
-    EGLSurface egl_surface = eglCreatePbufferSurface(egl_display, egl_config, surface_attributes);
+    egl_surface = eglCreatePbufferSurface(egl_display, egl_config, surface_attributes);
     if (egl_surface == EGL_NO_SURFACE) {
         V_PRINTF("[ERROR] Failed to create pbuffer surface: %04x\n", eglGetError());
-        eglDestroyContext(egl_display, egl_context);
-        eglTerminate(egl_display);
-        return;
+        goto cleanup;
     }
 
     eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context);
@@ -220,12 +221,20 @@ void hw_get_gpu_info(void)
         gl_renderer = "Unknown";
     }
 
-    ui_print_info("GPU", (char *)gl_renderer);
+    ui_print_info("GPU", gl_renderer);
 
     eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-    eglDestroySurface(egl_display, egl_surface);
-    eglDestroyContext(egl_display, egl_context);
-    eglTerminate(egl_display);
+
+cleanup:
+    if (egl_surface != EGL_NO_SURFACE) {
+        eglDestroySurface(egl_display, egl_surface);
+    }
+    if (egl_context != EGL_NO_CONTEXT) {
+        eglDestroyContext(egl_display, egl_context);
+    }
+    if (egl_display != EGL_NO_DISPLAY) {
+        eglTerminate(egl_display);
+    }
 #endif
 }
 

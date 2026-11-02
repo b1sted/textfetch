@@ -1,12 +1,13 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "pal/terminal_os.h"
+
 #include <stdio.h>
 #include <string.h>
 
 #include "../support/test_framework.h"
 #include "../support/test_helpers.h"
 #include "defs.h"
-#include "pal/terminal_os.h"
 #include "terminal.h"
 
 static void test_get_shell(void)
@@ -31,7 +32,7 @@ static void test_print_info(void)
     test_capture_t capture = {0};
     TEST_CHECK(test_capture_begin(&capture));
 
-    terminal_print_info();
+    term_print_info();
 
     char *output = test_capture_end(&capture);
     TEST_CHECK(output != NULL);

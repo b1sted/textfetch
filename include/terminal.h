@@ -8,6 +8,6 @@
  * Retrieves the parent shell version and system locale settings,
  * then displays them using the UI module.
  */
-void terminal_print_info(void);
+void term_print_info(void);
 
 #endif /* TERMINAL_H */

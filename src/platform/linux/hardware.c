@@ -2,6 +2,8 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include "pal/hardware_os.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -34,8 +36,6 @@
 #include "hashtable.h"
 #include "sys_utils.h"
 #include "ui.h"
-
-#include "pal/hardware_os.h"
 
 /* Array of paths to search for the pci.ids database file. */
 #define PCI_IDS_PATHS                                                                              \
@@ -104,7 +104,7 @@ typedef enum {
     HEALTH_FAIR = 1 << 1,
     HEALTH_POOR = 1 << 2,
     HEALTH_UNKNOWN = 1 << 3
-} battery_health_flags;
+} battery_health_flags_t;
 
 /**
  * Recursively parses the sysfs directory to construct the CPU topology.
@@ -209,7 +209,8 @@ static void hw_parse_arm_cpu_model(FILE *fp, cpu_data_t *cpus, uint16_t *cpu_map
  * @param out_buf Buffer containing the raw IDs, replaced with the readable name.
  * @param buf_size Size of the output buffer.
  */
-static void hw_arm_lookup_name(forest *arm_forest, char *out_buf, const size_t buf_size);
+static void hw_arm_lookup_name(const tree_forest_t *arm_forest, char *out_buf,
+                               const size_t buf_size);
 #endif
 
 /**
@@ -227,8 +228,8 @@ static gpu_node_t *hw_get_all_gpus(void);
  * @param pci_forest The parsed PCI IDs tree.
  * @param gpu_list Linked list of detected GPUs.
  */
-static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size, forest *pci_forest,
-                                gpu_node_t *gpu_list);
+static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size,
+                                const tree_forest_t *pci_forest, gpu_node_t *gpu_list);
 
 /**
  * Appends a new GPU to the enumeration list.
@@ -305,7 +306,7 @@ static bool hw_format_cpu_package(cpu_data_t *cpu, char *out_buf, const size_t b
         return false;
     }
 
-    uint32_t cores = count_set_bits(&(bitset_t){.bits = cpu->core_bits, .capacity = MAX_CPU_CORES},
+    uint32_t cores = set_count_bits(&(bitset_t){.bits = cpu->core_bits, .capacity = MAX_CPU_CORES},
                                     CORES_SET_BLOCKS);
 
     if (cpu->frequency > 0.0) {
@@ -321,8 +322,7 @@ static bool hw_format_cpu_package(cpu_data_t *cpu, char *out_buf, const size_t b
 
 void hw_get_cpu_info(void)
 {
-    cpu_data_t cpus[MAX_CPU_PACKAGES];
-    memset(cpus, 0, sizeof(cpus));
+    cpu_data_t cpus[MAX_CPU_PACKAGES] = {0};
 
     uint16_t cpu_map[MAX_CPU_PACKAGES];
     for (size_t i = 0; i < MAX_CPU_PACKAGES; i++) {
@@ -364,7 +364,7 @@ static void hw_parse_cpu_topology(const char *cpu_dir, cpu_data_t *cpus, uint16_
     if (!dir) {
         V_PRINTF("[ERROR] Failed to open sysfs CPU directory %s: %s\n", cpu_dir, strerror(errno));
     } else {
-        struct dirent *entry;
+        struct dirent *entry = NULL;
         while ((entry = readdir(dir)) != NULL) {
             if (strncmp(entry->d_name, prefix, prefix_len) != 0) {
                 continue;
@@ -424,7 +424,7 @@ static void hw_cpu_process_core_node(const char *cpu_dir, const char *node_name,
     }
 
     if (physical_package_id < 0 || physical_package_id >= MAX_CPU_PACKAGES) {
-        V_PRINTF("[WARNING] CPU %s: invalid physical package ID %d, "
+        V_PRINTF("[WARNING] CPU %s: invalid physical package ID %" PRId16 ", "
                  "falling back to package 0\n",
                  node_name, physical_package_id);
         physical_package_id = 0;
@@ -531,7 +531,7 @@ static void hw_get_cpu_freq(const char *cpu_dir, cpu_data_t *cpus, const int16_t
     if (!dir) {
         V_PRINTF("[ERROR] Failed to open sysfs CPU directory %s: %s\n", cpu_dir, strerror(errno));
     } else {
-        struct dirent *entry;
+        struct dirent *entry = NULL;
         while ((entry = readdir(dir)) != NULL) {
             if (strncmp(entry->d_name, "cpu", 3) != 0) {
                 continue;
@@ -754,7 +754,7 @@ static void hw_parse_arm_cpu_model(FILE *fp, cpu_data_t *cpus, uint16_t *cpu_map
         V_PRINTF("[ERROR] Failed to open arm.ids file: %s\n", strerror(errno));
     }
 
-    forest *arm_forest = util_parse_ids_file(fp_ids, ARM_IMPLEMENTERS);
+    tree_forest_t *arm_forest = util_parse_ids_file(fp_ids, ARM_IMPLEMENTERS);
     if (arm_forest == NULL) {
         V_PRINTF("[WARNING] Failed to build an ARM forest. Using raw values\n");
     }
@@ -815,10 +815,11 @@ static void hw_parse_arm_cpu_model(FILE *fp, cpu_data_t *cpus, uint16_t *cpu_map
         }
     }
 
-    destroy_forest(arm_forest);
+    tree_destroy_forest(arm_forest);
 }
 
-static void hw_arm_lookup_name(forest *arm_forest, char *out_buf, const size_t buf_size)
+static void hw_arm_lookup_name(const tree_forest_t *arm_forest, char *out_buf,
+                               const size_t buf_size)
 {
     if (!out_buf || buf_size == 0) {
         V_PRINTF("[ERROR] hw_arm_lookup_name: incorrect arguments "
@@ -832,37 +833,40 @@ static void hw_arm_lookup_name(forest *arm_forest, char *out_buf, const size_t b
     uint16_t device_id = (uint16_t)strtoul(endptr, NULL, 16);
 
     if (arm_forest) {
-        node *vendor = find_in_forest(arm_forest, vendor_id);
-        node *device = find_in_tree(vendor, device_id);
+        tree_node_t *vendor = tree_find_root(arm_forest, vendor_id);
+        const tree_node_t *device = tree_find(vendor, device_id);
 
         if (vendor && device) {
             snprintf(out_buf, buf_size, "%s %s", vendor->name, device->name);
             return;
         } else if (vendor) {
-            snprintf(out_buf, buf_size, "%s [0x%04X]", vendor->name, device_id);
+            snprintf(out_buf, buf_size, "%s [0x%04" PRIX16 "]", vendor->name, device_id);
             return;
         }
     }
 
-    snprintf(out_buf, buf_size, "Generic ARM CPU [0x%04X 0x%04X]", vendor_id, device_id);
+    snprintf(out_buf, buf_size, "Generic ARM CPU [0x%04" PRIX16 " 0x%04" PRIX16 "]", vendor_id,
+             device_id);
 }
 #endif
 
 void hw_get_gpu_info(void)
 {
-    gpu_node_t *gpu_list = hw_get_all_gpus();
-    if (gpu_list == NULL) {
-#if defined(__i386__) || defined(__x86_64__) || defined(__ia64__) || defined(__powerpc64__)
-        V_PRINTF("[WARNING] No GPUs found in system (might be VM?)\n");
-#endif
-        return;
-    }
-
+    gpu_node_t *gpu_list = NULL;
+    tree_forest_t *pci_forest = NULL;
+    FILE *fp = NULL;
     char info_buf[GPU_BUFFER] = {0};
 
     const char *paths[] = PCI_IDS_PATHS;
 
-    FILE *fp = NULL;
+    gpu_list = hw_get_all_gpus();
+    if (gpu_list == NULL) {
+#if defined(__i386__) || defined(__x86_64__) || defined(__ia64__) || defined(__powerpc64__)
+        V_PRINTF("[WARNING] No GPUs found in system (might be VM?)\n");
+#endif
+        goto cleanup;
+    }
+
     for (size_t i = 0; paths[i] != NULL; i++) {
         fp = fopen(paths[i], "rb");
         if (fp) {
@@ -874,17 +878,28 @@ void hw_get_gpu_info(void)
         V_PRINTF("[ERROR] Failed to open pci.ids file: %s\n", strerror(errno));
     }
 
-    forest *pci_forest = util_parse_ids_file(fp, PCI_IMPLEMENTERS);
+    pci_forest = util_parse_ids_file(fp, PCI_IMPLEMENTERS);
+    fp = NULL;
+
     if (pci_forest == NULL) {
         V_PRINTF("[WARNING] Failed to build a PCI forest. Using raw values\n");
     }
 
     hw_gpu_lookup_names(info_buf, sizeof(info_buf), pci_forest, gpu_list);
 
-    free_gpu_list(gpu_list);
-
     if (info_buf[0] != '\0') {
         ui_print_info("GPU", info_buf);
+    }
+
+cleanup:
+    if (pci_forest) {
+        tree_destroy_forest(pci_forest);
+    }
+    if (gpu_list) {
+        free_gpu_list(gpu_list);
+    }
+    if (fp) {
+        fclose(fp);
     }
 }
 
@@ -892,15 +907,15 @@ static gpu_node_t *hw_get_all_gpus(void)
 {
     const char *prefix = "card";
     size_t prefix_len = strlen("card");
+    DIR *dir = NULL;
+    gpu_node_t *head = NULL;
+    struct dirent *entry = NULL;
 
-    DIR *dir = opendir(SYS_GPU_DIR);
+    dir = opendir(SYS_GPU_DIR);
     if (!dir) {
         V_PRINTF("[ERROR] Failed to open GPU directory %s: %s\n", SYS_GPU_DIR, strerror(errno));
-        return NULL;
+        goto cleanup;
     }
-
-    gpu_node_t *head = NULL;
-    struct dirent *entry;
 
     while ((entry = readdir(dir)) != NULL) {
         if (strncmp(entry->d_name, prefix, prefix_len) != 0) {
@@ -924,22 +939,20 @@ static gpu_node_t *hw_get_all_gpus(void)
         head = add_gpu(head, vendor_id, device_id);
     }
 
-    closedir(dir);
-
+cleanup:
+    if (dir) {
+        closedir(dir);
+    }
     return head;
 }
 
-static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size, forest *pci_forest,
-                                gpu_node_t *gpu_list)
+static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size,
+                                const tree_forest_t *pci_forest, gpu_node_t *gpu_list)
 {
     if (!out_buf || buf_size == 0) {
         V_PRINTF("[ERROR] hw_gpu_lookup_names: incorrect arguments "
                  "(buf = %p, size = %zu)\n",
                  (void *)out_buf, buf_size);
-
-        if (pci_forest) {
-            destroy_forest(pci_forest);
-        }
         return;
     }
 
@@ -952,8 +965,8 @@ static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size, forest *pc
         const char *separator = "";
 
         if (pci_forest) {
-            node *vendor = find_in_forest(pci_forest, curr->impl_id);
-            node *device = find_in_tree(vendor, curr->part_id);
+            tree_node_t *vendor = tree_find_root(pci_forest, curr->impl_id);
+            const tree_node_t *device = tree_find(vendor, curr->part_id);
 
             if (vendor) {
                 vendor_name = vendor->name;
@@ -965,7 +978,7 @@ static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size, forest *pc
             }
         }
 
-        snprintf(gpus[gpu_count].model, sizeof(gpus[gpu_count].model), "%s%s%s [0x%04X]",
+        snprintf(gpus[gpu_count].model, sizeof(gpus[gpu_count].model), "%s%s%s [0x%04" PRIX16 "]",
                  vendor_name, separator, device_name, curr->part_id);
         gpu_count++;
     }
@@ -976,10 +989,6 @@ static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size, forest *pc
     }
 
     util_format_duplicate_hardware(gpu_strings, gpu_count, out_buf, buf_size);
-
-    if (pci_forest) {
-        destroy_forest(pci_forest);
-    }
 }
 
 static gpu_node_t *add_gpu(gpu_node_t *head, const uint16_t impl_id, const uint16_t part_id)
@@ -1045,13 +1054,14 @@ void hw_get_bat_info(void)
 
 static hw_node_t *hw_get_all_batteries(void)
 {
-    DIR *dir = opendir(SYS_BATTERY_DIR);
-    if (!dir) {
-        return NULL;
-    }
-
+    DIR *dir = NULL;
     hw_node_t *head = NULL;
-    struct dirent *entry;
+    struct dirent *entry = NULL;
+
+    dir = opendir(SYS_BATTERY_DIR);
+    if (!dir) {
+        goto cleanup;
+    }
 
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_name[0] == '.') {
@@ -1065,8 +1075,10 @@ static hw_node_t *hw_get_all_batteries(void)
         head = add_element(head, entry->d_name);
     }
 
-    closedir(dir);
-
+cleanup:
+    if (dir) {
+        closedir(dir);
+    }
     return head;
 }
 

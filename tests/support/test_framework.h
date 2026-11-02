@@ -4,14 +4,15 @@
 #define TEST_FRAMEWORK_H
 
 #include <inttypes.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 /* Shared counters for the current test executable. */
-static int test_checks = 0;
-static int test_failures = 0;
+static size_t test_checks = 0;
+static size_t test_failures = 0;
 
 #define TEST_CHECK(condition)                                                                      \
     do {                                                                                           \
@@ -101,11 +102,11 @@ static int test_failures = 0;
 static inline int test_finish(const char *suite_name)
 {
     if (test_failures == 0) {
-        printf("PASS %s (%d checks)\n", suite_name, test_checks);
+        printf("PASS %s (%zu checks)\n", suite_name, test_checks);
         return EXIT_SUCCESS;
     }
 
-    printf("FAIL %s (%d/%d checks failed)\n", suite_name, test_failures, test_checks);
+    printf("FAIL %s (%zu/%zu checks failed)\n", suite_name, test_failures, test_checks);
     return EXIT_FAILURE;
 }
 

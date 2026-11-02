@@ -1,13 +1,12 @@
 /* SPDX-License-Identifier: MIT */
 
-#define _GNU_SOURCE
+#include "pal/system_os.h"
 
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "../support/test_framework.h"
-#include "pal/system_os.h"
 #include "system.h"
 
 /* The platform sources only need the shared data block. */
@@ -19,7 +18,7 @@ sys_internal_data_t sys_data;
 
 static void test_system_init(void)
 {
-    system_init();
+    sys_init();
 
     TEST_CHECK(strlen(sys_data.sysname) > 0);
     TEST_CHECK(strlen(sys_data.nodename) > 0);

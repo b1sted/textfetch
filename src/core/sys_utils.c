@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "sys_utils.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -9,7 +11,6 @@
 #include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
-#include <limits.h>
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -17,7 +18,6 @@
 #include "binary_trees.h"
 #include "config.h"
 #include "defs.h"
-#include "sys_utils.h"
 
 /* Human-readable unit suffixes for formatting byte sizes. */
 #define MEMORY_UNITS                                                                               \
@@ -69,7 +69,7 @@ const char *util_string_in_array(const char *str, const char *const array[])
     return NULL;
 }
 
-const char *util_string_lookup(const char *str, const char *dict[][2], const size_t dict_size)
+const char *util_string_lookup(const char *str, const char *const dict[][2], const size_t dict_size)
 {
     if (!str || !dict || dict_size == 0) {
         return NULL;
@@ -86,29 +86,35 @@ const char *util_string_lookup(const char *str, const char *dict[][2], const siz
 
 bool util_read_line(const char *path, char *out_buf, const size_t buf_size)
 {
+    int fd = -1;
+    bool ok = false;
+
     if (!path || !out_buf || buf_size == 0) {
         return false;
     }
+
     out_buf[0] = '\0';
 
-    int fd = open(path, O_RDONLY);
-    if (fd != -1) {
-        ssize_t bytes_read = read(fd, out_buf, buf_size - 1);
-        if (bytes_read > 0) {
-            out_buf[bytes_read] = '\0';
-            out_buf[strcspn(out_buf, "\n")] = '\0';
-        } else {
-            V_PRINTF("[ERROR] Failed to read %s\n", path);
-            close(fd);
-            return false;
-        }
-
-        close(fd);
-        return true;
-    } else {
+    fd = open(path, O_RDONLY);
+    if (fd == -1) {
         V_PRINTF("[ERROR] Failed to open %s file\n", path);
-        return false;
+        goto cleanup;
     }
+
+    ssize_t bytes_read = read(fd, out_buf, buf_size - 1);
+    if (bytes_read > 0) {
+        out_buf[bytes_read] = '\0';
+        out_buf[strcspn(out_buf, "\n")] = '\0';
+        ok = true;
+    } else {
+        V_PRINTF("[ERROR] Failed to read %s\n", path);
+    }
+
+cleanup:
+    if (fd != -1) {
+        close(fd);
+    }
+    return ok;
 }
 
 bool util_read_uint8(const char *path, uint8_t *value)
@@ -255,7 +261,7 @@ bool util_read_hex(const char *path, uint32_t *value)
         return false;
     }
 
-    if (val > 0xFFFFFFFFULL) {
+    if (val > UINT32_MAX) {
         return false;
     }
 
@@ -275,7 +281,7 @@ bool util_read_hex16(const char *path, uint16_t *value)
         return false;
     }
 
-    if (val32 > 0xFFFF) {
+    if (val32 > UINT16_MAX) {
         return false;
     }
 
@@ -303,7 +309,7 @@ bool util_is_numeric_string(const char *str)
     return true;
 }
 
-void util_format_duplicate_hardware(const char **strings, uint8_t count, char *out_buf,
+void util_format_duplicate_hardware(const char *const strings[], uint8_t count, char *out_buf,
                                     size_t buf_size)
 {
     if (!strings || !out_buf || buf_size == 0) {
@@ -359,9 +365,9 @@ void util_format_size(double total_size, double used_size, char *out_buf, const 
     static const char *memory_units[] = MEMORY_UNITS;
     static const double divisors[] = MEMORY_DIVISORS;
 
-    const uint8_t num_units = sizeof(divisors) / sizeof(divisors[0]);
+    const size_t num_units = sizeof(divisors) / sizeof(divisors[0]);
 
-    if ((uint8_t)from_unit < num_units) {
+    if ((size_t)from_unit < num_units) {
         total_size *= divisors[from_unit];
         used_size *= divisors[from_unit];
     }
@@ -373,10 +379,10 @@ void util_format_size(double total_size, double used_size, char *out_buf, const 
         precision = 0;
     }
 
-    uint8_t unit = UNIT_B;
+    size_t unit = UNIT_B;
 
-    if (forced_unit != UNIT_AUTO && (uint8_t)forced_unit < num_units) {
-        unit = (uint8_t)forced_unit;
+    if (forced_unit != UNIT_AUTO && (size_t)forced_unit < num_units) {
+        unit = (size_t)forced_unit;
     } else {
         double scale = (total_size > used_size) ? total_size : used_size;
 
@@ -404,20 +410,26 @@ void util_format_size(double total_size, double used_size, char *out_buf, const 
              memory_units[unit], precision, total_size, memory_units[unit], (uint8_t)usage_pct);
 }
 
-forest *util_parse_ids_file(FILE *fp, size_t capacity)
+tree_forest_t *util_parse_ids_file(FILE *fp, size_t capacity)
 {
-    if (!fp || capacity == 0 || capacity > (size_t)INT_MAX) {
-        return NULL;
-    }
-
-    forest *ids_forest = create_forest((int)capacity);
-    if (!ids_forest) {
-        fclose(fp);
-        return NULL;
-    }
-
+    tree_forest_t *ids_forest = NULL;
+    tree_forest_t *result = NULL;
     char line[LINE_BUFFER] = {0};
-    node *branch = NULL;
+    tree_node_t *branch = NULL;
+
+    if (!fp) {
+        goto cleanup;
+    }
+
+    if (capacity == 0) {
+        goto cleanup;
+    }
+
+    ids_forest = tree_create_forest(capacity);
+    if (!ids_forest) {
+        goto cleanup;
+    }
+
     while (fgets(line, sizeof(line), fp)) {
         if (line[0] == '#' || line[0] == '\n' || line[1] == '\t') {
             continue;
@@ -433,11 +445,9 @@ forest *util_parse_ids_file(FILE *fp, size_t capacity)
                 vendor_name++;
             }
 
-            branch = create_node(vendor_id, vendor_name);
-            add_tree_to_forest(ids_forest, branch);
-        }
-
-        else if (line[0] == '\t') {
+            branch = tree_create_node(vendor_id, vendor_name);
+            tree_add_to_forest(ids_forest, branch);
+        } else if (line[0] == '\t') {
             char *device_name = NULL;
             uint16_t device_id = (uint16_t)strtoul(line, &device_name, 16);
 
@@ -448,11 +458,19 @@ forest *util_parse_ids_file(FILE *fp, size_t capacity)
             }
 
             device_name[strcspn(device_name, "\n")] = '\0';
-            add_child(branch, device_id, device_name);
+            tree_add_child(branch, device_id, device_name);
         }
     }
 
-    fclose(fp);
+    result = ids_forest;
+    ids_forest = NULL;
 
-    return ids_forest;
+cleanup:
+    if (fp) {
+        fclose(fp);
+    }
+    if (ids_forest) {
+        tree_destroy_forest(ids_forest);
+    }
+    return result;
 }

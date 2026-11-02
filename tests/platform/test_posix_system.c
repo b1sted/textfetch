@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "pal/system_os.h"
+
 #include <string.h>
 
 #include "../support/test_framework.h"
-#include "pal/system_os.h"
 
 /* The platform sources only need the shared data block. */
 sys_internal_data_t sys_data;

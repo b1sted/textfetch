@@ -1,13 +1,13 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "pal/hardware_os.h"
+
 #include <stdio.h>
 #include <string.h>
 
 #include "defs.h"
 #include "sys_utils.h"
 #include "ui.h"
-
-#include "pal/hardware_os.h"
 
 void hw_print_mem_info(const mem_flags_t flags, const mem_info_t *info)
 {

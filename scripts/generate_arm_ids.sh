@@ -25,6 +25,9 @@ cat <<EOF > "$TARGET"
 #include <stddef.h>
 #include <stdint.h>
 
+#ifndef ARM_IDS_H
+#define ARM_IDS_H
+
 /**
  * Auto-generated database of ARM CPU implementer and part IDs.
  * 
@@ -44,5 +47,7 @@ sed -i \
     -e 's/^unsigned char arm_ids/static const uint8_t arm_ids/' \
     -e 's/^unsigned int arm_ids_len/static const size_t arm_ids_len/' \
     "$TARGET"
+
+printf '\n#endif /* ARM_IDS_H */\n' >> "$TARGET"
 
 echo "Done!"

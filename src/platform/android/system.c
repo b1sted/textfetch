@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "pal/system_os.h"
+
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -8,8 +10,6 @@
 
 #include "defs.h"
 #include "sys_utils.h"
-
-#include "pal/system_os.h"
 
 void sys_get_distro(char *out_buf, const size_t buf_size)
 {
