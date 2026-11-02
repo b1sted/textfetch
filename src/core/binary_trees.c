@@ -2,6 +2,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,9 +44,19 @@ forest *create_forest(int initial_capacity) {
         return NULL;
     }
 
+    if (initial_capacity <= 0) {
+        initial_capacity = 1;
+    }
+
+    if ((size_t)initial_capacity > SIZE_MAX / sizeof(node *)) {
+        V_PRINTF("[ERROR] Forest capacity is too large\n");
+        free(f);
+        return NULL;
+    }
+
     f->count = 0;
     f->capacity = initial_capacity;
-    f->roots = malloc(f->capacity * sizeof(node *));
+    f->roots = malloc((size_t)f->capacity * sizeof(node *));
     if (!f->roots) {
         V_PRINTF("[ERROR] Unable to allocate memory: %s\n", strerror(errno));
         free(f);
@@ -84,15 +95,31 @@ void add_tree_to_forest(forest *f, node *root) {
     }
 
     if (f->count >= f->capacity) {
-        f->capacity *= 2;
+        int new_capacity;
 
-        node **new_roots = realloc(f->roots, f->capacity * sizeof(node *));
+        if (f->capacity <= 0) {
+            new_capacity = 1;
+        } else if (f->capacity > INT_MAX / 2) {
+            V_PRINTF("[ERROR] Forest capacity overflow\n");
+            return;
+        } else {
+            new_capacity = f->capacity * 2;
+        }
+
+        if ((size_t)new_capacity > SIZE_MAX / sizeof(node *)) {
+            V_PRINTF("[ERROR] Forest capacity is too large\n");
+            return;
+        }
+
+        node **new_roots = realloc(f->roots,
+                                   (size_t)new_capacity * sizeof(node *));
         if (!new_roots) {
             V_PRINTF("[ERROR] Unable to allocate memory: %s\n", strerror(errno));
             return;
         }
 
         f->roots = new_roots;
+        f->capacity = new_capacity;
     }
 
     f->roots[f->count] = root;

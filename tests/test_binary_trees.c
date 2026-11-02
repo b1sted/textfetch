@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 
+#include <limits.h>
 #include <string.h>
 
 #include "binary_trees.h"
@@ -39,6 +40,32 @@ static void test_create_forest(void) {
     TEST_CHECK(f->roots != NULL);
 
     TEST_CHECK(find_in_forest(f, 1) == NULL);
+    destroy_forest(f);
+}
+
+static void test_create_forest_zero_capacity(void) {
+    forest *f = create_forest(0);
+    TEST_CHECK(f != NULL);
+    if (!f) return;
+
+    TEST_INT_EQ(f->count, 0);
+    TEST_CHECK(f->capacity >= 1);
+    TEST_CHECK(f->roots != NULL);
+
+    node *root = create_node(1, "root");
+    TEST_CHECK(root != NULL);
+    add_tree_to_forest(f, root);
+    TEST_INT_EQ(f->count, 1);
+    TEST_CHECK(f->roots[0] == root);
+    destroy_forest(f);
+
+    f = create_forest(-4);
+    TEST_CHECK(f != NULL);
+    if (!f) return;
+
+    TEST_INT_EQ(f->count, 0);
+    TEST_CHECK(f->capacity >= 1);
+    TEST_CHECK(f->roots != NULL);
     destroy_forest(f);
 }
 
@@ -85,6 +112,42 @@ static void test_forest_growth(void) {
         TEST_CHECK(f->roots[i] == roots[i]);
     }
 
+    destroy_forest(f);
+}
+
+static void test_forest_growth_overflow_guard(void) {
+    forest *f = create_forest(1);
+    TEST_CHECK(f != NULL);
+    if (!f) return;
+
+    node *root = create_node(1, "root");
+    TEST_CHECK(root != NULL);
+    if (!root) {
+        destroy_forest(f);
+        return;
+    }
+
+    add_tree_to_forest(f, root);
+    TEST_INT_EQ(f->count, 1);
+
+    node **roots_before = f->roots;
+    int capacity_before = f->capacity;
+
+    f->capacity = INT_MAX;
+    f->count = INT_MAX;
+
+    node *extra = create_node(2, "extra");
+    TEST_CHECK(extra != NULL);
+    if (extra) {
+        add_tree_to_forest(f, extra);
+        TEST_INT_EQ(f->capacity, INT_MAX);
+        TEST_INT_EQ(f->count, INT_MAX);
+        TEST_CHECK(f->roots == roots_before);
+        free_tree(extra);
+    }
+
+    f->count = 1;
+    f->capacity = capacity_before;
     destroy_forest(f);
 }
 
@@ -150,8 +213,10 @@ static void test_invalid_arguments(void) {
 int main(void) {
     test_create_node();
     test_create_forest();
+    test_create_forest_zero_capacity();
     test_add_child();
     test_forest_growth();
+    test_forest_growth_overflow_guard();
     test_find_in_tree();
     test_find_in_forest();
     test_invalid_arguments();
