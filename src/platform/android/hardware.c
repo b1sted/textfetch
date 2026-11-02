@@ -26,16 +26,16 @@
 /**
  * Determines the SoC model name using Android system properties.
  *
- * @param node Pointer to the CPU info structure.
+ * @param cpu Pointer to the CPU info structure.
  */
-static void hw_get_cpu_model(cpu_info_t *node);
+static void hw_get_cpu_model(cpu_info_t *cpu);
 
 /**
  * Checks the OS sysconf limits to find the active processor count.
  *
- * @param node Pointer to the CPU info structure.
+ * @param cpu Pointer to the CPU info structure.
  */
-static void hw_get_cpu_cores(cpu_info_t *node);
+static void hw_get_cpu_cores(cpu_info_t *cpu);
 
 /**
  * Reads the highest available frequency from a cpufreq policy directory.
@@ -48,41 +48,41 @@ static uint32_t hw_read_policy_max_freq(const char *policy_path);
 /**
  * Scans all cpufreq policy clusters and reports the highest maximum frequency.
  *
- * @param node Pointer to the CPU info structure.
+ * @param cpu Pointer to the CPU info structure.
  */
-static void hw_get_cpu_freq(cpu_info_t *node);
+static void hw_get_cpu_freq(cpu_info_t *cpu);
 
 void hw_get_cpu_info(void) {
-    cpu_info_t node;
-    memset(&node, 0, sizeof(cpu_info_t));
+    cpu_info_t cpu;
+    memset(&cpu, 0, sizeof(cpu_info_t));
 
-    hw_get_cpu_model(&node);
-    hw_get_cpu_cores(&node);
-    hw_get_cpu_freq(&node);
+    hw_get_cpu_model(&cpu);
+    hw_get_cpu_cores(&cpu);
+    hw_get_cpu_freq(&cpu);
 
     char cpu_info[LINE_BUFFER] = {0};
-    snprintf(cpu_info, sizeof(cpu_info), "%s%s%s", node.model, node.cores, node.frequency);
+    snprintf(cpu_info, sizeof(cpu_info), "%s%s%s", cpu.model, cpu.cores, cpu.frequency);
 
     ui_print_info("CPU", cpu_info);
 }
 
-static void hw_get_cpu_model(cpu_info_t *node) {
-    if (__system_property_get("ro.soc.model", node->model) <= 0) {
-        if (__system_property_get("ro.board.platform", node->model) <= 0) {
+static void hw_get_cpu_model(cpu_info_t *cpu) {
+    if (__system_property_get("ro.soc.model", cpu->model) <= 0) {
+        if (__system_property_get("ro.board.platform", cpu->model) <= 0) {
             V_PRINTF("[WARNING] Could not read CPU name, using 'Unknown'\n");
-            snprintf(node->model, sizeof(node->model), "Unknown");
+            snprintf(cpu->model, sizeof(cpu->model), "Unknown");
         }
     }
 }
 
-static void hw_get_cpu_cores(cpu_info_t *node) {
+static void hw_get_cpu_cores(cpu_info_t *cpu) {
     long cores = sysconf(_SC_NPROCESSORS_CONF);
     if (cores == -1) {
         V_PRINTF("[WARNING] Could not get CPU cores number: %s\n", strerror(errno));
         cores = 0;
     }
 
-    snprintf(node->cores, sizeof(node->cores), " (%ld)", cores);
+    snprintf(cpu->cores, sizeof(cpu->cores), " (%ld)", cores);
 }
 
 static uint32_t hw_read_policy_max_freq(const char *policy_path) {
@@ -109,13 +109,13 @@ static uint32_t hw_read_policy_max_freq(const char *policy_path) {
     return 0;
 }
 
-static void hw_get_cpu_freq(cpu_info_t *node) {
+static void hw_get_cpu_freq(cpu_info_t *cpu) {
     static const char *const cpufreq_dir = "/sys/devices/system/cpu/cpufreq";
 
     char policy_path[PATH_BUFFER] = {0};
     uint32_t max_freq_khz = 0;
 
-    node->frequency[0] = '\0';
+    cpu->frequency[0] = '\0';
 
     DIR *dir = opendir(cpufreq_dir);
     if (dir) {
@@ -143,7 +143,7 @@ static void hw_get_cpu_freq(cpu_info_t *node) {
     }
 
     if (max_freq_khz > 0) {
-        snprintf(node->frequency, sizeof(node->frequency), " @ %.03f GHz",
+        snprintf(cpu->frequency, sizeof(cpu->frequency), " @ %.03f GHz",
                  (double)max_freq_khz / KHZ_PER_GHZ);
     }
 }

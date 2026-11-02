@@ -23,12 +23,6 @@
 
 #define APP_VERSION "1.0"
 
-#ifdef __APPLE__
-#define VERSION_SECTION "__TEXT,__app_version"
-#else
-#define VERSION_SECTION ".app_version"
-#endif
-
 /* Global constant containing the compiled application version string. */
 extern const char version_string[];
 

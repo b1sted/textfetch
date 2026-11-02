@@ -39,7 +39,7 @@ A minimal, fast, and dependency-free system information tool. Designed to cleanl
 - **Power**: Battery capacity, status, health percentage, and model.
 - **Memory & Storage**: RAM/Swap usage and detailed mount point metrics.
 - **Software**: OS version, kernel, shell, locale, and process count.
-- **Zero bloat**: No third-party dependencies required for standard macOS and Linux. Written in pure C99 *(Note: Android/Termux requires `mesa-dev` for GPU detection)*.
+- **Zero bloat**: No third-party dependencies required for standard macOS and Linux. Written in C99 with POSIX.1-2008 and platform APIs *(Note: Android/Termux requires `mesa-dev` for GPU detection)*.
 
 ## Supported Platforms
 
@@ -53,7 +53,7 @@ A minimal, fast, and dependency-free system information tool. Designed to cleanl
 ## Build and run
 
 ### Compilation from source
-Requires any standard C99 compiler and `make`.
+Requires a C99 compiler with a POSIX.1-2008 environment and the platform-specific APIs used for hardware discovery: Linux `sysfs`/`procfs`, macOS IOKit/CoreFoundation, and Android Bionic system properties. GNU `make` is also required.
 
 ```bash
 make

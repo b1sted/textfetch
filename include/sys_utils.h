@@ -21,9 +21,6 @@
             fprintf(stderr, __VA_ARGS__);        \
     } while (0)
 
-/* Standard macro to evaluate and return the smaller of two values. */
-#define min(a, b) (((a) < (b)) ? (a) : (b))
-
 /* Enumeration of standard byte capacity units for formatting sizes. */
 typedef enum {
     UNIT_B = 0,
@@ -58,7 +55,7 @@ void util_set_output_unit(data_unit_t unit);
  * @param array A NULL-terminated array of strings to search for.
  * @return A pointer to the first occurrence of a matched substring, or NULL if not found.
  */
-char *util_string_in_array(const char *str, const char **array);
+const char *util_string_in_array(const char *str, const char *const array[]);
 
 /**
  * Looks up a string key in a 2D dictionary array and returns its mapped value.

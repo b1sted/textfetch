@@ -51,6 +51,11 @@ string_set_t *strset_create(size_t capacity) {
     if (!set) return NULL;
 
     set->capacity = next_pow2(capacity);
+    if (set->capacity == 0) {
+        free(set);
+        return NULL;
+    }
+
     set->count = 0;
     set->entries = calloc(set->capacity, sizeof(entry_t));
 
@@ -66,6 +71,10 @@ bool strset_add(string_set_t *set, const char *key) {
     if (!set || !key) return false;
 
     if ((set->count + 1) * 4 > set->capacity * 3) {
+        if (set->capacity > SIZE_MAX / 2) {
+            return false;
+        }
+
         if (!strset_resize(set, set->capacity * 2)) {
             return false;
         }
@@ -120,12 +129,20 @@ static uint64_t hash_key(const char *key) {
 }
 
 static size_t next_pow2(size_t n) {
+    if (n > (SIZE_MAX / 2)) {
+        return 0;
+    }
+
     size_t res = 1;
     while (res < n) res <<= 1;
     return res;
 }
 
 static bool strset_resize(string_set_t *set, size_t new_capacity) {
+    if (new_capacity > SIZE_MAX / sizeof(entry_t)) {
+        return false;
+    }
+
     entry_t *new_entries = calloc(new_capacity, sizeof(entry_t));
     if (!new_entries)
         return false;

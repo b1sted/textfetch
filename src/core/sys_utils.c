@@ -9,6 +9,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <limits.h>
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -59,14 +60,14 @@ void util_set_output_unit(data_unit_t unit) {
     output_unit = unit;
 }
 
-char *util_string_in_array(const char *str, const char **array) {
+const char *util_string_in_array(const char *str, const char *const array[]) {
     if (!str || !array) return NULL;
 
-    for (uint8_t i = 0; array[i] != NULL; i++) {
-        char *ptr = strstr(str, array[i]);
+    for (size_t i = 0; array[i] != NULL; i++) {
+        const char *ptr = strstr(str, array[i]);
         if (ptr) return ptr;
     }
-    
+
     return NULL;
 }
 
@@ -320,9 +321,9 @@ void util_format_size(double total_size, double used_size, char *out_buf,
 }
 
 forest *util_parse_ids_file(FILE *fp, size_t capacity) {
-    if (!fp || capacity == 0) return NULL;
+    if (!fp || capacity == 0 || capacity > (size_t)INT_MAX) return NULL;
 
-    forest *ids_forest = create_forest(capacity);
+    forest *ids_forest = create_forest((int)capacity);
     if (!ids_forest) {
         fclose(fp);
         return NULL;

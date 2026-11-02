@@ -3,6 +3,10 @@ override CPPFLAGS += -Iinclude -MMD -MP
 override CFLAGS   += -Wall -Wextra -std=c99
 LDFLAGS     += 
 
+PREFIX      ?= /usr/local
+BINDIR      ?= $(PREFIX)/bin
+MANDIR      ?= $(PREFIX)/share/man/man1
+
 DEV_CFLAGS  := -g -O0 -DDEBUG
 REL_CFLAGS  := -O3 -DNDEBUG -ffunction-sections -fdata-sections
 
@@ -33,12 +37,12 @@ else
     $(error Platform $(UNAME_S) not supported)
 endif
 
-BINDIR        := bin
+BUILD_BINDIR  := bin
 OBJDIR        := obj
 SRCDIR        := src
-TARGET        := $(BINDIR)/textfetch
-TARGET_DEV    := $(BINDIR)/textfetch-dev
-TARGET_LEAKS  := $(BINDIR)/textfetch-leaks
+TARGET        := $(BUILD_BINDIR)/textfetch
+TARGET_DEV    := $(BUILD_BINDIR)/textfetch-dev
+TARGET_LEAKS  := $(BUILD_BINDIR)/textfetch-leaks
 
 CORE_SRCS     := $(wildcard $(SRCDIR)/core/*.c)
 PLATFORM_SRCS := $(foreach dir,$(PLATFORM_SUBDIRS),$(wildcard $(SRCDIR)/platform/$(dir)/*.c))
@@ -64,7 +68,7 @@ OBJS_LEAKS    := $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/leaks/%.o, $(SRCS))
 
 DEPS          := $(OBJS_REL:.o=.d) $(OBJS_DEV:.o=.d) $(OBJS_LEAKS:.o=.d)
 
-.PHONY: all dev leaks test lint clean
+.PHONY: all dev leaks test lint clean install uninstall
 
 all: $(TARGET)
 
@@ -97,13 +101,13 @@ lint:
 		--std=c99 --suppress=missingIncludeSystem --suppress=unusedFunction \
 		--suppress=normalCheckLevelMaxBranches -Iinclude $(LINT_SRCS)
 
-$(TARGET): $(OBJS_REL) | $(BINDIR)
+$(TARGET): $(OBJS_REL) | $(BUILD_BINDIR)
 	$(CC) $(CFLAGS) $(REL_CFLAGS) $^ -o $@ $(LDFLAGS) $(REL_LDFLAGS)
 
-$(TARGET_DEV): $(OBJS_DEV) | $(BINDIR)
+$(TARGET_DEV): $(OBJS_DEV) | $(BUILD_BINDIR)
 	$(CC) $(CFLAGS) $(DEV_CFLAGS) $^ -o $@ $(LDFLAGS)
 
-$(TARGET_LEAKS): $(OBJS_LEAKS) | $(BINDIR)
+$(TARGET_LEAKS): $(OBJS_LEAKS) | $(BUILD_BINDIR)
 	$(CC) $(CFLAGS) $(LEAKS_CFLAGS) $^ -o $@ $(LDFLAGS) $(LEAKS_LDFLAGS)
 
 $(OBJDIR)/release/%.o: $(SRCDIR)/%.c
@@ -118,10 +122,22 @@ $(OBJDIR)/leaks/%.o: $(SRCDIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LEAKS_CFLAGS) -c $< -o $@
 
-$(BINDIR):
+$(BUILD_BINDIR):
 	mkdir -p $@
 
 -include $(DEPS)
 
+install: $(TARGET)
+	install -d "$(DESTDIR)$(BINDIR)"
+	install -m 755 "$(TARGET)" "$(DESTDIR)$(BINDIR)/textfetch"
+	@if [ -f "man/textfetch.1" ]; then \
+		install -d "$(DESTDIR)$(MANDIR)"; \
+		install -m 644 "man/textfetch.1" "$(DESTDIR)$(MANDIR)/textfetch.1"; \
+	fi
+
+uninstall:
+	rm -f "$(DESTDIR)$(BINDIR)/textfetch"
+	rm -f "$(DESTDIR)$(MANDIR)/textfetch.1"
+
 clean:
-	rm -rf $(BINDIR) $(OBJDIR)
+	rm -rf $(BUILD_BINDIR) $(OBJDIR)

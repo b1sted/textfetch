@@ -64,7 +64,7 @@ void term_sanitize_name(char *out_buf) {
     char *name_end = strchr(out_buf, ' ');
 
     if (version_start && name_end && name_end < version_start) {
-        size_t name_len = name_end - out_buf;
+        size_t name_len = (size_t)(name_end - out_buf);
         memmove(out_buf + name_len + 1, version_start, strlen(version_start) + 1);
         out_buf[name_len] = ' ';
     }

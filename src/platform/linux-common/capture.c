@@ -2,6 +2,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -40,12 +41,16 @@ int capture_line(const char *command, const char *arg,
 
         int devnull = open("/dev/null", O_RDWR);
         if (devnull != -1) {
-            dup2(devnull, STDIN_FILENO);
-            dup2(devnull, STDERR_FILENO);
+            if (dup2(devnull, STDIN_FILENO) == -1 ||
+                dup2(devnull, STDERR_FILENO) == -1) {
+                _exit(1);
+            }
             close(devnull);
         }
 
-        dup2(pipefd[1], STDOUT_FILENO);
+        if (dup2(pipefd[1], STDOUT_FILENO) == -1) {
+            _exit(1);
+        }
         close(pipefd[1]);
 
         if (arg) {
@@ -61,10 +66,18 @@ int capture_line(const char *command, const char *arg,
 
         FILE *pipe_stream = fdopen(pipefd[0], "r");
         if (pipe_stream) {
-            if (fgets(out_buf, (int)buf_size, pipe_stream) == NULL) {
+            size_t read_limit = buf_size;
+            if (read_limit > (size_t)INT_MAX) {
+                read_limit = (size_t)INT_MAX;
+            }
+
+            if (fgets(out_buf, (int)read_limit, pipe_stream) == NULL) {
                 out_buf[0] = '\0';
             }
-            fclose(pipe_stream);
+
+            if (fclose(pipe_stream) != 0) {
+                V_PRINTF("[ERROR] fclose failed: %s\n", strerror(errno));
+            }
         } else {
             V_PRINTF("[ERROR] fdopen failed: %s\n", strerror(errno));
             close(pipefd[0]);
@@ -77,7 +90,12 @@ int capture_line(const char *command, const char *arg,
             waited = waitpid(pid, &status, 0);
         } while (waited == -1 && errno == EINTR);
 
-        out_buf[strcspn(out_buf, "\r\n")] = '\0';
+        for (size_t i = 0; i < buf_size && out_buf[i] != '\0'; i++) {
+            if (out_buf[i] == '\r' || out_buf[i] == '\n') {
+                out_buf[i] = '\0';
+                break;
+            }
+        }
 
         if (waited == -1) return 1;
 

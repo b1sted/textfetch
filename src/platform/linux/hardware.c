@@ -373,7 +373,7 @@ static void hw_cpu_process_core_node(const char *cpu_dir, const char *node_name,
         hw_get_cpu_freq(cpu_dir, cpus, physical_package_id, node_name);
     }
 
-    uint16_t current_id = strtoul(node_name + 3, NULL, 10);
+    uint16_t current_id = (uint16_t)strtoul(node_name + 3, NULL, 10);
     if (cpu_map[physical_package_id] == 0xFFFF || current_id < cpu_map[physical_package_id]) {
         cpu_map[physical_package_id] = current_id;
     }
@@ -510,7 +510,7 @@ static void hw_parse_x86_cpu_model(FILE *fp, cpu_data_t *cpus, uint16_t *cpu_map
             for (uint8_t i = 0; i < MAX_CPU_PACKAGES; i++) {
                 if (cpus[i].exists &&
                     cpu_map[i] == strtoul(value, NULL, 10)) {
-                    socket = i;
+                    socket = (int8_t)i;
                     break;
                 }
             }
@@ -626,7 +626,8 @@ static void hw_sanitize_cpu_name(char *out_buf) {
 
 #if defined(__arm__) || defined(__aarch64__)
 static void hw_parse_arm_cpu_model(FILE *fp, cpu_data_t *cpus, uint16_t *cpu_map) {
-    FILE *fp_ids = fmemopen(arm_ids, arm_ids_len, "r");
+    /* fmemopen only reads the buffer when opened in "r" mode. */
+    FILE *fp_ids = fmemopen((void *)arm_ids, arm_ids_len, "r");
     if (!fp_ids) {
         V_PRINTF("[ERROR] Failed to open arm.ids file: %s\n", strerror(errno));
     }
@@ -659,7 +660,7 @@ static void hw_parse_arm_cpu_model(FILE *fp, cpu_data_t *cpus, uint16_t *cpu_map
             for (uint8_t i = 0; i < MAX_CPU_PACKAGES; i++) {
                 if (cpus[i].exists &&
                     cpu_map[i] == strtoul(value, NULL, 10)) {
-                    socket = i;
+                    socket = (int8_t)i;
                     break;
                 }
             }
@@ -730,7 +731,7 @@ void hw_get_gpu_info(void) {
     const char *paths[] = PCI_IDS_PATHS;
 
     FILE *fp = NULL;
-    for (uint8_t i = 0; paths[i] != NULL; i++) {
+    for (size_t i = 0; paths[i] != NULL; i++) {
         fp = fopen(paths[i], "rb");
         if (fp) break;
     }

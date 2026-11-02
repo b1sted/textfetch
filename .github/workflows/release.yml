@@ -9,10 +9,19 @@ permissions:
   contents: write
 
 jobs:
-  build-linux-amd64:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Run Test Suite
+        run: make test
+
+  build-linux-amd64:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Build Textfetch Binary
         run: make
@@ -29,15 +38,16 @@ jobs:
           ./bin/textfetch-leaks
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: textfetch-linux-amd64
           path: bin/textfetch
 
   build-linux-arm64:
+    needs: test
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Build Textfetch Binary
         run: make
@@ -54,18 +64,19 @@ jobs:
           ./bin/textfetch-leaks
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: textfetch-linux-arm64
           path: bin/textfetch
 
   build-linux-luckfox:
+    needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Download SDK
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: LuckfoxTECH/luckfox-pico
           path: SDKs
@@ -79,15 +90,16 @@ jobs:
           make CC=$TOOLCHAIN/arm-rockchip830-linux-uclibcgnueabihf-gcc
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: textfetch-linux-luckfox
           path: bin/textfetch
 
   build-macos-intel:
+    needs: test
     runs-on: macos-15-intel
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Download SDK
         run: |
@@ -137,15 +149,16 @@ jobs:
           ./bin/textfetch-modern-leaks
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: textfetch-macos-intel
           path: bin/textfetch-*
 
   build-macos-arm64:
+    needs: test
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Build Textfetch Binary
         run: |
@@ -164,15 +177,16 @@ jobs:
         run: /usr/bin/time -l bin/textfetch
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: textfetch-macos-arm64
           path: bin/textfetch
 
   build-android-termux:
+    needs: test
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Build Textfetch Binary in Termux
         run: |
@@ -192,7 +206,7 @@ jobs:
           docker rm termux-build
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: textfetch-android-termux-arm64
           path: bin/textfetch
@@ -202,7 +216,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: artifacts
 
@@ -236,7 +250,7 @@ jobs:
           tar -C artifacts/textfetch-android-termux-arm64 -czvf release_dist/textfetch-android-termux-arm64.tar.gz textfetch
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2.6.1
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
         with:
           files: release_dist/*.tar.gz
           generate_release_notes: true

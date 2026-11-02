@@ -144,7 +144,7 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
     const char *os_release[] = OS_RELEASE_PATH;
 
     FILE *fp = NULL;
-    for (uint8_t i = 0; os_release[i] != NULL; i++) {
+    for (size_t i = 0; os_release[i] != NULL; i++) {
         fp = fopen(os_release[i], "rb");
         if (fp) break;
     }
@@ -198,7 +198,7 @@ void sys_get_model_name(char *out_buf, const size_t buf_size) {
 
     const char *model_file[] = DEVICE_MODEL_FILE;
 
-    for (uint8_t i = 0; model_file[i] != NULL; i++) {
+    for (size_t i = 0; model_file[i] != NULL; i++) {
         if (util_read_line(model_file[i], out_buf, buf_size)) return;
     }
 
@@ -270,10 +270,11 @@ static void hw_sanitize_vendor_name(char *vendor_name, const size_t vendor_size)
     }
         
     const char *vendor_garbage[] = GARBAGE_IN_VENDOR_NAME;
-    char *garbage_pos = util_string_in_array(vendor_name, vendor_garbage);
+    const char *garbage_pos = util_string_in_array(vendor_name, vendor_garbage);
     if (garbage_pos) {
-        if (garbage_pos > vendor_name) garbage_pos--;
-        *garbage_pos = '\0';
+        size_t garbage_offset = (size_t)(garbage_pos - vendor_name);
+        if (garbage_offset > 0) garbage_offset--;
+        vendor_name[garbage_offset] = '\0';
     }
 
     const char *allcaps_vendor[] = ALLCAPS_VENDOR_NAMES;

@@ -208,8 +208,8 @@ static bool is_valid_mount(const struct mntent *ent) {
 static void hw_print_disk(const char *mnt, const struct statvfs *fs,
                           const struct mntent *ent) {
     uint64_t block_size = fs->f_frsize;
-    double total_size   = (uint64_t)fs->f_blocks * block_size;
-    double free_size    = fs->f_bfree * block_size;
+    double total_size   = (double)((uint64_t)fs->f_blocks * block_size);
+    double free_size    = (double)((uint64_t)fs->f_bfree * block_size);
     double used_size    = total_size - free_size;
 
     char label[LINE_BUFFER];
