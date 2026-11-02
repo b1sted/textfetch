@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <errno.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -196,6 +197,30 @@ static bool fake_sysfs_add_cpu(const char *cpu_dir, const char *cpu_name,
     return fake_sysfs_write(path, max_freq);
 }
 
+static bool fake_sysfs_add_cpufreq_attr(const char *cpu_dir,
+                                        const char *cpu_name,
+                                        const char *attr, const char *value) {
+    char path[PATH_BUFFER * 2];
+
+    snprintf(path, sizeof(path), "%s%s/cpufreq", cpu_dir, cpu_name);
+    if (mkdir(path, 0700) != 0 && errno != EEXIST) return false;
+
+    snprintf(path, sizeof(path), "%s%s/cpufreq/%s", cpu_dir, cpu_name, attr);
+    return fake_sysfs_write(path, value);
+}
+
+static void fake_sysfs_remove_cpufreq_attr(const char *cpu_dir,
+                                           const char *cpu_name,
+                                           const char *attr) {
+    char path[PATH_BUFFER * 2];
+
+    snprintf(path, sizeof(path), "%s%s/cpufreq/%s", cpu_dir, cpu_name, attr);
+    unlink(path);
+
+    snprintf(path, sizeof(path), "%s%s/cpufreq", cpu_dir, cpu_name);
+    rmdir(path);
+}
+
 static void fake_sysfs_remove_cpu(const char *cpu_dir, const char *cpu_name,
                                   bool has_topology, bool has_freq) {
     char path[PATH_BUFFER];
@@ -335,6 +360,92 @@ static void test_uniprocessor_without_topology(void) {
     rmdir(root);
 }
 
+static void test_current_freq_fallback(void) {
+    char template[] = "/tmp/textfetch-cpu-cur-XXXXXX";
+    char *root = mkdtemp(template);
+    TEST_CHECK(root != NULL);
+    if (!root) return;
+
+    char cpu_dir[PATH_BUFFER];
+    snprintf(cpu_dir, sizeof(cpu_dir), "%s/", root);
+
+    TEST_CHECK(fake_sysfs_add_cpu(cpu_dir, "cpu0", "0", "0", NULL));
+
+    /* Fixed-clock kernels expose only the current frequency. */
+    TEST_CHECK(fake_sysfs_add_cpufreq_attr(cpu_dir, "cpu0", "scaling_cur_freq",
+                                           "1104000"));
+
+    cpu_data_t cpus[MAX_CPU_PACKAGES];
+    uint16_t cpu_map[MAX_CPU_PACKAGES];
+    uint8_t packages = 0;
+
+    memset(cpus, 0, sizeof(cpus));
+    memset(cpu_map, 0xFF, sizeof(cpu_map));
+
+    hw_parse_cpu_topology(cpu_dir, cpus, cpu_map, &packages);
+
+    TEST_INT_EQ(packages, 1);
+    TEST_CHECK(cpus[0].exists);
+    TEST_CHECK(cpus[0].frequency > 1.103 && cpus[0].frequency < 1.105);
+
+    snprintf(cpus[0].model, sizeof(cpus[0].model), "%s", "ARM Cortex-A7");
+
+    char formatted[LINE_BUFFER];
+    TEST_CHECK(hw_format_cpu_package(&cpus[0], formatted, sizeof(formatted)));
+    TEST_STR_EQ(formatted, "ARM Cortex-A7 (1) @ 1.104 GHz");
+
+    fake_sysfs_remove_cpufreq_attr(cpu_dir, "cpu0", "scaling_cur_freq");
+    fake_sysfs_remove_cpu(cpu_dir, "cpu0", true, false);
+    rmdir(root);
+}
+
+static void test_policy_current_freq_fallback(void) {
+    char template[] = "/tmp/textfetch-cpu-policy-XXXXXX";
+    char *root = mkdtemp(template);
+    TEST_CHECK(root != NULL);
+    if (!root) return;
+
+    char cpu_dir[PATH_BUFFER];
+    snprintf(cpu_dir, sizeof(cpu_dir), "%s/", root);
+
+    TEST_CHECK(fake_sysfs_add_cpu(cpu_dir, "cpu0", "0", "0", NULL));
+
+    char path[PATH_BUFFER * 2];
+    snprintf(path, sizeof(path), "%scpufreq", cpu_dir);
+    TEST_CHECK(mkdir(path, 0700) == 0);
+
+    snprintf(path, sizeof(path), "%scpufreq/policy0", cpu_dir);
+    TEST_CHECK(mkdir(path, 0700) == 0);
+
+    snprintf(path, sizeof(path), "%scpufreq/policy0/scaling_cur_freq", cpu_dir);
+    TEST_CHECK(fake_sysfs_write(path, "1104000"));
+
+    cpu_data_t cpus[MAX_CPU_PACKAGES];
+    uint16_t cpu_map[MAX_CPU_PACKAGES];
+    uint8_t packages = 0;
+
+    memset(cpus, 0, sizeof(cpus));
+    memset(cpu_map, 0xFF, sizeof(cpu_map));
+
+    hw_parse_cpu_topology(cpu_dir, cpus, cpu_map, &packages);
+
+    TEST_INT_EQ(packages, 1);
+    TEST_CHECK(cpus[0].exists);
+    TEST_CHECK(cpus[0].frequency > 1.103 && cpus[0].frequency < 1.105);
+
+    snprintf(path, sizeof(path), "%scpufreq/policy0/scaling_cur_freq", cpu_dir);
+    unlink(path);
+
+    snprintf(path, sizeof(path), "%scpufreq/policy0", cpu_dir);
+    rmdir(path);
+
+    snprintf(path, sizeof(path), "%scpufreq", cpu_dir);
+    rmdir(path);
+
+    fake_sysfs_remove_cpu(cpu_dir, "cpu0", true, false);
+    rmdir(root);
+}
+
 static void test_cpu_fallback_without_nodes(void) {
     char template[] = "/tmp/textfetch-cpu-empty-XXXXXX";
     char *root = mkdtemp(template);
@@ -419,6 +530,8 @@ int main(void) {
     test_hardware_lists();
     test_sparse_cpu_packages();
     test_uniprocessor_without_topology();
+    test_current_freq_fallback();
+    test_policy_current_freq_fallback();
     test_cpu_fallback_without_nodes();
     test_actual_cpu();
     test_actual_hardware();
