@@ -12,6 +12,7 @@
 
 #include "defs.h"
 #include "sys_utils.h"
+#include "system.h"
 
 #include "pal/system_os.h"
 
@@ -36,5 +37,7 @@ void system_init(void) {
     if (!sysinfo_ok) V_PRINTF("[ERROR] sysinfo failed: %s\n", strerror(errno));
 
     sys_data.uptime = sysinfo_ok ? si.uptime : 0;
-    sys_data.procs = sysinfo_ok ? (uint16_t)si.procs : 0;
+
+    /* Linux exposes the process count through a 16-bit sysinfo field. */
+    sys_data.procs = sysinfo_ok ? (uint32_t)si.procs : 0;
 }

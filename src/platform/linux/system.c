@@ -103,7 +103,7 @@
 
 /* DMI chassis type bitmask parameters used to identifying portable devices (laptops). */
 #define CHASSIS_MASK_ELEMENTS 64
-#define CHASSIS_MASK_BLOCKS   (CHASSIS_MASK_ELEMENTS / BITS_PER_BLOCK)
+#define CHASSIS_MASK_BLOCKS   SET_SIZE(CHASSIS_MASK_ELEMENTS)
 
 #if !(defined(__arm__) || defined(__aarch64__) || defined(__riscv) || defined(__powerpc__))
 /**

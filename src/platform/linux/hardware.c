@@ -733,12 +733,6 @@ static void hw_gpu_lookup_names(char *out_buf, const size_t buf_size,
             }
         }
 
-        size_t offset = strlen(out_buf);
-        if (offset >= buf_size) {
-            V_PRINTF("[WARNING] hw_gpu_lookup_names: buffer overflow, truncating list\n");
-            break;
-        }
-
         snprintf(gpus[gpu_count].model, sizeof(gpus[gpu_count].model), 
                  "%s%s%s [0x%04X]", vendor_name, separator, device_name, curr->part_id);
         gpu_count++;
@@ -778,10 +772,6 @@ static void free_gpu_list(gpu_node_t *head) {
 void hw_get_bat_info(void) {
     hw_node_t *list = hw_get_all_batteries();
     if (list == NULL) return;
-
-    char full_path[PATH_BUFFER] = {0};
-    size_t base_len = strlen(SYS_BATTERY_DIR);
-    memcpy(full_path, SYS_BATTERY_DIR, base_len);
 
     for (hw_node_t *curr = list; curr != NULL; curr = curr->next) {
         bat_data_t bat_info = {0};
