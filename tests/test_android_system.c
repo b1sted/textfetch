@@ -2,15 +2,31 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "pal/hardware_os.h"
 #include "pal/system_os.h"
 #include "test_framework.h"
 
-/* Include the translation unit to exercise it against a mocked bionic API. */
+/* Include the translation units to exercise them against a mocked bionic API. */
 // NOLINTNEXTLINE(bugprone-suspicious-include)
 #include "../src/platform/android/system.c"
+
+#if !defined(__ANDROID__) && !defined(__APPLE__)
+/* android/hardware.c is only built for Android; mirror the CPU info layout so
+ * the translation unit can also be exercised on the host. */
+typedef struct cpu_info {
+    uint16_t packages;
+    char model[MEDIUM_BUFFER];
+    char cores[MINI_BUFFER];
+    char frequency[MINI_BUFFER];
+} cpu_info_t;
+#endif
+
+// NOLINTNEXTLINE(bugprone-suspicious-include)
+#include "../src/platform/android/hardware.c"
 
 #define MAX_TEST_PROPERTIES 8
 
@@ -58,6 +74,69 @@ int __system_property_get(const char *name, char *value) {
 
     value[0] = '\0';
     return 0;
+}
+
+static bool test_battery_present = true;
+static uint8_t test_battery_capacity = 85;
+static const char *test_battery_status = NULL;
+static const char *test_battery_health = NULL;
+
+static char test_ui_label[MINI_BUFFER] = {0};
+static char test_ui_information[LINE_BUFFER] = {0};
+
+bool util_is_file_exist(const char *path) {
+    return test_battery_present && path != NULL &&
+           strcmp(path, "/sys/class/power_supply/battery/present") == 0;
+}
+
+bool util_read_uint8(const char *path, uint8_t *value) {
+    if (!path || !value || !test_battery_present) return false;
+    if (strcmp(path, "/sys/class/power_supply/battery/capacity") != 0) {
+        return false;
+    }
+
+    *value = test_battery_capacity;
+    return true;
+}
+
+bool util_read_line(const char *path, char *out_buf, const size_t buf_size) {
+    if (!path || !out_buf || buf_size == 0) return false;
+
+    out_buf[0] = '\0';
+
+    const char *value = NULL;
+    if (strcmp(path, "/sys/class/power_supply/battery/status") == 0) {
+        value = test_battery_status;
+    } else if (strcmp(path, "/sys/class/power_supply/battery/health") == 0) {
+        value = test_battery_health;
+    }
+
+    if (!value || value[0] == '\0') return false;
+
+    snprintf(out_buf, buf_size, "%s", value);
+    return true;
+}
+
+bool util_read_uint32(const char *path, uint32_t *value) {
+    (void)path;
+    (void)value;
+    return false;
+}
+
+bool util_is_numeric_string(const char *str) {
+    if (!str || *str == '\0') return false;
+
+    for (const char *cursor = str; *cursor != '\0'; cursor++) {
+        if (*cursor < '0' || *cursor > '9') return false;
+    }
+
+    return true;
+}
+
+void ui_print_info(const char *label, const char *information) {
+    snprintf(test_ui_label, sizeof(test_ui_label), "%s", label ? label : "");
+    snprintf(test_ui_information, sizeof(test_ui_information), "%s",
+             information ? information : "");
 }
 
 static void check_model_name(const char *brand, const char *model,
@@ -128,6 +207,44 @@ static void test_distro(void) {
     TEST_STR_EQ(buffer, "Android Unknown aarch64");
 }
 
+static void test_system_guards(void) {
+    char buffer[16] = "unchanged";
+
+    sys_get_distro(NULL, 0);
+    sys_get_distro(buffer, 0);
+    TEST_STR_EQ(buffer, "unchanged");
+
+    sys_get_model_name(NULL, 0);
+    sys_get_model_name(buffer, 0);
+    TEST_STR_EQ(buffer, "unchanged");
+}
+
+static void test_battery_fallbacks(void) {
+    test_battery_present = true;
+    test_battery_capacity = 85;
+
+    test_battery_status = NULL;
+    test_battery_health = NULL;
+    hw_get_bat_info();
+    TEST_STR_EQ(test_ui_label, "Battery");
+    TEST_STR_EQ(test_ui_information, "85% (Unknown, Health: Unknown)");
+
+    test_battery_status = "";
+    test_battery_health = "";
+    hw_get_bat_info();
+    TEST_STR_EQ(test_ui_information, "85% (Unknown, Health: Unknown)");
+
+    test_battery_status = "Discharging";
+    test_battery_health = "";
+    hw_get_bat_info();
+    TEST_STR_EQ(test_ui_information, "85% (Discharging, Health: Unknown)");
+
+    test_battery_status = "Charging";
+    test_battery_health = "Good";
+    hw_get_bat_info();
+    TEST_STR_EQ(test_ui_information, "85% (Charging, Health: Good)");
+}
+
 static void test_long_distro_version(void) {
     char version[PROP_VALUE_MAX];
     char expected[512] = {0};
@@ -151,6 +268,8 @@ int main(void) {
     test_model_name_fallbacks();
     test_long_property_values();
     test_distro();
+    test_system_guards();
+    test_battery_fallbacks();
     test_long_distro_version();
 
     return test_finish("android_system");

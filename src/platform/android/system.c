@@ -12,6 +12,11 @@
 #include "pal/system_os.h"
 
 void sys_get_distro(char *out_buf, const size_t buf_size) {
+    if (!out_buf || buf_size == 0) {
+        V_PRINTF("[ERROR] %s: invalid arguments\n", __func__);
+        return;
+    }
+
     char android_version[PROP_VALUE_MAX] = "Unknown";
 
     if (__system_property_get("ro.build.version.release", android_version) <= 0) {
@@ -23,6 +28,11 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
 }
 
 void sys_get_model_name(char *out_buf, size_t buf_size) {
+    if (!out_buf || buf_size == 0) {
+        V_PRINTF("[ERROR] %s: invalid arguments\n", __func__);
+        return;
+    }
+
     char brand_buf[PROP_VALUE_MAX] = {0};
     char model_buf[PROP_VALUE_MAX] = {0};
     char name_buf[PROP_VALUE_MAX] = {0};

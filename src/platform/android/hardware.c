@@ -7,12 +7,15 @@
 #include <errno.h>
 #include <inttypes.h>
 
+#include <dirent.h>
 #include <unistd.h>
 
 #include <sys/system_properties.h>
 
+#if defined(__ANDROID__)
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
+#endif
 
 #include "defs.h"
 #include "sys_utils.h"
@@ -35,7 +38,15 @@ static void hw_get_cpu_model(cpu_info_t *node);
 static void hw_get_cpu_cores(cpu_info_t *node);
 
 /**
- * Reads the maximum frequency from sysfs for CPU0.
+ * Reads the highest available frequency from a cpufreq policy directory.
+ *
+ * @param policy_path Absolute path to a cpufreq policy directory.
+ * @return The maximum frequency in kHz, or 0 when no source is available.
+ */
+static uint32_t hw_read_policy_max_freq(const char *policy_path);
+
+/**
+ * Scans all cpufreq policy clusters and reports the highest maximum frequency.
  *
  * @param node Pointer to the CPU info structure.
  */
@@ -74,7 +85,7 @@ static void hw_get_cpu_cores(cpu_info_t *node) {
     snprintf(node->cores, sizeof(node->cores), " (%ld)", cores);
 }
 
-static void hw_get_cpu_freq(cpu_info_t *node) {
+static uint32_t hw_read_policy_max_freq(const char *policy_path) {
     static const char *const freq_files[] = {
         "cpuinfo_max_freq",
         "scaling_max_freq",
@@ -83,23 +94,64 @@ static void hw_get_cpu_freq(cpu_info_t *node) {
     };
 
     char freq_path[PATH_BUFFER] = {0};
-    uint32_t freq_khz = 0;
+
+    for (size_t i = 0; i < sizeof(freq_files) / sizeof(freq_files[0]); i++) {
+        uint32_t freq_khz = 0;
+
+        snprintf(freq_path, sizeof(freq_path), "%s/%s",
+                 policy_path, freq_files[i]);
+
+        if (util_read_uint32(freq_path, &freq_khz) && freq_khz > 0) {
+            return freq_khz;
+        }
+    }
+
+    return 0;
+}
+
+static void hw_get_cpu_freq(cpu_info_t *node) {
+    static const char *const cpufreq_dir = "/sys/devices/system/cpu/cpufreq";
+
+    char policy_path[PATH_BUFFER] = {0};
+    uint32_t max_freq_khz = 0;
 
     node->frequency[0] = '\0';
 
-    for (size_t i = 0; i < sizeof(freq_files) / sizeof(freq_files[0]); i++) {
-        snprintf(freq_path, sizeof(freq_path),
-                 "/sys/devices/system/cpu/cpu0/cpufreq/%s", freq_files[i]);
+    DIR *dir = opendir(cpufreq_dir);
+    if (dir) {
+        struct dirent *entry;
 
-        if (util_read_uint32(freq_path, &freq_khz) && freq_khz > 0) {
-            snprintf(node->frequency, sizeof(node->frequency), " @ %.03f GHz",
-                     (double)freq_khz / KHZ_PER_GHZ);
-            return;
+        while ((entry = readdir(dir)) != NULL) {
+            if (strncmp(entry->d_name, "policy", 6) != 0) continue;
+            if (!util_is_numeric_string(entry->d_name + 6)) continue;
+
+            snprintf(policy_path, sizeof(policy_path), "%s/%s",
+                     cpufreq_dir, entry->d_name);
+
+            uint32_t freq_khz = hw_read_policy_max_freq(policy_path);
+            if (freq_khz > max_freq_khz) {
+                max_freq_khz = freq_khz;
+            }
         }
+
+        closedir(dir);
+    }
+
+    if (max_freq_khz == 0) {
+        max_freq_khz = hw_read_policy_max_freq(
+            "/sys/devices/system/cpu/cpu0/cpufreq");
+    }
+
+    if (max_freq_khz > 0) {
+        snprintf(node->frequency, sizeof(node->frequency), " @ %.03f GHz",
+                 (double)max_freq_khz / KHZ_PER_GHZ);
     }
 }
 
 void hw_get_gpu_info(void) {
+#if !defined(__ANDROID__)
+    return;
+#else
     EGLDisplay egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     EGLint major_version, minor_version;
 
@@ -171,6 +223,7 @@ void hw_get_gpu_info(void) {
     eglDestroySurface(egl_display, egl_surface);
     eglDestroyContext(egl_display, egl_context);
     eglTerminate(egl_display);
+#endif
 }
 
 /*
@@ -192,6 +245,14 @@ void hw_get_bat_info(void) {
     util_read_uint8("/sys/class/power_supply/battery/capacity", &capacity);
     util_read_line("/sys/class/power_supply/battery/status", status, sizeof(status));
     util_read_line("/sys/class/power_supply/battery/health", health, sizeof(health));
+
+    if (status[0] == '\0') {
+        snprintf(status, sizeof(status), "%s", "Unknown");
+    }
+
+    if (health[0] == '\0') {
+        snprintf(health, sizeof(health), "%s", "Unknown");
+    }
 
     char information[LINE_BUFFER] = {0};
     snprintf(information, sizeof(information),
