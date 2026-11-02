@@ -15,6 +15,7 @@
 
 #include <mach/mach_host.h>
 #include <mach/mach_init.h>
+#include <mach/mach_port.h>
 #include <mach/mach_types.h>
 #include <mach/vm_statistics.h>
 

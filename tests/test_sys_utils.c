@@ -314,7 +314,16 @@ static bool format_size_in_child(bool kib, bool mib, bool gib, double total,
 
         char buffer[128] = {0};
         util_format_size(total, used, buffer, sizeof(buffer), from_unit);
-        write(pipe_fds[1], buffer, strlen(buffer) + 1);
+
+        const char *cursor = buffer;
+        size_t remaining = strlen(buffer) + 1;
+        while (remaining > 0) {
+            ssize_t written = write(pipe_fds[1], cursor, remaining);
+            if (written <= 0) break;
+            cursor += written;
+            remaining -= (size_t)written;
+        }
+
         close(pipe_fds[1]);
         _exit(EXIT_SUCCESS);
     }
