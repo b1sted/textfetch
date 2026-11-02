@@ -552,6 +552,12 @@ void hw_get_bat_info(void) {
 
     CFDictionaryRef dict = IOPSGetPowerSourceDescription(info,
                                                          CFArrayGetValueAtIndex(list, 0));
+    if (!dict || CFGetTypeID(dict) != CFDictionaryGetTypeID()) {
+        V_PRINTF("[ERROR] IOPSGetPowerSourceDescription() returned an invalid description\n");
+        CFRelease(list);
+        CFRelease(info);
+        return;
+    }
 
     char model[SMALL_BUFFER] = "Unknown";
     CFStringRef model_ref = CFDictionaryGetValue(dict, CFSTR("DeviceName"));
@@ -567,7 +573,7 @@ void hw_get_bat_info(void) {
 
     char health[SMALL_BUFFER] = "Unknown";
     CFStringRef health_ref = CFDictionaryGetValue(dict, CFSTR(kIOPSBatteryHealthKey));
-    if (health_ref) {
+    if (health_ref && CFGetTypeID(health_ref) == CFStringGetTypeID()) {
         CFStringGetCString(health_ref, health, sizeof(health), kCFStringEncodingUTF8);
     }
 
@@ -587,33 +593,51 @@ void hw_get_bat_info(void) {
 }
 
 static uint8_t hw_get_bat_percentage(const CFDictionaryRef power_source) {
+    if (!power_source || CFGetTypeID(power_source) != CFDictionaryGetTypeID()) return 0;
+
     int cur_cap = 0, max_cap = 0;
 
     CFNumberRef cur_ref = CFDictionaryGetValue(power_source, CFSTR(kIOPSCurrentCapacityKey));
     CFNumberRef max_ref = CFDictionaryGetValue(power_source, CFSTR(kIOPSMaxCapacityKey));
 
-    if (cur_ref) CFNumberGetValue(cur_ref, kCFNumberIntType, &cur_cap);
-    if (max_ref) CFNumberGetValue(max_ref, kCFNumberIntType, &max_cap);
+    if (cur_ref && CFGetTypeID(cur_ref) == CFNumberGetTypeID()) {
+        CFNumberGetValue(cur_ref, kCFNumberIntType, &cur_cap);
+    }
+    if (max_ref && CFGetTypeID(max_ref) == CFNumberGetTypeID()) {
+        CFNumberGetValue(max_ref, kCFNumberIntType, &max_cap);
+    }
 
     /* Check max_cap > 0 to avoid division by zero if battery is reporting error */
-    return (max_cap > 0) ? (uint8_t)((double)cur_cap / max_cap * 100) : 0;
+    if (max_cap <= 0) return 0;
+
+    double percentage = ((double)cur_cap / (double)max_cap) * 100.0;
+    if (percentage < 0.0) percentage = 0.0;
+    if (percentage > 100.0) percentage = 100.0;
+
+    return (uint8_t)percentage;
 }
 
 static const char *hw_get_bat_status(const CFDictionaryRef power_source,
                                      uint8_t battery_percentage) {
+    if (!power_source || CFGetTypeID(power_source) != CFDictionaryGetTypeID()) {
+        return "Unknown";
+    }
+
     CFStringRef state = CFDictionaryGetValue(power_source, CFSTR(kIOPSPowerSourceStateKey));
-    
+
     CFBooleanRef is_charging = CFDictionaryGetValue(power_source, CFSTR(kIOPSIsChargingKey));
     CFBooleanRef is_charged  = CFDictionaryGetValue(power_source, CFSTR(kIOPSIsChargedKey));
 
     uint8_t status = 0;
 
-    if (state &&
+    if (state && CFGetTypeID(state) == CFStringGetTypeID() &&
         CFStringCompare(state, CFSTR(kIOPSACPowerValue), 0) == kCFCompareEqualTo)
         status |= FLAG_AC;
-    if (is_charging && CFBooleanGetValue(is_charging))
+    if (is_charging && CFGetTypeID(is_charging) == CFBooleanGetTypeID() &&
+        CFBooleanGetValue(is_charging))
         status |= FLAG_CHARGING;
-    if ((is_charged && CFBooleanGetValue(is_charged)) || (battery_percentage >= 100))
+    if ((is_charged && CFGetTypeID(is_charged) == CFBooleanGetTypeID() &&
+         CFBooleanGetValue(is_charged)) || (battery_percentage >= 100))
         status |= FLAG_FULL;
 
     if (status & FLAG_FULL && status & FLAG_AC)
