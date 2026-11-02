@@ -61,7 +61,9 @@ int capture_line(const char *command, const char *arg,
 
         FILE *pipe_stream = fdopen(pipefd[0], "r");
         if (pipe_stream) {
-            fgets(out_buf, (int)buf_size, pipe_stream);
+            if (fgets(out_buf, (int)buf_size, pipe_stream) == NULL) {
+                out_buf[0] = '\0';
+            }
             fclose(pipe_stream);
         } else {
             V_PRINTF("[ERROR] fdopen failed: %s\n", strerror(errno));
