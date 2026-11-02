@@ -162,7 +162,7 @@ static void test_actual_cpu(void) {
     memset(cpus, 0, sizeof(cpus));
     memset(cpu_map, 0xFF, sizeof(cpu_map));
 
-    hw_parse_cpu_topology(cpus, cpu_map, &packages);
+    hw_parse_cpu_topology(SYS_CPU_DIR, cpus, cpu_map, &packages);
     TEST_CHECK(packages > 0);
     TEST_CHECK(packages <= MAX_CPU_PACKAGES);
 
