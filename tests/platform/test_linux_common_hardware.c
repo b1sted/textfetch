@@ -9,12 +9,12 @@
 #include <sys/statvfs.h>
 
 #include "pal/hardware_os.h"
-#include "test_framework.h"
-#include "test_helpers.h"
+#include "../support/test_framework.h"
+#include "../support/test_helpers.h"
 
 /* Include the translation unit to exercise its static helpers directly. */
 // NOLINTNEXTLINE(bugprone-suspicious-include)
-#include "../src/platform/linux-common/hardware.c"
+#include "../../src/platform/linux-common/hardware.c"
 
 static void test_valid_mount(void) {
     struct mntent entry;

@@ -11,8 +11,8 @@
 #include "binary_trees.h"
 #include "config.h"
 #include "sys_utils.h"
-#include "test_framework.h"
-#include "test_helpers.h"
+#include "../support/test_framework.h"
+#include "../support/test_helpers.h"
 
 static void test_string_in_array(void) {
     const char *array[] = {"world", "planet", NULL};

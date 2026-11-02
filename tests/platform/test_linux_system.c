@@ -8,14 +8,14 @@
 
 #include "pal/system_os.h"
 #include "system.h"
-#include "test_framework.h"
+#include "../support/test_framework.h"
 
 /* The platform sources only need the shared data block. */
 sys_internal_data_t sys_data;
 
 /* Include the translation unit to exercise its static helpers directly. */
 // NOLINTNEXTLINE(bugprone-suspicious-include)
-#include "../src/platform/linux/system.c"
+#include "../../src/platform/linux/system.c"
 
 static void test_system_init(void) {
     system_init();

@@ -6,9 +6,9 @@
 #include "hardware.h"
 #include "pal/system_os.h"
 #include "system.h"
-#include "test_framework.h"
-#include "test_helpers.h"
-#include "test_stubs.h"
+#include "../support/test_framework.h"
+#include "../support/test_helpers.h"
+#include "../support/test_stubs.h"
 
 static char *capture_void_call(void (*callback)(void)) {
     test_capture_t capture;

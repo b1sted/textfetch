@@ -49,13 +49,14 @@ PLATFORM_SRCS := $(foreach dir,$(PLATFORM_SUBDIRS),$(wildcard $(SRCDIR)/platform
 SRCS          := $(CORE_SRCS) $(PLATFORM_SRCS)
 
 LINT_SRCS     := $(CORE_SRCS) $(wildcard $(SRCDIR)/platform/posix/*.c)
-LINT_TESTS    := $(filter-out tests/test_capture.c tests/test_linux_%.c,$(wildcard tests/test_*.c))
+LINT_TESTS    := $(filter-out tests/platform/test_capture.c tests/platform/test_linux_%.c,$(wildcard tests/core/test_*.c tests/platform/test_*.c))
+LINT_TEST_SUPPORT := $(wildcard tests/support/*.c)
 
 ifeq ($(UNAME_S), Darwin)
     LINT_SRCS += $(wildcard $(SRCDIR)/platform/macos/*.c)
 else ifneq (,$(filter $(UNAME_S),Linux Android))
     LINT_SRCS += $(wildcard $(SRCDIR)/platform/linux-common/*.c)
-    LINT_TESTS += tests/test_capture.c $(wildcard tests/test_linux_*.c)
+    LINT_TESTS += tests/platform/test_capture.c $(wildcard tests/platform/test_linux_*.c)
 
     ifneq ($(UNAME_O), Android)
         LINT_SRCS += $(wildcard $(SRCDIR)/platform/linux/*.c)
@@ -89,17 +90,19 @@ lint:
 		clang-tidy --quiet "$$file" -- -Iinclude -std=c99; \
 	done
 	@set -e; \
-	for file in $(LINT_TESTS); do \
+	for file in $(LINT_TESTS) $(LINT_TEST_SUPPORT); do \
 		echo "clang-tidy $$file"; \
-		clang-tidy --quiet "$$file" -- -Iinclude -Itests \
-			-Itests/android_stubs -std=c99 -D_POSIX_C_SOURCE=200809L; \
+		clang-tidy --quiet "$$file" -- -Iinclude -Itests/support \
+			-Itests/support/stubs -std=c99 -D_POSIX_C_SOURCE=200809L; \
 	done
 	@command -v cppcheck >/dev/null 2>&1 || { \
 		echo "error: cppcheck is required for linting" >&2; exit 1; \
 	}
 	cppcheck --enable=warning,performance,portability --error-exitcode=1 \
 		--std=c99 --suppress=missingIncludeSystem --suppress=unusedFunction \
-		--suppress=normalCheckLevelMaxBranches -Iinclude $(LINT_SRCS)
+		--suppress=normalCheckLevelMaxBranches \
+		-Iinclude -Itests/support -Itests/support/stubs \
+		$(LINT_SRCS) $(LINT_TESTS) $(LINT_TEST_SUPPORT)
 
 $(TARGET): $(OBJS_REL) | $(BUILD_BINDIR)
 	$(CC) $(CFLAGS) $(REL_CFLAGS) $^ -o $@ $(LDFLAGS) $(REL_LDFLAGS)

@@ -3,8 +3,8 @@
 #include <string.h>
 
 #include "config.h"
-#include "test_framework.h"
-#include "test_helpers.h"
+#include "../support/test_framework.h"
+#include "../support/test_helpers.h"
 #include "ui.h"
 
 static char *capture_void_call(void (*callback)(void)) {

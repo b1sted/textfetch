@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 #include "bitset.h"
-#include "test_framework.h"
+#include "../support/test_framework.h"
 
 static void test_size_macros(void) {
     TEST_INT_EQ(SET_SIZE(0), 0);

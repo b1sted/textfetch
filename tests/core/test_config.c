@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 
 #include "config.h"
-#include "test_framework.h"
+#include "../support/test_framework.h"
 
 static void test_defaults(void) {
     TEST_CHECK(!cfg_get_kib());

@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "binary_trees.h"
-#include "test_framework.h"
+#include "../support/test_framework.h"
 
 static void test_create_node(void) {
     char source[] = "root";
