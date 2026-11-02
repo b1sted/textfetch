@@ -6,8 +6,8 @@
 
 #include "pal/terminal_os.h"
 #include "terminal.h"
-#include "test_framework.h"
-#include "test_helpers.h"
+#include "../support/test_framework.h"
+#include "../support/test_helpers.h"
 
 /* Deterministic shell value used by terminal_print_info(). */
 void term_get_shell(char *out_buf, const size_t buf_size) {

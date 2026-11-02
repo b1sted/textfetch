@@ -9,12 +9,12 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "test_framework.h"
-#include "test_helpers.h"
+#include "../support/test_framework.h"
+#include "../support/test_helpers.h"
 
 /* Include the translation unit to exercise its static helpers directly. */
 // NOLINTNEXTLINE(bugprone-suspicious-include)
-#include "../src/platform/linux/hardware.c"
+#include "../../src/platform/linux/hardware.c"
 
 static void check_cpu_name(const char *input, const char *expected) {
     char buffer[128];

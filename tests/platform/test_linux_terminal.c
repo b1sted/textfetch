@@ -6,8 +6,8 @@
 #include "defs.h"
 #include "pal/terminal_os.h"
 #include "terminal.h"
-#include "test_framework.h"
-#include "test_helpers.h"
+#include "../support/test_framework.h"
+#include "../support/test_helpers.h"
 
 static void test_get_shell(void) {
     char buffer[LINE_BUFFER] = {0};

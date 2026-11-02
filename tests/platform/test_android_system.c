@@ -8,11 +8,11 @@
 
 #include "pal/hardware_os.h"
 #include "pal/system_os.h"
-#include "test_framework.h"
+#include "../support/test_framework.h"
 
 /* Include the translation units to exercise them against a mocked bionic API. */
 // NOLINTNEXTLINE(bugprone-suspicious-include)
-#include "../src/platform/android/system.c"
+#include "../../src/platform/android/system.c"
 
 #if !defined(__ANDROID__) && !defined(__APPLE__)
 /* android/hardware.c is only built for Android; mirror the CPU info layout so
@@ -26,7 +26,7 @@ typedef struct cpu_info {
 #endif
 
 // NOLINTNEXTLINE(bugprone-suspicious-include)
-#include "../src/platform/android/hardware.c"
+#include "../../src/platform/android/hardware.c"
 
 #define MAX_TEST_PROPERTIES 8
 

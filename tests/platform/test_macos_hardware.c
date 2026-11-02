@@ -11,11 +11,11 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/ps/IOPSKeys.h>
 
-#include "test_framework.h"
+#include "../support/test_framework.h"
 
 /* Include the translation unit to exercise its static helpers directly. */
 // NOLINTNEXTLINE(bugprone-suspicious-include)
-#include "../src/platform/macos/hardware.c"
+#include "../../src/platform/macos/hardware.c"
 
 static void test_cf_value_to_string_guards(void) {
     char buffer[32] = {0};

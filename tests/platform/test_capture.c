@@ -8,7 +8,7 @@
 #include <sys/resource.h>
 
 #include "capture.h"
-#include "test_framework.h"
+#include "../support/test_framework.h"
 
 /* Counts open descriptors, excluding the descriptor used to read the directory. */
 static int count_open_fds(void) {

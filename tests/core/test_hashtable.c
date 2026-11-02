@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #include "hashtable.h"
-#include "test_framework.h"
+#include "../support/test_framework.h"
 
 static void test_create(void) {
     string_set_t *set = strset_create(0);
