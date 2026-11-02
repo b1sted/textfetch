@@ -9,9 +9,14 @@
 /* Buffer length for caching OS property strings. */
 #define SYSINFO_BUFFER_SIZE 128
 
-/* Fallback limit for property name length. */
+/* Fallback limit for Android property name length. */
 #ifndef PROP_NAME_MAX
-#define PROP_NAME_MAX       128
+#define PROP_NAME_MAX       32
+#endif
+
+/* Fallback limit for Android property value length. */
+#ifndef PROP_VALUE_MAX
+#define PROP_VALUE_MAX      92
 #endif
 
 /* Core system data (OS identity, kernel, uptime, and process count). */

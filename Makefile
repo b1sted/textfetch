@@ -87,8 +87,8 @@ lint:
 	@set -e; \
 	for file in $(LINT_TESTS); do \
 		echo "clang-tidy $$file"; \
-		clang-tidy --quiet "$$file" -- -Iinclude -Itests -std=c99 \
-			-D_POSIX_C_SOURCE=200809L; \
+		clang-tidy --quiet "$$file" -- -Iinclude -Itests \
+			-Itests/android_stubs -std=c99 -D_POSIX_C_SOURCE=200809L; \
 	done
 	@command -v cppcheck >/dev/null 2>&1 || { \
 		echo "error: cppcheck is required for linting" >&2; exit 1; \

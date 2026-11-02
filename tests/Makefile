@@ -4,7 +4,7 @@ CC ?= cc
 
 TEST_CFLAGS ?= -std=c99 -Wall -Wextra -Werror -g -O1 \
                -D_POSIX_C_SOURCE=200809L
-TEST_CPPFLAGS := -I../include
+TEST_CPPFLAGS := -I../include -Iandroid_stubs
 TEST_LDFLAGS :=
 
 SANITIZE ?= 1
@@ -24,6 +24,7 @@ TEST_NAMES := \
 	test_system \
 	test_terminal \
 	test_posix_system \
+	test_android_system \
 	test_cli
 
 UNAME_S := $(shell uname -s)
@@ -108,6 +109,12 @@ $(TEST_BINDIR)/test_posix_system: test_posix_system.c \
 		../src/platform/posix/system.c ../src/core/config.c
 	@mkdir -p $(TEST_BINDIR)
 	$(CC) $(TEST_CPPFLAGS) $(TEST_CFLAGS) $^ -o $@ $(TEST_LDFLAGS)
+
+$(TEST_BINDIR)/test_android_system: test_android_system.c \
+		../src/platform/android/system.c ../src/core/config.c
+	@mkdir -p $(TEST_BINDIR)
+	$(CC) $(TEST_CPPFLAGS) $(TEST_CFLAGS) test_android_system.c \
+		../src/core/config.c -o $@ $(TEST_LDFLAGS)
 
 $(TEST_BINDIR)/test_linux_system: test_linux_system.c \
 		../src/platform/linux-common/system.c \
