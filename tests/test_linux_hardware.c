@@ -30,6 +30,11 @@ static void test_sanitize_cpu_name(void) {
                    "AMD Ryzen 5 5600X");
     check_cpu_name("Intel Core i5-8250U CPU @ 1.60GHz",
                    "Intel Core i5-8250U");
+    check_cpu_name("Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz",
+                   "Intel Xeon E5-2697 v2");
+    check_cpu_name("Intel(R) Xeon(R) CPU @ 2.20GHz", "Intel Xeon");
+    check_cpu_name("Intel(R) Atom(TM) CPU N450 @ 1.66GHz",
+                   "Intel Atom N450");
     check_cpu_name("AMD APU", "AMD");
     check_cpu_name("Intel Core i7-8700 Processor", "Intel Core i7-8700");
     check_cpu_name("Intel Core i7-8700 with Radeon Graphics",
@@ -161,7 +166,7 @@ static void test_actual_cpu(void) {
     TEST_CHECK(packages > 0);
     TEST_CHECK(packages <= MAX_CPU_PACKAGES);
 
-    hw_get_cpu_model(cpus, cpu_map, packages);
+    hw_get_cpu_model(cpus, cpu_map);
     TEST_CHECK(strlen(cpus[0].model) > 0);
     TEST_CHECK(cpus[0].frequency >= 0.0);
 

@@ -2,8 +2,30 @@
 
 #include <string.h>
 
+#include <dirent.h>
+#include <unistd.h>
+
+#include <sys/resource.h>
+
 #include "capture.h"
 #include "test_framework.h"
+
+/* Counts open descriptors, excluding the descriptor used to read the directory. */
+static int count_open_fds(void) {
+    DIR *dir = opendir("/proc/self/fd");
+    if (!dir) return -1;
+
+    int count = 0;
+    struct dirent *entry;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] != '.') count++;
+    }
+
+    closedir(dir);
+
+    return count - 1;
+}
 
 static void test_successful_capture(void) {
     char buffer[64] = {0};
@@ -67,11 +89,38 @@ static void test_capture_failures(void) {
     TEST_STR_EQ(buffer, "X");
 }
 
+static void test_fork_failure_closes_pipe(void) {
+    struct rlimit original;
+
+    if (getrlimit(RLIMIT_NPROC, &original) != 0) return;
+    if (geteuid() == 0) return;
+
+    struct rlimit no_processes = original;
+    no_processes.rlim_cur = 0;
+
+    if (setrlimit(RLIMIT_NPROC, &no_processes) != 0) return;
+
+    int before = count_open_fds();
+    char buffer[32] = {'X'};
+    int result = capture_line("echo", "hello", buffer, sizeof(buffer));
+    int after = count_open_fds();
+
+    setrlimit(RLIMIT_NPROC, &original);
+
+    TEST_INT_EQ(result, -1);
+    TEST_STR_EQ(buffer, "");
+
+    if (before >= 0 && after >= 0) {
+        TEST_INT_EQ(before, after);
+    }
+}
+
 int main(void) {
     test_successful_capture();
     test_truncation();
     test_empty_output();
     test_capture_failures();
+    test_fork_failure_closes_pipe();
 
     return test_finish("capture");
 }

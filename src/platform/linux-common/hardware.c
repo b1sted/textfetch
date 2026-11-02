@@ -56,19 +56,17 @@ static bool is_valid_mount(const struct mntent *ent);
 static void hw_print_disk(const char *mnt, const struct statvfs *fs,
                           const struct mntent *ent);
 
-void hw_get_mem_info(void) {
-    mem_info_t node;
-    memset(&node, 0, sizeof(mem_info_t));
-
-    mem_flags_t flags = 0;
-
-    FILE *memory_file = fopen(MEMINFO_PATH, "r");
-    if (!memory_file) {
-        V_PRINTF("[ERROR] Failed to open %s: %s\n", MEMINFO_PATH, strerror(errno));
-        return;
-    }
-
+/**
+ * Parses /proc/meminfo data and derives used RAM and swap capacities.
+ *
+ * @param memory_file Open stream for the memory information file.
+ * @param node Pointer to the memory info structure to populate.
+ * @param flags Pointer to the flags mask to update.
+ */
+static void hw_parse_meminfo(FILE *memory_file, mem_info_t *node, mem_flags_t *flags) {
     uint64_t ram_free = 0, swap_free = 0;
+    uint64_t mem_free = 0, buffers = 0, cached = 0, sreclaimable = 0;
+    bool has_mem_available = false;
 
     char file_line[LINE_BUFFER];
     while (fgets(file_line, LINE_BUFFER, memory_file)) {
@@ -84,21 +82,56 @@ void hw_get_mem_info(void) {
 
         if (value == endptr) continue;
 
-        if (strcmp(key, "MemTotal") == 0)     node.ram_size  = temp_val * BYTES_PER_KIB;
-        if (strcmp(key, "MemAvailable") == 0) ram_free       = temp_val * BYTES_PER_KIB;
-        if (strcmp(key, "SwapTotal") == 0)    node.swap_size = temp_val * BYTES_PER_KIB;
-        if (strcmp(key, "SwapFree") == 0)     swap_free      = temp_val * BYTES_PER_KIB;
+        if (strcmp(key, "MemTotal") == 0) {
+            node->ram_size = temp_val * BYTES_PER_KIB;
+        } else if (strcmp(key, "MemAvailable") == 0) {
+            ram_free = temp_val * BYTES_PER_KIB;
+            has_mem_available = true;
+        } else if (strcmp(key, "MemFree") == 0) {
+            mem_free = temp_val * BYTES_PER_KIB;
+        } else if (strcmp(key, "Buffers") == 0) {
+            buffers = temp_val * BYTES_PER_KIB;
+        } else if (strcmp(key, "Cached") == 0) {
+            cached = temp_val * BYTES_PER_KIB;
+        } else if (strcmp(key, "SReclaimable") == 0) {
+            sreclaimable = temp_val * BYTES_PER_KIB;
+        } else if (strcmp(key, "SwapTotal") == 0) {
+            node->swap_size = temp_val * BYTES_PER_KIB;
+        } else if (strcmp(key, "SwapFree") == 0) {
+            swap_free = temp_val * BYTES_PER_KIB;
+        }
     }
 
-    if (node.ram_size > 0) {
-        flags |= MEM_RAM;
-        node.ram_used = node.ram_size - ram_free;
+    if (!has_mem_available) {
+        ram_free = mem_free + buffers + cached + sreclaimable;
     }
 
-    if (node.swap_size > 0) {
-        flags |= MEM_SWAP;
-        node.swap_used = node.swap_size - swap_free;
+    if (node->ram_size > 0) {
+        *flags |= MEM_RAM;
+        node->ram_used = (ram_free < node->ram_size)
+                         ? node->ram_size - ram_free : 0;
     }
+
+    if (node->swap_size > 0) {
+        *flags |= MEM_SWAP;
+        node->swap_used = (swap_free < node->swap_size)
+                          ? node->swap_size - swap_free : 0;
+    }
+}
+
+void hw_get_mem_info(void) {
+    mem_info_t node;
+    memset(&node, 0, sizeof(mem_info_t));
+
+    mem_flags_t flags = 0;
+
+    FILE *memory_file = fopen(MEMINFO_PATH, "r");
+    if (!memory_file) {
+        V_PRINTF("[ERROR] Failed to open %s: %s\n", MEMINFO_PATH, strerror(errno));
+        return;
+    }
+
+    hw_parse_meminfo(memory_file, &node, &flags);
 
     fclose(memory_file);
 
@@ -139,24 +172,34 @@ void hw_get_drives_info(void) {
     fclose(mounts_file);
 }
 
+/**
+ * Checks whether a mount point matches an ignored path at a component boundary.
+ *
+ * @param mnt_dir The mount point to evaluate.
+ * @param ignore The ignored path prefix.
+ * @return true if the mount point is the ignored path or one of its children.
+ */
+static bool is_ignored_mount_point(const char *mnt_dir, const char *ignore) {
+    size_t len = strlen(ignore);
+
+    return strncmp(mnt_dir, ignore, len) == 0 &&
+           (mnt_dir[len] == '\0' || mnt_dir[len] == '/');
+}
+
 static bool is_valid_mount(const struct mntent *ent) {
     if (strncmp(ent->mnt_fsname, "/dev/", 5) != 0) return false;
     if (strncmp(ent->mnt_fsname, "/dev/loop", 9) == 0) return false;
 
-    if (strcmp(ent->mnt_type, "fuse") == 0 ||
+    if (strncmp(ent->mnt_type, "fuse", 4) == 0 ||
         strcmp(ent->mnt_type, "erofs") == 0) return false;
 
     const char *ignore_mount_points[] = IGNORE_MOUNT_POINTS;
-    bool is_ignore = false;
 
     for (int i = 0; ignore_mount_points[i] != NULL; i++) {
-        if (strncmp(ent->mnt_dir, ignore_mount_points[i],
-                    strlen(ignore_mount_points[i])) == 0) {
-            is_ignore = true;
+        if (is_ignored_mount_point(ent->mnt_dir, ignore_mount_points[i])) {
+            return false;
         }
     }
-
-    if (is_ignore) return false;
 
     return true;
 }

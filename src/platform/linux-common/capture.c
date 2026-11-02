@@ -32,6 +32,8 @@ int capture_line(const char *command, const char *arg,
 
     if (pid == -1) {
         V_PRINTF("[ERROR] fork failed: %s\n", strerror(errno));
+        close(pipefd[0]);
+        close(pipefd[1]);
         return -1;
     } else if (pid == 0) {
         close(pipefd[0]);
@@ -66,10 +68,16 @@ int capture_line(const char *command, const char *arg,
             close(pipefd[0]);
         }
 
-        int status;
-        waitpid(pid, &status, 0);
+        int status = 0;
+        pid_t waited;
+
+        do {
+            waited = waitpid(pid, &status, 0);
+        } while (waited == -1 && errno == EINTR);
 
         out_buf[strcspn(out_buf, "\r\n")] = '\0';
+
+        if (waited == -1) return 1;
 
         return (WIFEXITED(status) &&
                 WEXITSTATUS(status) == 0 &&

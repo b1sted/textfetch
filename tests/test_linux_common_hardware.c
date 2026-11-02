@@ -39,6 +39,9 @@ static void test_valid_mount(void) {
     entry.mnt_type = "fuse";
     TEST_CHECK(!is_valid_mount(&entry));
 
+    entry.mnt_type = "fuse.sshfs";
+    TEST_CHECK(!is_valid_mount(&entry));
+
     entry.mnt_type = "erofs";
     TEST_CHECK(!is_valid_mount(&entry));
 
@@ -46,14 +49,20 @@ static void test_valid_mount(void) {
     entry.mnt_dir = "/boot";
     TEST_CHECK(!is_valid_mount(&entry));
 
-    entry.mnt_dir = "/bootloader";
+    entry.mnt_dir = "/boot/efi";
     TEST_CHECK(!is_valid_mount(&entry));
+
+    entry.mnt_dir = "/bootloader";
+    TEST_CHECK(is_valid_mount(&entry));
 
     entry.mnt_dir = "/run/user/1000";
     TEST_CHECK(!is_valid_mount(&entry));
 
     entry.mnt_dir = "/var/lib";
     TEST_CHECK(!is_valid_mount(&entry));
+
+    entry.mnt_dir = "/varbackup";
+    TEST_CHECK(is_valid_mount(&entry));
 
     entry.mnt_dir = "/mnt/wslg/distro";
     TEST_CHECK(!is_valid_mount(&entry));
@@ -144,6 +153,52 @@ static void test_print_memory(void) {
     free(output);
 }
 
+static void test_meminfo_parsing(void) {
+    char without_available[] =
+        "MemTotal:       1000 kB\n"
+        "MemFree:         100 kB\n"
+        "Buffers:          50 kB\n"
+        "Cached:          200 kB\n"
+        "SReclaimable:     50 kB\n"
+        "SwapTotal:       500 kB\n"
+        "SwapFree:        200 kB\n";
+    mem_info_t node;
+    mem_flags_t flags = 0;
+    memset(&node, 0, sizeof(node));
+
+    FILE *fp = fmemopen(without_available, strlen(without_available), "r");
+    TEST_CHECK(fp != NULL);
+    if (fp) {
+        hw_parse_meminfo(fp, &node, &flags);
+        fclose(fp);
+    }
+
+    TEST_CHECK((flags & MEM_RAM) != 0);
+    TEST_CHECK(node.ram_size == 1000ULL * BYTES_PER_KIB);
+    TEST_CHECK(node.ram_used == 600ULL * BYTES_PER_KIB);
+    TEST_CHECK((flags & MEM_SWAP) != 0);
+    TEST_CHECK(node.swap_used == 300ULL * BYTES_PER_KIB);
+
+    char with_available[] =
+        "MemTotal:       1000 kB\n"
+        "MemAvailable:    250 kB\n"
+        "MemFree:         100 kB\n"
+        "Buffers:          50 kB\n"
+        "Cached:          200 kB\n";
+    memset(&node, 0, sizeof(node));
+    flags = 0;
+
+    fp = fmemopen(with_available, strlen(with_available), "r");
+    TEST_CHECK(fp != NULL);
+    if (fp) {
+        hw_parse_meminfo(fp, &node, &flags);
+        fclose(fp);
+    }
+
+    TEST_CHECK((flags & MEM_RAM) != 0);
+    TEST_CHECK(node.ram_used == 750ULL * BYTES_PER_KIB);
+}
+
 static void test_actual_memory(void) {
     test_capture_t capture;
 
@@ -170,6 +225,7 @@ int main(void) {
     test_valid_mount();
     test_print_disk();
     test_print_memory();
+    test_meminfo_parsing();
     test_actual_memory();
     test_actual_drives();
 
