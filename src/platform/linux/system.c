@@ -17,52 +17,47 @@
 #include "sys_utils.h"
 
 /* Standard paths for accessing OS release information. */
-#define OS_RELEASE_PATH {"/etc/os-release", "/usr/lib/os-release", NULL}
+#define OS_RELEASE_PATH                                                                            \
+    {                                                                                              \
+        "/etc/os-release", "/usr/lib/os-release", NULL                                             \
+    }
 
 /* Paths corresponding to the device tree model string on ARM platforms. */
-#define DEVICE_MODEL_FILE {"/proc/device-tree/model", "/sys/firmware/devicetree/base/model", NULL}
+#define DEVICE_MODEL_FILE                                                                          \
+    {                                                                                              \
+        "/proc/device-tree/model", "/sys/firmware/devicetree/base/model", NULL                     \
+    }
 
 /* Placeholder or garbage DMI product family strings to ignore in the final output. */
 #define IGNORE_SYS_PRODUCT_FAMILY                                                                  \
-    {"00000000",                                                                                   \
-     "11111111",                                                                                   \
-     "All Series",                                                                                 \
-     "BDW",                                                                                        \
-     "CFL",                                                                                        \
-     "CHASSIS",                                                                                    \
-     "CNL",                                                                                        \
-     "Default String",                                                                             \
-     "Family",                                                                                     \
-     "Generic",                                                                                    \
-     "HSW",                                                                                        \
-     "ICL",                                                                                        \
-     "Invalid",                                                                                    \
-     "KBL",                                                                                        \
-     "LBG",                                                                                        \
-     "None",                                                                                       \
-     "Not Specified",                                                                              \
-     "SKL",                                                                                        \
-     "System Family",                                                                              \
-     "TGL",                                                                                        \
-     "To Be Filled By O.E.M.",                                                                     \
-     "Unknown",                                                                                    \
-     "Whiskey Lake",                                                                               \
-     NULL}
+    {                                                                                              \
+        "00000000", "11111111", "All Series", "BDW", "CFL", "CHASSIS", "CNL", "Default String",    \
+            "Family", "Generic", "HSW", "ICL", "Invalid", "KBL", "LBG", "None", "Not Specified",   \
+            "SKL", "System Family", "TGL", "To Be Filled By O.E.M.", "Unknown", "Whiskey Lake",    \
+            NULL                                                                                   \
+    }
 
 /* Vendor names mapped to their preferred short acronyms. */
 #define LONGEST_VENDOR_NAMES                                                                       \
-    {{"ASUSTeK COMPUTER INC.", "ASUS"},                                                            \
-     {"Micro-Star International Co., Ltd.", "MSI"},                                                \
-     {"Hewlett-Packard", "HP"}}
+    {                                                                                              \
+        {"ASUSTeK COMPUTER INC.", "ASUS"}, {"Micro-Star International Co., Ltd.", "MSI"},          \
+        {                                                                                          \
+            "Hewlett-Packard", "HP"                                                                \
+        }                                                                                          \
+    }
 
 /* Corporate suffixes and garbage words to be stripped from vendor names. */
 #define GARBAGE_IN_VENDOR_NAME                                                                     \
-    {"Technology", "Corporation", "Computer", "Foundation", "Electronics",                         \
-     "Inc.",       "Co., Ltd.",   "Ltd.",     NULL}
+    {                                                                                              \
+        "Technology", "Corporation", "Computer", "Foundation", "Electronics", "Inc.", "Co., Ltd.", \
+            "Ltd.", NULL                                                                           \
+    }
 
 /* Specific vendor acronyms and brands that must remain fully capitalized. */
 #define ALLCAPS_VENDOR_NAMES                                                                       \
-    {"ASUS", "AYANEO", "AYN", "CHUWI", "GPD", "HP", "LG", "MSI", "ONEXPLAYER", "TECHO", NULL}
+    {                                                                                              \
+        "ASUS", "AYANEO", "AYN", "CHUWI", "GPD", "HP", "LG", "MSI", "ONEXPLAYER", "TECHO", NULL    \
+    }
 
 /* Sysfs DMI tables used to construct the full hardware marketing model name. */
 #define SYS_VENDOR_PATH "/sys/class/dmi/id/sys_vendor"

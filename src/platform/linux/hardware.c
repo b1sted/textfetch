@@ -39,13 +39,10 @@
 
 /* Array of paths to search for the pci.ids database file. */
 #define PCI_IDS_PATHS                                                                              \
-    {"/var/lib/pciutils/pci.ids",                                                                  \
-     "/usr/share/hwdata/pci.ids",                                                                  \
-     "/usr/share/misc/pci.ids",                                                                    \
-     "/usr/share/pci.ids",                                                                         \
-     "/opt/homebrew/share/pci.ids",                                                                \
-     "pci.ids",                                                                                    \
-     NULL}
+    {                                                                                              \
+        "/var/lib/pciutils/pci.ids", "/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids",       \
+            "/usr/share/pci.ids", "/opt/homebrew/share/pci.ids", "pci.ids", NULL                   \
+    }
 
 /* Base directories in sysfs and procfs for hardware enumeration. */
 #define SYS_CPU_DIR "/sys/devices/system/cpu/"
