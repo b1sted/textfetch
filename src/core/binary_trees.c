@@ -2,20 +2,23 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include <errno.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
 #include <ctype.h>
 
 #include "binary_trees.h"
 #include "sys_utils.h"
 
-node *create_node(uint16_t id, char *name) {
-    if (!name) return NULL;
+node *create_node(uint16_t id, const char *name)
+{
+    if (!name) {
+        return NULL;
+    }
 
     node *new_node = (node *)malloc(sizeof(node));
     if (!new_node) {
@@ -37,7 +40,8 @@ node *create_node(uint16_t id, char *name) {
     return new_node;
 }
 
-forest *create_forest(int initial_capacity) {
+forest *create_forest(int initial_capacity)
+{
     forest *f = malloc(sizeof(forest));
     if (!f) {
         V_PRINTF("[ERROR] Unable to allocate memory: %s\n", strerror(errno));
@@ -66,13 +70,15 @@ forest *create_forest(int initial_capacity) {
     return f;
 }
 
-void add_child(node *parent, uint16_t id, char *name) {
-    if (!parent) return;
+void add_child(node *parent, uint16_t id, const char *name)
+{
+    if (!parent) {
+        return;
+    }
 
     node *new_node = create_node(id, name);
     if (!new_node) {
-        V_PRINTF("[ERROR] Failed to add child node (id: %u, name: %s)\n",
-                 (unsigned)id, name);
+        V_PRINTF("[ERROR] Failed to add child node (id: %u, name: %s)\n", (unsigned)id, name);
         return;
     }
 
@@ -89,7 +95,8 @@ void add_child(node *parent, uint16_t id, char *name) {
     }
 }
 
-void add_tree_to_forest(forest *f, node *root) {
+void add_tree_to_forest(forest *f, node *root)
+{
     if (!f || !root) {
         return;
     }
@@ -111,8 +118,7 @@ void add_tree_to_forest(forest *f, node *root) {
             return;
         }
 
-        node **new_roots = realloc(f->roots,
-                                   (size_t)new_capacity * sizeof(node *));
+        node **new_roots = realloc(f->roots, (size_t)new_capacity * sizeof(node *));
         if (!new_roots) {
             V_PRINTF("[ERROR] Unable to allocate memory: %s\n", strerror(errno));
             return;
@@ -126,32 +132,42 @@ void add_tree_to_forest(forest *f, node *root) {
     f->count++;
 }
 
-node *find_in_tree(node *root, uint16_t target_id) {
-    if (root == NULL) return NULL;
+node *find_in_tree(node *root, uint16_t target_id)
+{
+    if (root == NULL) {
+        return NULL;
+    }
 
-    if (root->id == target_id) return root;
+    if (root->id == target_id) {
+        return root;
+    }
 
     node *found = find_in_tree(root->first_child, target_id);
-    if (found) return found;
+    if (found) {
+        return found;
+    }
 
     return find_in_tree(root->next_sibling, target_id);
 }
 
-node *find_in_forest(forest *f, uint16_t target_id) {
+node *find_in_forest(const forest *f, uint16_t target_id)
+{
     if (!f) {
         return NULL;
     }
 
     for (int i = 0; i < f->count; i++) {
-        if (f->roots[i]->id == target_id) return f->roots[i];
+        if (f->roots[i]->id == target_id) {
+            return f->roots[i];
+        }
     }
 
-    V_PRINTF("[NOTE] find_in_forest: Target Root ID 0x%04X not found in forest.\n",
-             target_id);
+    V_PRINTF("[NOTE] find_in_forest: Target Root ID 0x%04X not found in forest.\n", target_id);
     return NULL;
 }
 
-void free_tree(node *root) {
+void free_tree(node *root)
+{
     if (!root) {
         return;
     }
@@ -162,14 +178,16 @@ void free_tree(node *root) {
             free_tree(root->first_child);
         }
 
-        if (root->name)
+        if (root->name) {
             free(root->name);
+        }
         free(root);
         root = next;
     }
 }
 
-void destroy_forest(forest *f) {
+void destroy_forest(forest *f)
+{
     if (!f) {
         return;
     }

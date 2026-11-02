@@ -52,7 +52,8 @@ static uint32_t hw_read_policy_max_freq(const char *policy_path);
  */
 static void hw_get_cpu_freq(cpu_info_t *cpu);
 
-void hw_get_cpu_info(void) {
+void hw_get_cpu_info(void)
+{
     cpu_info_t cpu;
     memset(&cpu, 0, sizeof(cpu_info_t));
 
@@ -66,7 +67,8 @@ void hw_get_cpu_info(void) {
     ui_print_info("CPU", cpu_info);
 }
 
-static void hw_get_cpu_model(cpu_info_t *cpu) {
+static void hw_get_cpu_model(cpu_info_t *cpu)
+{
     if (__system_property_get("ro.soc.model", cpu->model) <= 0) {
         if (__system_property_get("ro.board.platform", cpu->model) <= 0) {
             V_PRINTF("[WARNING] Could not read CPU name, using 'Unknown'\n");
@@ -75,17 +77,19 @@ static void hw_get_cpu_model(cpu_info_t *cpu) {
     }
 }
 
-static void hw_get_cpu_cores(cpu_info_t *cpu) {
-    long cores = sysconf(_SC_NPROCESSORS_CONF);
+static void hw_get_cpu_cores(cpu_info_t *cpu)
+{
+    int64_t cores = (int64_t)sysconf(_SC_NPROCESSORS_CONF);
     if (cores == -1) {
         V_PRINTF("[WARNING] Could not get CPU cores number: %s\n", strerror(errno));
         cores = 0;
     }
 
-    snprintf(cpu->cores, sizeof(cpu->cores), " (%ld)", cores);
+    snprintf(cpu->cores, sizeof(cpu->cores), " (%" PRId64 ")", cores);
 }
 
-static uint32_t hw_read_policy_max_freq(const char *policy_path) {
+static uint32_t hw_read_policy_max_freq(const char *policy_path)
+{
     static const char *const freq_files[] = {
         "cpuinfo_max_freq",
         "scaling_max_freq",
@@ -98,8 +102,7 @@ static uint32_t hw_read_policy_max_freq(const char *policy_path) {
     for (size_t i = 0; i < sizeof(freq_files) / sizeof(freq_files[0]); i++) {
         uint32_t freq_khz = 0;
 
-        snprintf(freq_path, sizeof(freq_path), "%s/%s",
-                 policy_path, freq_files[i]);
+        snprintf(freq_path, sizeof(freq_path), "%s/%s", policy_path, freq_files[i]);
 
         if (util_read_uint32(freq_path, &freq_khz) && freq_khz > 0) {
             return freq_khz;
@@ -109,7 +112,8 @@ static uint32_t hw_read_policy_max_freq(const char *policy_path) {
     return 0;
 }
 
-static void hw_get_cpu_freq(cpu_info_t *cpu) {
+static void hw_get_cpu_freq(cpu_info_t *cpu)
+{
     static const char *const cpufreq_dir = "/sys/devices/system/cpu/cpufreq";
 
     char policy_path[PATH_BUFFER] = {0};
@@ -122,11 +126,14 @@ static void hw_get_cpu_freq(cpu_info_t *cpu) {
         struct dirent *entry;
 
         while ((entry = readdir(dir)) != NULL) {
-            if (strncmp(entry->d_name, "policy", 6) != 0) continue;
-            if (!util_is_numeric_string(entry->d_name + 6)) continue;
+            if (strncmp(entry->d_name, "policy", 6) != 0) {
+                continue;
+            }
+            if (!util_is_numeric_string(entry->d_name + 6)) {
+                continue;
+            }
 
-            snprintf(policy_path, sizeof(policy_path), "%s/%s",
-                     cpufreq_dir, entry->d_name);
+            snprintf(policy_path, sizeof(policy_path), "%s/%s", cpufreq_dir, entry->d_name);
 
             uint32_t freq_khz = hw_read_policy_max_freq(policy_path);
             if (freq_khz > max_freq_khz) {
@@ -138,8 +145,7 @@ static void hw_get_cpu_freq(cpu_info_t *cpu) {
     }
 
     if (max_freq_khz == 0) {
-        max_freq_khz = hw_read_policy_max_freq(
-            "/sys/devices/system/cpu/cpu0/cpufreq");
+        max_freq_khz = hw_read_policy_max_freq("/sys/devices/system/cpu/cpu0/cpufreq");
     }
 
     if (max_freq_khz > 0) {
@@ -148,7 +154,8 @@ static void hw_get_cpu_freq(cpu_info_t *cpu) {
     }
 }
 
-void hw_get_gpu_info(void) {
+void hw_get_gpu_info(void)
+{
 #if !defined(__ANDROID__)
     return;
 #else
@@ -159,15 +166,19 @@ void hw_get_gpu_info(void) {
         return;
     }
 
-    const EGLint config_attributes[] = {
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-        EGL_SURFACE_TYPE,    EGL_PBUFFER_BIT,
-        EGL_RED_SIZE,        8,
-        EGL_GREEN_SIZE,      8,
-        EGL_BLUE_SIZE,       8,
-        EGL_ALPHA_SIZE,      8,
-        EGL_NONE
-    };
+    const EGLint config_attributes[] = {EGL_RENDERABLE_TYPE,
+                                        EGL_OPENGL_ES2_BIT,
+                                        EGL_SURFACE_TYPE,
+                                        EGL_PBUFFER_BIT,
+                                        EGL_RED_SIZE,
+                                        8,
+                                        EGL_GREEN_SIZE,
+                                        8,
+                                        EGL_BLUE_SIZE,
+                                        8,
+                                        EGL_ALPHA_SIZE,
+                                        8,
+                                        EGL_NONE};
 
     eglBindAPI(EGL_OPENGL_ES_API);
 
@@ -181,27 +192,19 @@ void hw_get_gpu_info(void) {
         return;
     }
 
-    const EGLint context_attributes[] = {
-        EGL_CONTEXT_CLIENT_VERSION, 2,
-        EGL_NONE
-    };
+    const EGLint context_attributes[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE};
 
-    EGLContext egl_context = eglCreateContext(egl_display, egl_config,
-                                              EGL_NO_CONTEXT, context_attributes);
+    EGLContext egl_context =
+        eglCreateContext(egl_display, egl_config, EGL_NO_CONTEXT, context_attributes);
     if (egl_context == EGL_NO_CONTEXT) {
         V_PRINTF("[ERROR] Failed to create EGL context: %04x\n", eglGetError());
         eglTerminate(egl_display);
         return;
     }
 
-    const EGLint surface_attributes[] = {
-        EGL_WIDTH,  1,
-        EGL_HEIGHT, 1,
-        EGL_NONE
-    };
+    const EGLint surface_attributes[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
 
-    EGLSurface egl_surface = eglCreatePbufferSurface(egl_display, egl_config,
-                                                     surface_attributes);
+    EGLSurface egl_surface = eglCreatePbufferSurface(egl_display, egl_config, surface_attributes);
     if (egl_surface == EGL_NO_SURFACE) {
         V_PRINTF("[ERROR] Failed to create pbuffer surface: %04x\n", eglGetError());
         eglDestroyContext(egl_display, egl_context);
@@ -234,9 +237,11 @@ void hw_get_gpu_info(void) {
  *    aiming for sub-50ms execution time.
  * 3. 'dumpsys' requires android.permission.DUMP (not available by default).
  */
-void hw_get_bat_info(void) {
-    if (!util_is_file_exist("/sys/class/power_supply/battery/present"))
+void hw_get_bat_info(void)
+{
+    if (!util_is_file_exist("/sys/class/power_supply/battery/present")) {
         return;
+    }
 
     uint8_t capacity = 0;
     char status[MINI_BUFFER] = {0};
@@ -255,7 +260,7 @@ void hw_get_bat_info(void) {
     }
 
     char information[LINE_BUFFER] = {0};
-    snprintf(information, sizeof(information),
-             "%" PRIu8 "%% (%s, Health: %s)", capacity, status, health);
+    snprintf(information, sizeof(information), "%" PRIu8 "%% (%s, Health: %s)", capacity, status,
+             health);
     ui_print_info("Battery", information);
 }

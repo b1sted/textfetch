@@ -3,13 +3,14 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "../support/test_framework.h"
+#include "../support/test_helpers.h"
 #include "defs.h"
 #include "pal/terminal_os.h"
 #include "terminal.h"
-#include "../support/test_framework.h"
-#include "../support/test_helpers.h"
 
-static void test_get_shell(void) {
+static void test_get_shell(void)
+{
     char buffer[LINE_BUFFER] = {0};
 
     setenv("SHELL", "/bin/zsh", 1);
@@ -25,8 +26,9 @@ static void test_get_shell(void) {
     term_get_shell(NULL, sizeof(buffer));
 }
 
-static void test_print_info(void) {
-    test_capture_t capture;
+static void test_print_info(void)
+{
+    test_capture_t capture = {0};
     TEST_CHECK(test_capture_begin(&capture));
 
     terminal_print_info();
@@ -38,7 +40,8 @@ static void test_print_info(void) {
     free(output);
 }
 
-int main(void) {
+int main(void)
+{
     test_get_shell();
     test_print_info();
 

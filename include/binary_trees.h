@@ -5,8 +5,8 @@
 
 #include <stdint.h>
 
-/** 
- * Node structure for the hierarchical n-ary tree format implementation. 
+/**
+ * Node structure for the hierarchical n-ary tree format implementation.
  *
  * @param id Numeric identifier of the node.
  * @param name Human-readable name string.
@@ -32,7 +32,7 @@ typedef struct {
  * @param name The human-readable name. Will be duplicated using strdup().
  * @return A pointer to the new node, or NULL if memory allocation fails.
  */
-node *create_node(uint16_t id, char *name);
+node *create_node(uint16_t id, const char *name);
 
 /**
  * Allocates and initializes a new forest structure.
@@ -49,7 +49,7 @@ forest *create_forest(int initial_capacity);
  * @param id The identifier for the new child node.
  * @param name The name of the new child node.
  */
-void add_child(node *parent, uint16_t id, char *name);
+void add_child(node *parent, uint16_t id, const char *name);
 
 /**
  * Adds an existing tree (represented by its root) to the forest.
@@ -75,7 +75,7 @@ node *find_in_tree(node *root, uint16_t target_id);
  * @param target_id The identifier to search for.
  * @return Pointer to the found root node, or NULL if not found.
  */
-node *find_in_forest(forest *f, uint16_t target_id);
+node *find_in_forest(const forest *f, uint16_t target_id);
 
 /**
  * Recursively frees a node and all its children/siblings.

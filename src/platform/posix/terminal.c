@@ -13,7 +13,8 @@
 
 #include "pal/terminal_os.h"
 
-void terminal_print_info(void) {
+void terminal_print_info(void)
+{
     char shell_buf[LINE_BUFFER] = {0};
     term_get_shell(shell_buf, LINE_BUFFER);
 
@@ -27,8 +28,11 @@ void terminal_print_info(void) {
     ui_print_info("Locale", locale);
 }
 
-void term_fallback_shell(char *out_buf, const size_t buf_size) {
-    if (!out_buf || buf_size == 0) return;
+void term_fallback_shell(char *out_buf, const size_t buf_size)
+{
+    if (!out_buf || buf_size == 0) {
+        return;
+    }
 
     const char *env_shell = getenv("SHELL");
 
@@ -44,8 +48,11 @@ void term_fallback_shell(char *out_buf, const size_t buf_size) {
     snprintf(out_buf, buf_size, "%s", name);
 }
 
-void term_sanitize_name(char *out_buf) {
-    if (!out_buf || !*out_buf) return;
+void term_sanitize_name(char *out_buf)
+{
+    if (!out_buf || !*out_buf) {
+        return;
+    }
 
     char *gnu_prefix = "GNU ";
     size_t prefix_len = strlen(gnu_prefix);
@@ -72,6 +79,8 @@ void term_sanitize_name(char *out_buf) {
     version_start = strpbrk(out_buf, "0123456789");
     if (version_start) {
         char *garbage = strpbrk(version_start, " (");
-        if (garbage) *garbage = '\0';
+        if (garbage) {
+            *garbage = '\0';
+        }
     }
 }

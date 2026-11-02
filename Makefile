@@ -1,6 +1,6 @@
 CC          ?= gcc
 override CPPFLAGS += -Iinclude -MMD -MP
-override CFLAGS   += -Wall -Wextra -std=c99
+override CFLAGS   += -Wall -Wextra -std=c99 -D_POSIX_C_SOURCE=200809L
 LDFLAGS     += 
 
 PREFIX      ?= /usr/local
@@ -69,7 +69,9 @@ OBJS_LEAKS    := $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/leaks/%.o, $(SRCS))
 
 DEPS          := $(OBJS_REL:.o=.d) $(OBJS_DEV:.o=.d) $(OBJS_LEAKS:.o=.d)
 
-.PHONY: all dev leaks test lint clean install uninstall
+FORMAT_FILES := $(shell find src include tests -name '*.[ch]')
+
+.PHONY: all dev leaks test lint format format-check clean install uninstall
 
 all: $(TARGET)
 
@@ -80,7 +82,13 @@ leaks: $(TARGET_LEAKS)
 test: $(TARGET)
 	$(MAKE) -C tests test TEXTFETCH_BIN="$(abspath $(TARGET))"
 
-lint:
+format:
+	clang-format -i $(FORMAT_FILES)
+
+format-check:
+	clang-format --dry-run --Werror $(FORMAT_FILES)
+
+lint: format-check
 	@command -v clang-tidy >/dev/null 2>&1 || { \
 		echo "error: clang-tidy is required for linting" >&2; exit 1; \
 	}

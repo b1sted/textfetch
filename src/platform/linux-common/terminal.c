@@ -15,8 +15,11 @@
 
 #include "pal/terminal_os.h"
 
-void term_get_shell(char *out_buf, const size_t buf_size) {
-    if (!out_buf || buf_size == 0) return;
+void term_get_shell(char *out_buf, const size_t buf_size)
+{
+    if (!out_buf || buf_size == 0) {
+        return;
+    }
 
     term_fallback_shell(out_buf, buf_size);
 
@@ -44,7 +47,8 @@ void term_get_shell(char *out_buf, const size_t buf_size) {
     char shell_buf[LINE_BUFFER] = {0};
     if (capture_line(comm_buf, "--version", shell_buf, sizeof(shell_buf)) != 0) {
         V_PRINTF("[ERROR] Failed to capture shell version from comm: %s\n"
-                 "        Using a shell from environment\n", comm_buf);
+                 "        Using a shell from environment\n",
+                 comm_buf);
         return;
     }
 

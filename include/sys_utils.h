@@ -15,10 +15,10 @@
  * Verbose formatted print wrapper.
  * Sends output to stderr only if the verbose flag is set.
  */
-#define V_PRINTF(...)                            \
-    do {                                         \
-        if (cfg_get_verbose())                   \
-            fprintf(stderr, __VA_ARGS__);        \
+#define V_PRINTF(...)                                                                              \
+    do {                                                                                           \
+        if (cfg_get_verbose())                                                                     \
+            fprintf(stderr, __VA_ARGS__);                                                          \
     } while (0)
 
 /* Enumeration of standard byte capacity units for formatting sizes. */
@@ -65,8 +65,7 @@ const char *util_string_in_array(const char *str, const char *const array[]);
  * @param dict_size The number of pairs in the dictionary.
  * @return The mapped value string, or NULL if the key is not found.
  */
-const char *util_string_lookup(const char *str, const char *dict[][2],
-                               const size_t dict_size);
+const char *util_string_lookup(const char *str, const char *dict[][2], const size_t dict_size);
 
 /**
  * Reads the first line of a file into a buffer.
@@ -167,8 +166,8 @@ bool util_is_numeric_string(const char *str);
  * @param out_buf Buffer to store the formatted multi-line output.
  * @param buf_size Maximum size of the output buffer.
  */
-void util_format_duplicate_hardware(const char **strings, uint8_t count,
-                                    char *out_buf, size_t buf_size);
+void util_format_duplicate_hardware(const char **strings, uint8_t count, char *out_buf,
+                                    size_t buf_size);
 
 /**
  * Formats a byte size into a human-readable string (e.g., "MiB", "GiB").
@@ -179,8 +178,8 @@ void util_format_duplicate_hardware(const char **strings, uint8_t count,
  * @param buf_size Maximum size of the output buffer.
  * @param from_unit The unit of the input sizes (e.g., UNIT_KIB).
  */
-void util_format_size(double total_size, double used_size, char *out_buf,
-                      const size_t buf_size, data_unit_t from_unit);
+void util_format_size(double total_size, double used_size, char *out_buf, const size_t buf_size,
+                      data_unit_t from_unit);
 
 /**
  * Parses a hardware ID database file into a binary tree forest.

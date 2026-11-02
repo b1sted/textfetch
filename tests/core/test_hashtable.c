@@ -2,10 +2,11 @@
 
 #include <stdio.h>
 
-#include "hashtable.h"
 #include "../support/test_framework.h"
+#include "hashtable.h"
 
-static void test_create(void) {
+static void test_create(void)
+{
     string_set_t *set = strset_create(0);
     TEST_CHECK(set != NULL);
     TEST_INT_EQ(set->capacity, 1);
@@ -28,7 +29,8 @@ static void test_create(void) {
     strset_destroy(set);
 }
 
-static void test_add_contains(void) {
+static void test_add_contains(void)
+{
     string_set_t *set = strset_create(4);
     TEST_CHECK(set != NULL);
 
@@ -53,7 +55,8 @@ static void test_add_contains(void) {
     strset_destroy(set);
 }
 
-static void test_resize(void) {
+static void test_resize(void)
+{
     string_set_t *set = strset_create(4);
     TEST_CHECK(set != NULL);
 
@@ -78,7 +81,8 @@ static void test_resize(void) {
     strset_destroy(set);
 }
 
-static void test_empty_and_long_keys(void) {
+static void test_empty_and_long_keys(void)
+{
     string_set_t *set = strset_create(2);
     TEST_CHECK(set != NULL);
 
@@ -98,7 +102,8 @@ static void test_empty_and_long_keys(void) {
     strset_destroy(set);
 }
 
-static void test_invalid_arguments(void) {
+static void test_invalid_arguments(void)
+{
     string_set_t *set = strset_create(4);
     TEST_CHECK(set != NULL);
 
@@ -112,7 +117,8 @@ static void test_invalid_arguments(void) {
     strset_destroy(NULL);
 }
 
-int main(void) {
+int main(void)
+{
     test_create();
     test_add_contains();
     test_resize();

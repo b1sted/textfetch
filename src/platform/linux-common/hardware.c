@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include <errno.h>
+#include <inttypes.h>
 
 #include <mntent.h>
 
@@ -20,22 +21,14 @@
 #include "pal/hardware_os.h"
 
 /* Temporary or pseudo-filesystems to ignore when summarizing disk space. */
-#define IGNORE_MOUNT_POINTS { \
-    "/.",                     \
-    "/boot",                  \
-    "/mnt/wslg/distro",       \
-    "/run/user",              \
-    "/var",                   \
-    "/apex",                  \
-    "/bootstrap-apex",        \
-    NULL                      \
-}
+#define IGNORE_MOUNT_POINTS                                                                        \
+    {"/.", "/boot", "/mnt/wslg/distro", "/run/user", "/var", "/apex", "/bootstrap-apex", NULL}
 
 /* Path for reading virtual memory usage. */
 #define MEMINFO_PATH "/proc/meminfo"
 
 /* Path for reading currently mounted filesystems. */
-#define MOUNTS_PATH  "/proc/mounts"
+#define MOUNTS_PATH "/proc/mounts"
 
 /**
  * Evaluates a mount entry to determine if it should be processed.
@@ -53,8 +46,7 @@ static bool is_valid_mount(const struct mntent *ent);
  * @param fs Pointer to the filesystem statistics structure.
  * @param ent Pointer to the mount entry structure.
  */
-static void hw_print_disk(const char *mnt, const struct statvfs *fs,
-                          const struct mntent *ent);
+static void hw_print_disk(const char *mnt, const struct statvfs *fs, const struct mntent *ent);
 
 /**
  * Parses /proc/meminfo data and derives used RAM and swap capacities.
@@ -63,8 +55,8 @@ static void hw_print_disk(const char *mnt, const struct statvfs *fs,
  * @param mem_node Pointer to the memory info structure to populate.
  * @param flags Pointer to the flags mask to update.
  */
-static void hw_parse_meminfo(FILE *memory_file, mem_info_t *mem_node,
-                             mem_flags_t *flags) {
+static void hw_parse_meminfo(FILE *memory_file, mem_info_t *mem_node, mem_flags_t *flags)
+{
     uint64_t ram_free = 0, swap_free = 0;
     uint64_t mem_free = 0, buffers = 0, cached = 0, sreclaimable = 0;
     bool has_mem_available = false;
@@ -72,16 +64,20 @@ static void hw_parse_meminfo(FILE *memory_file, mem_info_t *mem_node,
     char file_line[LINE_BUFFER];
     while (fgets(file_line, LINE_BUFFER, memory_file)) {
         char *delimiter_ptr = strstr(file_line, ":");
-        if (!delimiter_ptr) continue;
+        if (!delimiter_ptr) {
+            continue;
+        }
 
         *delimiter_ptr = '\0';
         char *key = file_line;
         char *value = delimiter_ptr + 1;
-        char *endptr;
+        char *endptr = NULL;
 
-        unsigned long long temp_val = strtoull(value, &endptr, 10);
+        uintmax_t temp_val = strtoumax(value, &endptr, 10);
 
-        if (value == endptr) continue;
+        if (value == endptr) {
+            continue;
+        }
 
         if (strcmp(key, "MemTotal") == 0) {
             mem_node->ram_size = temp_val * BYTES_PER_KIB;
@@ -109,18 +105,18 @@ static void hw_parse_meminfo(FILE *memory_file, mem_info_t *mem_node,
 
     if (mem_node->ram_size > 0) {
         *flags |= MEM_RAM;
-        mem_node->ram_used = (ram_free < mem_node->ram_size)
-                             ? mem_node->ram_size - ram_free : 0;
+        mem_node->ram_used = (ram_free < mem_node->ram_size) ? mem_node->ram_size - ram_free : 0;
     }
 
     if (mem_node->swap_size > 0) {
         *flags |= MEM_SWAP;
-        mem_node->swap_used = (swap_free < mem_node->swap_size)
-                              ? mem_node->swap_size - swap_free : 0;
+        mem_node->swap_used =
+            (swap_free < mem_node->swap_size) ? mem_node->swap_size - swap_free : 0;
     }
 }
 
-void hw_get_mem_info(void) {
+void hw_get_mem_info(void)
+{
     mem_info_t mem_node;
     memset(&mem_node, 0, sizeof(mem_info_t));
 
@@ -139,7 +135,8 @@ void hw_get_mem_info(void) {
     hw_print_mem_info(flags, &mem_node);
 }
 
-void hw_get_drives_info(void) {
+void hw_get_drives_info(void)
+{
     struct mntent *mnt_entry;
     struct statvfs fs;
     memset(&fs, 0, sizeof(struct statvfs));
@@ -153,15 +150,18 @@ void hw_get_drives_info(void) {
     string_set_t *outputted_partitions = strset_create(INITIAL_CAPACITY);
 
     while ((mnt_entry = getmntent(mounts_file)) != NULL) {
-        if (!is_valid_mount(mnt_entry)) continue;
-
-        if (statvfs(mnt_entry->mnt_dir, &fs) != 0) {
-            V_PRINTF("[ERROR] statvfs failed for %s: %s\n",
-                     mnt_entry->mnt_dir, strerror(errno));
+        if (!is_valid_mount(mnt_entry)) {
             continue;
         }
 
-        if (fs.f_blocks == 0) continue;
+        if (statvfs(mnt_entry->mnt_dir, &fs) != 0) {
+            V_PRINTF("[ERROR] statvfs failed for %s: %s\n", mnt_entry->mnt_dir, strerror(errno));
+            continue;
+        }
+
+        if (fs.f_blocks == 0) {
+            continue;
+        }
 
         if (!strset_contains(outputted_partitions, mnt_entry->mnt_fsname)) {
             strset_add(outputted_partitions, mnt_entry->mnt_fsname);
@@ -180,19 +180,25 @@ void hw_get_drives_info(void) {
  * @param ignore The ignored path prefix.
  * @return true if the mount point is the ignored path or one of its children.
  */
-static bool is_ignored_mount_point(const char *mnt_dir, const char *ignore) {
+static bool is_ignored_mount_point(const char *mnt_dir, const char *ignore)
+{
     size_t len = strlen(ignore);
 
-    return strncmp(mnt_dir, ignore, len) == 0 &&
-           (mnt_dir[len] == '\0' || mnt_dir[len] == '/');
+    return strncmp(mnt_dir, ignore, len) == 0 && (mnt_dir[len] == '\0' || mnt_dir[len] == '/');
 }
 
-static bool is_valid_mount(const struct mntent *ent) {
-    if (strncmp(ent->mnt_fsname, "/dev/", 5) != 0) return false;
-    if (strncmp(ent->mnt_fsname, "/dev/loop", 9) == 0) return false;
+static bool is_valid_mount(const struct mntent *ent)
+{
+    if (strncmp(ent->mnt_fsname, "/dev/", 5) != 0) {
+        return false;
+    }
+    if (strncmp(ent->mnt_fsname, "/dev/loop", 9) == 0) {
+        return false;
+    }
 
-    if (strncmp(ent->mnt_type, "fuse", 4) == 0 ||
-        strcmp(ent->mnt_type, "erofs") == 0) return false;
+    if (strncmp(ent->mnt_type, "fuse", 4) == 0 || strcmp(ent->mnt_type, "erofs") == 0) {
+        return false;
+    }
 
     const char *ignore_mount_points[] = IGNORE_MOUNT_POINTS;
 
@@ -205,12 +211,12 @@ static bool is_valid_mount(const struct mntent *ent) {
     return true;
 }
 
-static void hw_print_disk(const char *mnt, const struct statvfs *fs,
-                          const struct mntent *ent) {
+static void hw_print_disk(const char *mnt, const struct statvfs *fs, const struct mntent *ent)
+{
     uint64_t block_size = fs->f_frsize;
-    double total_size   = (double)((uint64_t)fs->f_blocks * block_size);
-    double free_size    = (double)((uint64_t)fs->f_bfree * block_size);
-    double used_size    = total_size - free_size;
+    double total_size = (double)((uint64_t)fs->f_blocks * block_size);
+    double free_size = (double)((uint64_t)fs->f_bfree * block_size);
+    double used_size = total_size - free_size;
 
     char label[LINE_BUFFER];
     snprintf(label, LINE_BUFFER, "Disk (%s)", mnt);

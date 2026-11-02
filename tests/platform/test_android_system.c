@@ -6,9 +6,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "../support/test_framework.h"
 #include "pal/hardware_os.h"
 #include "pal/system_os.h"
-#include "../support/test_framework.h"
 
 /* Include the translation units to exercise them against a mocked bionic API. */
 // NOLINTNEXTLINE(bugprone-suspicious-include)
@@ -41,31 +41,41 @@ static size_t test_property_count = 0;
 
 sys_internal_data_t sys_data;
 
-static void test_properties_reset(void) {
+static void test_properties_reset(void)
+{
     memset(test_properties, 0, sizeof(test_properties));
     memset(test_property_values, 0, sizeof(test_property_values));
     test_property_count = 0;
 }
 
-static void test_property_set(const char *name, const char *value) {
-    if (test_property_count >= MAX_TEST_PROPERTIES) return;
+static void test_property_set(const char *name, const char *value)
+{
+    if (test_property_count >= MAX_TEST_PROPERTIES) {
+        return;
+    }
 
     test_properties[test_property_count].name = name;
     snprintf(test_property_values[test_property_count],
              sizeof(test_property_values[test_property_count]), "%s", value);
-    test_properties[test_property_count].value =
-        test_property_values[test_property_count];
+    test_properties[test_property_count].value = test_property_values[test_property_count];
     test_property_count++;
 }
 
-int __system_property_get(const char *name, char *value) {
-    if (!name || !value) return 0;
+int __system_property_get(const char *name, char *value)
+{
+    if (!name || !value) {
+        return 0;
+    }
 
     for (size_t i = 0; i < test_property_count; i++) {
-        if (strcmp(test_properties[i].name, name) != 0) continue;
+        if (strcmp(test_properties[i].name, name) != 0) {
+            continue;
+        }
 
         size_t length = strlen(test_properties[i].value);
-        if (length >= PROP_VALUE_MAX) length = PROP_VALUE_MAX - 1;
+        if (length >= PROP_VALUE_MAX) {
+            length = PROP_VALUE_MAX - 1;
+        }
 
         memcpy(value, test_properties[i].value, length);
         value[length] = '\0';
@@ -84,13 +94,17 @@ static const char *test_battery_health = NULL;
 static char test_ui_label[MINI_BUFFER] = {0};
 static char test_ui_information[LINE_BUFFER] = {0};
 
-bool util_is_file_exist(const char *path) {
+bool util_is_file_exist(const char *path)
+{
     return test_battery_present && path != NULL &&
            strcmp(path, "/sys/class/power_supply/battery/present") == 0;
 }
 
-bool util_read_uint8(const char *path, uint8_t *value) {
-    if (!path || !value || !test_battery_present) return false;
+bool util_read_uint8(const char *path, uint8_t *value)
+{
+    if (!path || !value || !test_battery_present) {
+        return false;
+    }
     if (strcmp(path, "/sys/class/power_supply/battery/capacity") != 0) {
         return false;
     }
@@ -99,8 +113,11 @@ bool util_read_uint8(const char *path, uint8_t *value) {
     return true;
 }
 
-bool util_read_line(const char *path, char *out_buf, const size_t buf_size) {
-    if (!path || !out_buf || buf_size == 0) return false;
+bool util_read_line(const char *path, char *out_buf, const size_t buf_size)
+{
+    if (!path || !out_buf || buf_size == 0) {
+        return false;
+    }
 
     out_buf[0] = '\0';
 
@@ -111,36 +128,46 @@ bool util_read_line(const char *path, char *out_buf, const size_t buf_size) {
         value = test_battery_health;
     }
 
-    if (!value || value[0] == '\0') return false;
+    if (!value || value[0] == '\0') {
+        return false;
+    }
 
     snprintf(out_buf, buf_size, "%s", value);
     return true;
 }
 
-bool util_read_uint32(const char *path, uint32_t *value) {
+bool util_read_uint32(const char *path, uint32_t *value)
+{
     (void)path;
     (void)value;
     return false;
 }
 
-bool util_is_numeric_string(const char *str) {
-    if (!str || *str == '\0') return false;
+bool util_is_numeric_string(const char *str)
+{
+    if (!str || *str == '\0') {
+        return false;
+    }
 
     for (const char *cursor = str; *cursor != '\0'; cursor++) {
-        if (*cursor < '0' || *cursor > '9') return false;
+        if (*cursor < '0' || *cursor > '9') {
+            return false;
+        }
     }
 
     return true;
 }
 
-void ui_print_info(const char *label, const char *information) {
+void ui_print_info(const char *label, const char *information)
+{
     snprintf(test_ui_label, sizeof(test_ui_label), "%s", label ? label : "");
     snprintf(test_ui_information, sizeof(test_ui_information), "%s",
              information ? information : "");
 }
 
-static void check_model_name(const char *brand, const char *model,
-                             const char *name, const char *expected) {
+static void check_model_name(const char *brand, const char *model, const char *name,
+                             const char *expected)
+{
     char buffer[512] = {0};
 
     test_properties_reset();
@@ -152,15 +179,16 @@ static void check_model_name(const char *brand, const char *model,
     TEST_STR_EQ(buffer, expected);
 }
 
-static void test_model_name(void) {
+static void test_model_name(void)
+{
     check_model_name("Google", "Pixel 8", "shiba", "Google Pixel 8 (shiba)");
-    check_model_name("Google", "Google Pixel 8", "shiba",
-                     "Google Pixel 8 (shiba)");
+    check_model_name("Google", "Google Pixel 8", "shiba", "Google Pixel 8 (shiba)");
     check_model_name("Google", "Google", "google", "Google");
     check_model_name("Google", "shiba", "shiba", "Google shiba");
 }
 
-static void test_model_name_fallbacks(void) {
+static void test_model_name_fallbacks(void)
+{
     char buffer[512] = {0};
 
     test_properties_reset();
@@ -168,7 +196,8 @@ static void test_model_name_fallbacks(void) {
     TEST_STR_EQ(buffer, "Unknown");
 }
 
-static void test_long_property_values(void) {
+static void test_long_property_values(void)
+{
     char brand[PROP_VALUE_MAX];
     char model[PROP_VALUE_MAX];
     char name[PROP_VALUE_MAX];
@@ -192,7 +221,8 @@ static void test_long_property_values(void) {
     TEST_STR_EQ(buffer, expected);
 }
 
-static void test_distro(void) {
+static void test_distro(void)
+{
     char buffer[512] = {0};
 
     snprintf(sys_data.machine, sizeof(sys_data.machine), "%s", "aarch64");
@@ -207,7 +237,8 @@ static void test_distro(void) {
     TEST_STR_EQ(buffer, "Android Unknown aarch64");
 }
 
-static void test_system_guards(void) {
+static void test_system_guards(void)
+{
     char buffer[16] = "unchanged";
 
     sys_get_distro(NULL, 0);
@@ -219,7 +250,8 @@ static void test_system_guards(void) {
     TEST_STR_EQ(buffer, "unchanged");
 }
 
-static void test_battery_fallbacks(void) {
+static void test_battery_fallbacks(void)
+{
     test_battery_present = true;
     test_battery_capacity = 85;
 
@@ -245,7 +277,8 @@ static void test_battery_fallbacks(void) {
     TEST_STR_EQ(test_ui_information, "85% (Charging, Health: Good)");
 }
 
-static void test_long_distro_version(void) {
+static void test_long_distro_version(void)
+{
     char version[PROP_VALUE_MAX];
     char expected[512] = {0};
     char buffer[512] = {0};
@@ -263,7 +296,8 @@ static void test_long_distro_version(void) {
     TEST_STR_EQ(buffer, expected);
 }
 
-int main(void) {
+int main(void)
+{
     test_model_name();
     test_model_name_fallbacks();
     test_long_property_values();

@@ -21,9 +21,11 @@
  */
 extern char **environ;
 
-int capture_line(const char *command, const char *arg,
-                 char *out_buf, const size_t buf_size) {
-    if (!command || !out_buf || buf_size < 2) return -1;
+int capture_line(const char *command, const char *arg, char *out_buf, const size_t buf_size)
+{
+    if (!command || !out_buf || buf_size < 2) {
+        return -1;
+    }
 
     out_buf[0] = '\0';
 
@@ -36,8 +38,7 @@ int capture_line(const char *command, const char *arg,
     posix_spawn_file_actions_t actions;
     int spawn_status = posix_spawn_file_actions_init(&actions);
     if (spawn_status != 0) {
-        V_PRINTF("[ERROR] posix_spawn_file_actions_init failed: %s\n",
-                 strerror(spawn_status));
+        V_PRINTF("[ERROR] posix_spawn_file_actions_init failed: %s\n", strerror(spawn_status));
         close(pipefd[0]);
         close(pipefd[1]);
         return -1;
@@ -45,12 +46,12 @@ int capture_line(const char *command, const char *arg,
 
     /* Keep only stdout; silence stdin and stderr as the Linux implementation does. */
     if (spawn_status == 0) {
-        spawn_status = posix_spawn_file_actions_addopen(&actions, STDIN_FILENO,
-                                                        "/dev/null", O_RDONLY, 0);
+        spawn_status =
+            posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
     }
     if (spawn_status == 0) {
-        spawn_status = posix_spawn_file_actions_addopen(&actions, STDERR_FILENO,
-                                                        "/dev/null", O_WRONLY, 0);
+        spawn_status =
+            posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
     }
     if (spawn_status == 0) {
         spawn_status = posix_spawn_file_actions_addclose(&actions, pipefd[0]);
@@ -94,7 +95,7 @@ int capture_line(const char *command, const char *arg,
     }
 
     int wait_status = 0;
-    pid_t waited;
+    pid_t waited = 0;
     do {
         waited = waitpid(pid, &wait_status, 0);
     } while (waited == -1 && errno == EINTR);
@@ -104,7 +105,5 @@ int capture_line(const char *command, const char *arg,
         return 1;
     }
 
-    return (WIFEXITED(wait_status) &&
-            WEXITSTATUS(wait_status) == 0 &&
-            out_buf[0] != '\0') ? 0 : 1;
+    return (WIFEXITED(wait_status) && WEXITSTATUS(wait_status) == 0 && out_buf[0] != '\0') ? 0 : 1;
 }

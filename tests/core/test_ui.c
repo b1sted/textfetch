@@ -2,45 +2,37 @@
 
 #include <string.h>
 
-#include "config.h"
 #include "../support/test_framework.h"
 #include "../support/test_helpers.h"
+#include "config.h"
 #include "ui.h"
 
-static char *capture_void_call(void (*callback)(void)) {
-    test_capture_t capture;
-    if (!test_capture_begin(&capture)) return NULL;
+static char *capture_void_call(void (*callback)(void))
+{
+    test_capture_t capture = {0};
+    if (!test_capture_begin(&capture)) {
+        return NULL;
+    }
 
     callback();
 
     return test_capture_end(&capture);
 }
 
-static void call_print_info(void) {
-    ui_print_info("OS", "Linux");
-}
+static void call_print_info(void) { ui_print_info("OS", "Linux"); }
 
-static void call_print_info_empty(void) {
-    ui_print_info("Label", "");
-}
+static void call_print_info_empty(void) { ui_print_info("Label", ""); }
 
-static void call_render_header(void) {
-    ui_render_header("user", "host");
-}
+static void call_render_header(void) { ui_render_header("user", "host"); }
 
-static void call_render_header_empty(void) {
-    ui_render_header("", "");
-}
+static void call_render_header_empty(void) { ui_render_header("", ""); }
 
-static void call_print_help(void) {
-    ui_print_help("textfetch");
-}
+static void call_print_help(void) { ui_print_help("textfetch"); }
 
-static void call_print_version(void) {
-    ui_print_version("1.2.3");
-}
+static void call_print_version(void) { ui_print_version("1.2.3"); }
 
-static void test_print_info(void) {
+static void test_print_info(void)
+{
     cfg_set_color(false);
 
     char *output = capture_void_call(call_print_info);
@@ -54,7 +46,8 @@ static void test_print_info(void) {
     free(output);
 }
 
-static void test_render_header(void) {
+static void test_render_header(void)
+{
     cfg_set_color(false);
 
     char *output = capture_void_call(call_render_header);
@@ -68,7 +61,8 @@ static void test_render_header(void) {
     free(output);
 }
 
-static void test_help(void) {
+static void test_help(void)
+{
     cfg_set_color(false);
 
     char *output = capture_void_call(call_print_help);
@@ -88,7 +82,8 @@ static void test_help(void) {
     free(output);
 }
 
-static void test_version(void) {
+static void test_version(void)
+{
     cfg_set_color(false);
 
     char *output = capture_void_call(call_print_version);
@@ -100,7 +95,8 @@ static void test_version(void) {
     free(output);
 }
 
-static void test_color_output(void) {
+static void test_color_output(void)
+{
     cfg_set_color(true);
 
     char *output = capture_void_call(call_print_info);
@@ -125,7 +121,8 @@ static void test_color_output(void) {
     free(output);
 }
 
-int main(void) {
+int main(void)
+{
     test_print_info();
     test_render_header();
     test_help();

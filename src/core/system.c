@@ -14,14 +14,16 @@
 /* Definition of the global system data instance with cached system stats. */
 sys_internal_data_t sys_data;
 
-void system_print_header(void) {
+void system_print_header(void)
+{
     char username[SYS_USER_MAX] = {0};
 
     sys_get_identity(username, SYS_USER_MAX);
     ui_render_header(username, sys_data.nodename);
 }
 
-void system_print_info(void) {
+void system_print_info(void)
+{
     char os_buf[LINE_BUFFER] = {0};
     sys_get_distro(os_buf, LINE_BUFFER);
 
@@ -35,7 +37,9 @@ void system_print_info(void) {
     snprintf(procs_buf, SMALL_BUFFER, "%" PRIu32, sys_data.procs);
 
     ui_print_info("OS", os_buf);
-    if (device_buf[0] != '\0') ui_print_info("Device", device_buf);
+    if (device_buf[0] != '\0') {
+        ui_print_info("Device", device_buf);
+    }
     ui_print_info("Kernel", sys_data.release);
     ui_print_info("Uptime", uptime_buf);
     ui_print_info("Processes", procs_buf);

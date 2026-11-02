@@ -17,7 +17,8 @@
 
 #include "pal/system_os.h"
 
-void sys_get_identity(char *out_buf, const size_t buf_size) {
+void sys_get_identity(char *out_buf, const size_t buf_size)
+{
     if (!out_buf || buf_size == 0) {
         V_PRINTF("[ERROR] %s: invalid arguments\n", __func__);
         return;
@@ -35,7 +36,8 @@ void sys_get_identity(char *out_buf, const size_t buf_size) {
     snprintf(out_buf, buf_size, "%s", pwd->pw_name);
 }
 
-void sys_format_uptime(char *out_buf, const size_t buf_size) {
+void sys_format_uptime(char *out_buf, const size_t buf_size)
+{
     if (!out_buf || buf_size == 0) {
         V_PRINTF("[ERROR] %s: invalid arguments\n", __func__);
         return;
@@ -53,12 +55,10 @@ void sys_format_uptime(char *out_buf, const size_t buf_size) {
     uint64_t seconds = t % 60;
 
     if (days != 0) {
-        snprintf(out_buf, buf_size,
-                 "%" PRIu64 " days, %02" PRIu64 ":%02" PRIu64 ":%02" PRIu64,
+        snprintf(out_buf, buf_size, "%" PRIu64 " days, %02" PRIu64 ":%02" PRIu64 ":%02" PRIu64,
                  days, hours, minutes, seconds);
     } else {
-        snprintf(out_buf, buf_size,
-                 "%02" PRIu64 ":%02" PRIu64 ":%02" PRIu64,
-                 hours, minutes, seconds);
+        snprintf(out_buf, buf_size, "%02" PRIu64 ":%02" PRIu64 ":%02" PRIu64, hours, minutes,
+                 seconds);
     }
 }

@@ -19,91 +19,62 @@
 #include "pal/system_os.h"
 
 /* Standard paths for accessing OS release information. */
-#define OS_RELEASE_PATH {                  \
-    "/etc/os-release",                     \
-    "/usr/lib/os-release",                 \
-    NULL                                   \
-}
+#define OS_RELEASE_PATH {"/etc/os-release", "/usr/lib/os-release", NULL}
 
 /* Paths corresponding to the device tree model string on ARM platforms. */
-#define DEVICE_MODEL_FILE {                \
-    "/proc/device-tree/model",             \
-    "/sys/firmware/devicetree/base/model", \
-    NULL                                   \
-}
+#define DEVICE_MODEL_FILE {"/proc/device-tree/model", "/sys/firmware/devicetree/base/model", NULL}
 
 /* Placeholder or garbage DMI product family strings to ignore in the final output. */
-#define IGNORE_SYS_PRODUCT_FAMILY {        \
-    "00000000",                            \
-    "11111111",                            \
-    "All Series",                          \
-    "BDW",                                 \
-    "CFL",                                 \
-    "CHASSIS",                             \
-    "CNL",                                 \
-    "Default String",                      \
-    "Family",                              \
-    "Generic",                             \
-    "HSW",                                 \
-    "ICL",                                 \
-    "Invalid",                             \
-    "KBL",                                 \
-    "LBG",                                 \
-    "None",                                \
-    "Not Specified",                       \
-    "SKL",                                 \
-    "System Family",                       \
-    "TGL",                                 \
-    "To Be Filled By O.E.M.",              \
-    "Unknown",                             \
-    "Whiskey Lake",                        \
-    NULL                                   \
-}
+#define IGNORE_SYS_PRODUCT_FAMILY                                                                  \
+    {"00000000",                                                                                   \
+     "11111111",                                                                                   \
+     "All Series",                                                                                 \
+     "BDW",                                                                                        \
+     "CFL",                                                                                        \
+     "CHASSIS",                                                                                    \
+     "CNL",                                                                                        \
+     "Default String",                                                                             \
+     "Family",                                                                                     \
+     "Generic",                                                                                    \
+     "HSW",                                                                                        \
+     "ICL",                                                                                        \
+     "Invalid",                                                                                    \
+     "KBL",                                                                                        \
+     "LBG",                                                                                        \
+     "None",                                                                                       \
+     "Not Specified",                                                                              \
+     "SKL",                                                                                        \
+     "System Family",                                                                              \
+     "TGL",                                                                                        \
+     "To Be Filled By O.E.M.",                                                                     \
+     "Unknown",                                                                                    \
+     "Whiskey Lake",                                                                               \
+     NULL}
 
 /* Vendor names mapped to their preferred short acronyms. */
-#define LONGEST_VENDOR_NAMES {                       \
-    { "ASUSTeK COMPUTER INC.", "ASUS" },             \
-    { "Micro-Star International Co., Ltd.", "MSI" }, \
-    { "Hewlett-Packard", "HP" }                      \
-}
+#define LONGEST_VENDOR_NAMES                                                                       \
+    {{"ASUSTeK COMPUTER INC.", "ASUS"},                                                            \
+     {"Micro-Star International Co., Ltd.", "MSI"},                                                \
+     {"Hewlett-Packard", "HP"}}
 
 /* Corporate suffixes and garbage words to be stripped from vendor names. */
-#define GARBAGE_IN_VENDOR_NAME {           \
-    "Technology",                          \
-    "Corporation",                         \
-    "Computer",                            \
-    "Foundation",                          \
-    "Electronics",                         \
-    "Inc.",                                \
-    "Co., Ltd.",                           \
-    "Ltd.",                                \
-    NULL                                   \
-}
+#define GARBAGE_IN_VENDOR_NAME                                                                     \
+    {"Technology", "Corporation", "Computer", "Foundation", "Electronics",                         \
+     "Inc.",       "Co., Ltd.",   "Ltd.",     NULL}
 
 /* Specific vendor acronyms and brands that must remain fully capitalized. */
-#define ALLCAPS_VENDOR_NAMES {             \
-    "ASUS",                                \
-    "AYANEO",                              \
-    "AYN",                                 \
-    "CHUWI",                               \
-    "GPD",                                 \
-    "HP",                                  \
-    "LG",                                  \
-    "MSI",                                 \
-    "ONEXPLAYER",                          \
-    "TECHO",                               \
-    NULL                                   \
-}
+#define ALLCAPS_VENDOR_NAMES                                                                       \
+    {"ASUS", "AYANEO", "AYN", "CHUWI", "GPD", "HP", "LG", "MSI", "ONEXPLAYER", "TECHO", NULL}
 
 /* Sysfs DMI tables used to construct the full hardware marketing model name. */
-#define SYS_VENDOR_PATH         "/sys/class/dmi/id/sys_vendor"
+#define SYS_VENDOR_PATH "/sys/class/dmi/id/sys_vendor"
 #define SYS_PRODUCT_FAMILY_PATH "/sys/class/dmi/id/product_family"
-#define SYS_PRODUCT_NAME_PATH   "/sys/class/dmi/id/product_name"
-#define PATH_DMI_CHASSIS        "/sys/class/dmi/id/chassis_type"
+#define SYS_PRODUCT_NAME_PATH "/sys/class/dmi/id/product_name"
+#define PATH_DMI_CHASSIS "/sys/class/dmi/id/chassis_type"
 
 /* DMI chassis type bitmask parameters used to identifying portable devices (laptops). */
 #define CHASSIS_MASK_ELEMENTS 64
-#define CHASSIS_MASK_BLOCKS   SET_SIZE(CHASSIS_MASK_ELEMENTS)
+#define CHASSIS_MASK_BLOCKS SET_SIZE(CHASSIS_MASK_ELEMENTS)
 
 #if !(defined(__arm__) || defined(__aarch64__) || defined(__riscv) || defined(__powerpc__))
 /**
@@ -119,7 +90,7 @@ static bool sys_is_portable(void);
  * @param family_value The null-terminated product family string.
  * @return true if the value is considered garbage and should be skipped.
  */
-static bool hw_is_family_garbage(char *family_value);
+static bool hw_is_family_garbage(const char *family_value);
 
 /**
  * Sanitizes and formats the raw vendor name (capitalization, acronyms, suffix stripping).
@@ -138,15 +109,20 @@ static void hw_sanitize_vendor_name(char *vendor_name, const size_t vendor_size)
 static void hw_remove_vendor_from_model(const char *vendor_name, char *device_name);
 #endif
 
-void sys_get_distro(char *out_buf, const size_t buf_size) {
-    if (out_buf == NULL || buf_size == 0) return;
+void sys_get_distro(char *out_buf, const size_t buf_size)
+{
+    if (out_buf == NULL || buf_size == 0) {
+        return;
+    }
 
     const char *os_release[] = OS_RELEASE_PATH;
 
     FILE *fp = NULL;
     for (size_t i = 0; os_release[i] != NULL; i++) {
         fp = fopen(os_release[i], "rb");
-        if (fp) break;
+        if (fp) {
+            break;
+        }
     }
 
     if (!fp) {
@@ -158,7 +134,9 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
     char line[LINE_BUFFER];
     while (fgets(line, sizeof(line), fp)) {
         char *delim = strchr(line, '=');
-        if (!delim) continue;
+        if (!delim) {
+            continue;
+        }
 
         *delim = 0;
         char *key = line;
@@ -193,22 +171,32 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
 }
 
 #if defined(__arm__) || defined(__aarch64__) || defined(__riscv) || defined(__powerpc__)
-void sys_get_model_name(char *out_buf, const size_t buf_size) {
-    if (out_buf == NULL || buf_size == 0) return;
+void sys_get_model_name(char *out_buf, const size_t buf_size)
+{
+    if (out_buf == NULL || buf_size == 0) {
+        return;
+    }
 
     const char *model_file[] = DEVICE_MODEL_FILE;
 
     for (size_t i = 0; model_file[i] != NULL; i++) {
-        if (util_read_line(model_file[i], out_buf, buf_size)) return;
+        if (util_read_line(model_file[i], out_buf, buf_size)) {
+            return;
+        }
     }
 
     V_PRINTF("[ERROR] Failed to obtain model name from Device Tree\n");
 }
 #else
-void sys_get_model_name(char *out_buf, const size_t buf_size) {
-    if (out_buf == NULL || buf_size == 0) return;
+void sys_get_model_name(char *out_buf, const size_t buf_size)
+{
+    if (out_buf == NULL || buf_size == 0) {
+        return;
+    }
 
-    if (!sys_is_portable()) return;
+    if (!sys_is_portable()) {
+        return;
+    }
 
     char vendor_buf[SMALL_BUFFER] = {0};
     char family_buf[MEDIUM_BUFFER] = {0};
@@ -231,49 +219,59 @@ void sys_get_model_name(char *out_buf, const size_t buf_size) {
     }
 }
 
-static bool sys_is_portable(void) {
+static bool sys_is_portable(void)
+{
     uint8_t chassis_value = 0;
-    if (!util_read_uint8(PATH_DMI_CHASSIS, &chassis_value)) return false;
+    if (!util_read_uint8(PATH_DMI_CHASSIS, &chassis_value)) {
+        return false;
+    }
 
     uint32_t dmi_portable_chassis_bits[CHASSIS_MASK_BLOCKS] = {
-        [0] = BIT(8) | BIT(9) | BIT(10) | BIT(11) | BIT(14) | BIT(30) | BIT(31),
-        [1] = BIT(32)
-    };
+        [0] = BIT(8) | BIT(9) | BIT(10) | BIT(11) | BIT(14) | BIT(30) | BIT(31), [1] = BIT(32)};
 
-    bitset_t chassis_set = {.bits = dmi_portable_chassis_bits,
-                            .capacity = CHASSIS_MASK_ELEMENTS};
+    bitset_t chassis_set = {.bits = dmi_portable_chassis_bits, .capacity = CHASSIS_MASK_ELEMENTS};
 
-    if (set_contains(&chassis_set, chassis_value)) return true;
+    if (set_contains(&chassis_set, chassis_value)) {
+        return true;
+    }
 
     return false;
 }
 
-static bool hw_is_family_garbage(char *family_value) {
+static bool hw_is_family_garbage(const char *family_value)
+{
     const char *ignore_product_family[] = IGNORE_SYS_PRODUCT_FAMILY;
 
-    if (!util_string_in_array(family_value, ignore_product_family)) return false;
+    if (!util_string_in_array(family_value, ignore_product_family)) {
+        return false;
+    }
 
     return true;
 }
 
-static void hw_sanitize_vendor_name(char *vendor_name, const size_t vendor_size) {
-    if (!vendor_name || vendor_size == 0) return;
+static void hw_sanitize_vendor_name(char *vendor_name, const size_t vendor_size)
+{
+    if (!vendor_name || vendor_size == 0) {
+        return;
+    }
 
     const char *vendor_pairs[][2] = LONGEST_VENDOR_NAMES;
     uint8_t vendor_pairs_count = sizeof(vendor_pairs) / sizeof(vendor_pairs[0]);
 
-    const char *short_vendor_name = util_string_lookup(vendor_name, vendor_pairs,
-                                                       vendor_pairs_count);
+    const char *short_vendor_name =
+        util_string_lookup(vendor_name, vendor_pairs, vendor_pairs_count);
 
     if (short_vendor_name != NULL) {
         snprintf(vendor_name, vendor_size, "%s", short_vendor_name);
     }
-        
+
     const char *vendor_garbage[] = GARBAGE_IN_VENDOR_NAME;
     const char *garbage_pos = util_string_in_array(vendor_name, vendor_garbage);
     if (garbage_pos) {
         size_t garbage_offset = (size_t)(garbage_pos - vendor_name);
-        if (garbage_offset > 0) garbage_offset--;
+        if (garbage_offset > 0) {
+            garbage_offset--;
+        }
         vendor_name[garbage_offset] = '\0';
     }
 
@@ -282,22 +280,31 @@ static void hw_sanitize_vendor_name(char *vendor_name, const size_t vendor_size)
     bool is_allcaps = util_string_in_array(vendor_name, allcaps_vendor);
 
     for (uint8_t i = 1; i < strlen(vendor_name); i++) {
-        unsigned char ch = (unsigned char)vendor_name[i];
-        if (ch > 127) break;
+        uint8_t ch = (uint8_t)vendor_name[i];
+        if (ch > 127) {
+            break;
+        }
 
-        if (is_allcaps || !isupper(ch)) break;
+        if (is_allcaps || !isupper(ch)) {
+            break;
+        }
 
         vendor_name[i] = (char)tolower(ch);
     }
 }
 
-static void hw_remove_vendor_from_model(const char *vendor_name, char *device_name) {
-    if (!vendor_name || !device_name) return;
+static void hw_remove_vendor_from_model(const char *vendor_name, char *device_name)
+{
+    if (!vendor_name || !device_name) {
+        return;
+    }
 
     char *dup_pos = strstr(device_name, vendor_name);
     if (dup_pos) {
         char *dup_end = dup_pos + strlen(vendor_name);
-        if (*dup_end == ' ') dup_end++;
+        if (*dup_end == ' ') {
+            dup_end++;
+        }
 
         memmove(dup_pos, dup_end, strlen(dup_end) + 1);
     }

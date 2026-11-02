@@ -10,7 +10,8 @@
 
 static const char *binary_path = "../bin/textfetch";
 
-static test_command_t run_cli(const char *const arguments[]) {
+static test_command_t run_cli(const char *const arguments[])
+{
     char *argv[16];
     size_t count = 0;
 
@@ -23,7 +24,8 @@ static test_command_t run_cli(const char *const arguments[]) {
     return test_run_command(binary_path, argv);
 }
 
-static void test_version(void) {
+static void test_version(void)
+{
     const char *short_args[] = {"-V", NULL};
     const char *long_args[] = {"--version", NULL};
 
@@ -47,7 +49,8 @@ static void test_version(void) {
     test_free_command(&result);
 }
 
-static void test_help(void) {
+static void test_help(void)
+{
     const char *arguments[] = {"--help", NULL};
 
     test_command_t result = run_cli(arguments);
@@ -67,7 +70,8 @@ static void test_help(void) {
     test_free_command(&result);
 }
 
-static void test_unknown_options(void) {
+static void test_unknown_options(void)
+{
     const char *long_args[] = {"--definitely-not-an-option", NULL};
     const char *short_args[] = {"-Z", NULL};
 
@@ -83,7 +87,8 @@ static void test_unknown_options(void) {
     test_free_command(&result);
 }
 
-static void test_default_output(void) {
+static void test_default_output(void)
+{
     const char *arguments[] = {NULL};
 
     test_command_t result = run_cli(arguments);
@@ -105,7 +110,8 @@ static void test_default_output(void) {
     test_free_command(&result);
 }
 
-static void test_human_readable(void) {
+static void test_human_readable(void)
+{
     const char *short_args[] = {"-h", NULL};
     const char *long_args[] = {"--human-readable", NULL};
 
@@ -122,7 +128,8 @@ static void test_human_readable(void) {
     test_free_command(&result);
 }
 
-static void test_size_flags(void) {
+static void test_size_flags(void)
+{
     const char *kib_short[] = {"-k", NULL};
     const char *mib_short[] = {"-m", NULL};
     const char *gib_short[] = {"-g", NULL};
@@ -164,7 +171,8 @@ static void test_size_flags(void) {
     test_free_command(&result);
 }
 
-static void test_verbose_and_combined_flags(void) {
+static void test_verbose_and_combined_flags(void)
+{
     const char *verbose[] = {"-v", NULL};
     const char *combined[] = {"-hkmgv", NULL};
     const char *end_of_options[] = {"--", NULL};
@@ -185,7 +193,8 @@ static void test_verbose_and_combined_flags(void) {
     test_free_command(&result);
 }
 
-static void test_no_color(void) {
+static void test_no_color(void)
+{
     const char *arguments[] = {"--no-color", NULL};
     const char *no_arguments[] = {NULL};
 
@@ -211,8 +220,11 @@ static void test_no_color(void) {
     }
 }
 
-int main(int argc, char *argv[]) {
-    if (argc > 1) binary_path = argv[1];
+int main(int argc, char *argv[])
+{
+    if (argc > 1) {
+        binary_path = argv[1];
+    }
 
     test_version();
     test_help();

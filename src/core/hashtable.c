@@ -46,9 +46,12 @@ static bool strset_resize(string_set_t *set, size_t new_capacity);
  */
 static size_t strset_find_index(string_set_t *set, const char *key);
 
-string_set_t *strset_create(size_t capacity) {
+string_set_t *strset_create(size_t capacity)
+{
     string_set_t *set = malloc(sizeof(string_set_t));
-    if (!set) return NULL;
+    if (!set) {
+        return NULL;
+    }
 
     set->capacity = next_pow2(capacity);
     if (set->capacity == 0) {
@@ -67,8 +70,11 @@ string_set_t *strset_create(size_t capacity) {
     return set;
 }
 
-bool strset_add(string_set_t *set, const char *key) {
-    if (!set || !key) return false;
+bool strset_add(string_set_t *set, const char *key)
+{
+    if (!set || !key) {
+        return false;
+    }
 
     if ((set->count + 1) * 4 > set->capacity * 3) {
         if (set->capacity > SIZE_MAX / 2) {
@@ -81,10 +87,14 @@ bool strset_add(string_set_t *set, const char *key) {
     }
 
     size_t index = strset_find_index(set, key);
-    if (set->entries[index].key != NULL) return false;
+    if (set->entries[index].key != NULL) {
+        return false;
+    }
 
     char *copy = strdup(key);
-    if (!copy) return false;
+    if (!copy) {
+        return false;
+    }
 
     set->entries[index].key = copy;
     set->count++;
@@ -92,20 +102,24 @@ bool strset_add(string_set_t *set, const char *key) {
     return true;
 }
 
-bool strset_contains(string_set_t *set, const char *key) {
-    if (!set || !key) return false;
+bool strset_contains(string_set_t *set, const char *key)
+{
+    if (!set || !key) {
+        return false;
+    }
 
     size_t index = strset_find_index(set, key);
 
     return set->entries[index].key != NULL;
 }
 
-size_t strset_get_count(const string_set_t *set) {
-    return set ? set->count : 0;
-}
+size_t strset_get_count(const string_set_t *set) { return set ? set->count : 0; }
 
-void strset_destroy(string_set_t *set) {
-    if (!set) return;
+void strset_destroy(string_set_t *set)
+{
+    if (!set) {
+        return;
+    }
 
     for (size_t i = 0; i < set->capacity; i++) {
         if (set->entries[i].key) {
@@ -117,39 +131,46 @@ void strset_destroy(string_set_t *set) {
     free(set);
 }
 
-static uint64_t hash_key(const char *key) {
+static uint64_t hash_key(const char *key)
+{
     uint64_t hash = 0xcbf29ce484222325; /* FNV_offset_basis */
 
     while (*key) {
         hash ^= (unsigned char)*key++;
-        hash *= 0x100000001b3;          /* FNV_prime */
+        hash *= 0x100000001b3; /* FNV_prime */
     }
 
     return hash;
 }
 
-static size_t next_pow2(size_t n) {
+static size_t next_pow2(size_t n)
+{
     if (n > (SIZE_MAX / 2)) {
         return 0;
     }
 
     size_t res = 1;
-    while (res < n) res <<= 1;
+    while (res < n) {
+        res <<= 1;
+    }
     return res;
 }
 
-static bool strset_resize(string_set_t *set, size_t new_capacity) {
+static bool strset_resize(string_set_t *set, size_t new_capacity)
+{
     if (new_capacity > SIZE_MAX / sizeof(entry_t)) {
         return false;
     }
 
     entry_t *new_entries = calloc(new_capacity, sizeof(entry_t));
-    if (!new_entries)
+    if (!new_entries) {
         return false;
+    }
 
     for (size_t i = 0; i < set->capacity; i++) {
-        if (set->entries[i].key == NULL)
+        if (set->entries[i].key == NULL) {
             continue;
+        }
 
         uint64_t hash = hash_key(set->entries[i].key);
         size_t index = hash & (new_capacity - 1);
@@ -168,7 +189,8 @@ static bool strset_resize(string_set_t *set, size_t new_capacity) {
     return true;
 }
 
-static size_t strset_find_index(string_set_t *set, const char *key) {
+static size_t strset_find_index(string_set_t *set, const char *key)
+{
     uint64_t hash = hash_key(key);
     size_t index = hash & (set->capacity - 1);
 

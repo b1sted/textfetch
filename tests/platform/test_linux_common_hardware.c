@@ -8,15 +8,16 @@
 #include <mntent.h>
 #include <sys/statvfs.h>
 
-#include "pal/hardware_os.h"
 #include "../support/test_framework.h"
 #include "../support/test_helpers.h"
+#include "pal/hardware_os.h"
 
 /* Include the translation unit to exercise its static helpers directly. */
 // NOLINTNEXTLINE(bugprone-suspicious-include)
 #include "../../src/platform/linux-common/hardware.c"
 
-static void test_valid_mount(void) {
+static void test_valid_mount(void)
+{
     struct mntent entry;
 
     memset(&entry, 0, sizeof(entry));
@@ -80,10 +81,11 @@ static void test_valid_mount(void) {
     TEST_CHECK(is_valid_mount(&entry));
 }
 
-static void test_print_disk(void) {
+static void test_print_disk(void)
+{
     struct statvfs fs;
     struct mntent entry;
-    test_capture_t capture;
+    test_capture_t capture = {0};
 
     memset(&fs, 0, sizeof(fs));
     memset(&entry, 0, sizeof(entry));
@@ -113,14 +115,15 @@ static void test_print_disk(void) {
     free(output);
 }
 
-static void test_print_memory(void) {
+static void test_print_memory(void)
+{
     mem_info_t mem = {
         .ram_size = 1024ULL * 1024ULL * 1024ULL,
         .ram_used = 512ULL * 1024ULL * 1024ULL,
         .swap_size = 2ULL * 1024ULL * 1024ULL * 1024ULL,
         .swap_used = 0,
     };
-    test_capture_t capture;
+    test_capture_t capture = {0};
 
     TEST_CHECK(test_capture_begin(&capture));
     hw_print_mem_info(MEM_RAM, &mem);
@@ -140,9 +143,8 @@ static void test_print_memory(void) {
     hw_print_mem_info((mem_flags_t)(MEM_RAM | MEM_SWAP), &mem);
     output = test_capture_end(&capture);
     TEST_CHECK(output != NULL);
-    TEST_STR_EQ(output,
-                "RAM: 0.50 GiB / 1.00 GiB (50%)\n"
-                "Swap: 0.00 GiB / 2.00 GiB (0%)\n");
+    TEST_STR_EQ(output, "RAM: 0.50 GiB / 1.00 GiB (50%)\n"
+                        "Swap: 0.00 GiB / 2.00 GiB (0%)\n");
     free(output);
 
     TEST_CHECK(test_capture_begin(&capture));
@@ -153,15 +155,15 @@ static void test_print_memory(void) {
     free(output);
 }
 
-static void test_meminfo_parsing(void) {
-    char without_available[] =
-        "MemTotal:       1000 kB\n"
-        "MemFree:         100 kB\n"
-        "Buffers:          50 kB\n"
-        "Cached:          200 kB\n"
-        "SReclaimable:     50 kB\n"
-        "SwapTotal:       500 kB\n"
-        "SwapFree:        200 kB\n";
+static void test_meminfo_parsing(void)
+{
+    char without_available[] = "MemTotal:       1000 kB\n"
+                               "MemFree:         100 kB\n"
+                               "Buffers:          50 kB\n"
+                               "Cached:          200 kB\n"
+                               "SReclaimable:     50 kB\n"
+                               "SwapTotal:       500 kB\n"
+                               "SwapFree:        200 kB\n";
     mem_info_t mem;
     mem_flags_t flags = 0;
     memset(&mem, 0, sizeof(mem));
@@ -179,12 +181,11 @@ static void test_meminfo_parsing(void) {
     TEST_CHECK((flags & MEM_SWAP) != 0);
     TEST_CHECK(mem.swap_used == 300ULL * BYTES_PER_KIB);
 
-    char with_available[] =
-        "MemTotal:       1000 kB\n"
-        "MemAvailable:    250 kB\n"
-        "MemFree:         100 kB\n"
-        "Buffers:          50 kB\n"
-        "Cached:          200 kB\n";
+    char with_available[] = "MemTotal:       1000 kB\n"
+                            "MemAvailable:    250 kB\n"
+                            "MemFree:         100 kB\n"
+                            "Buffers:          50 kB\n"
+                            "Cached:          200 kB\n";
     memset(&mem, 0, sizeof(mem));
     flags = 0;
 
@@ -199,8 +200,9 @@ static void test_meminfo_parsing(void) {
     TEST_CHECK(mem.ram_used == 750ULL * BYTES_PER_KIB);
 }
 
-static void test_actual_memory(void) {
-    test_capture_t capture;
+static void test_actual_memory(void)
+{
+    test_capture_t capture = {0};
 
     TEST_CHECK(test_capture_begin(&capture));
     hw_get_mem_info();
@@ -210,18 +212,22 @@ static void test_actual_memory(void) {
     free(output);
 }
 
-static void test_actual_drives(void) {
-    test_capture_t capture;
+static void test_actual_drives(void)
+{
+    test_capture_t capture = {0};
 
     TEST_CHECK(test_capture_begin(&capture));
     hw_get_drives_info();
     char *output = test_capture_end(&capture);
     TEST_CHECK(output != NULL);
-    if (output[0] != '\0') TEST_STR_CONTAINS(output, "Disk (");
+    if (output[0] != '\0') {
+        TEST_STR_CONTAINS(output, "Disk (");
+    }
     free(output);
 }
 
-int main(void) {
+int main(void)
+{
     test_valid_mount();
     test_print_disk();
     test_print_memory();

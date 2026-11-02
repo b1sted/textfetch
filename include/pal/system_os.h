@@ -11,12 +11,12 @@
 
 /* Fallback limit for Android property name length. */
 #ifndef PROP_NAME_MAX
-#define PROP_NAME_MAX       32
+#define PROP_NAME_MAX 32
 #endif
 
 /* Fallback limit for Android property value length. */
 #ifndef PROP_VALUE_MAX
-#define PROP_VALUE_MAX      92
+#define PROP_VALUE_MAX 92
 #endif
 
 /* Core system data (OS identity, kernel, uptime, and process count). */
@@ -28,8 +28,8 @@ typedef struct {
     char machine[SYSINFO_BUFFER_SIZE];  /* Hardware arch */
 
     /* Dynamic stats (sysinfo on Linux, sysctl on macOS) */
-    uint64_t uptime;                    /* Seconds since boot */
-    uint32_t procs;                     /* Process count */
+    uint64_t uptime; /* Seconds since boot */
+    uint32_t procs;  /* Process count */
 } sys_internal_data_t;
 
 /* Global system data instance accessible across platform modules. */
@@ -49,7 +49,7 @@ void sys_get_identity(char *out_buf, const size_t buf_size);
  * @param out_buf Buffer to store the formatted model name string.
  * @param buf_size Maximum size of the buffer.
  */
-void sys_get_model_name(char *out_buf, size_t buf_size);
+void sys_get_model_name(char *out_buf, const size_t buf_size);
 
 /**
  * Retrieves the detailed OS distribution name.

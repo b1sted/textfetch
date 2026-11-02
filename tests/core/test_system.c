@@ -2,30 +2,35 @@
 
 #include <string.h>
 
+#include "../support/test_framework.h"
+#include "../support/test_helpers.h"
+#include "../support/test_stubs.h"
 #include "config.h"
 #include "hardware.h"
 #include "pal/system_os.h"
 #include "system.h"
-#include "../support/test_framework.h"
-#include "../support/test_helpers.h"
-#include "../support/test_stubs.h"
 
-static char *capture_void_call(void (*callback)(void)) {
-    test_capture_t capture;
-    if (!test_capture_begin(&capture)) return NULL;
+static char *capture_void_call(void (*callback)(void))
+{
+    test_capture_t capture = {0};
+    if (!test_capture_begin(&capture)) {
+        return NULL;
+    }
 
     callback();
 
     return test_capture_end(&capture);
 }
 
-static void test_hardware_order(void) {
+static void test_hardware_order(void)
+{
     stubs_reset();
     hardware_print_info();
     TEST_STR_EQ(stub_hardware_calls, "cpu,gpu,mem,drives,battery");
 }
 
-static void test_print_header(void) {
+static void test_print_header(void)
+{
     cfg_set_color(false);
     stubs_reset();
 
@@ -38,7 +43,8 @@ static void test_print_header(void) {
     free(output);
 }
 
-static void test_print_info(void) {
+static void test_print_info(void)
+{
     cfg_set_color(false);
     stubs_reset();
 
@@ -47,16 +53,16 @@ static void test_print_info(void) {
 
     char *output = capture_void_call(system_print_info);
     TEST_CHECK(output != NULL);
-    TEST_STR_EQ(output,
-                "OS: TestOS x86_64\n"
-                "Device: Test Device\n"
-                "Kernel: 6.1.0-test\n"
-                "Uptime: 1 days, 02:03:04\n"
-                "Processes: 123\n");
+    TEST_STR_EQ(output, "OS: TestOS x86_64\n"
+                        "Device: Test Device\n"
+                        "Kernel: 6.1.0-test\n"
+                        "Uptime: 1 days, 02:03:04\n"
+                        "Processes: 123\n");
     free(output);
 }
 
-static void test_print_info_without_device(void) {
+static void test_print_info_without_device(void)
+{
     cfg_set_color(false);
     stubs_reset();
 
@@ -66,16 +72,16 @@ static void test_print_info_without_device(void) {
 
     char *output = capture_void_call(system_print_info);
     TEST_CHECK(output != NULL);
-    TEST_STR_EQ(output,
-                "OS: TestOS x86_64\n"
-                "Kernel: 6.1.0-test\n"
-                "Uptime: 1 days, 02:03:04\n"
-                "Processes: 1\n");
+    TEST_STR_EQ(output, "OS: TestOS x86_64\n"
+                        "Kernel: 6.1.0-test\n"
+                        "Uptime: 1 days, 02:03:04\n"
+                        "Processes: 1\n");
     TEST_STR_NOT_CONTAINS(output, "Device:");
     free(output);
 }
 
-static void test_print_info_zero_processes(void) {
+static void test_print_info_zero_processes(void)
+{
     cfg_set_color(false);
     stubs_reset();
 
@@ -88,7 +94,8 @@ static void test_print_info_zero_processes(void) {
     free(output);
 }
 
-int main(void) {
+int main(void)
+{
     test_hardware_order();
     test_print_header();
     test_print_info();

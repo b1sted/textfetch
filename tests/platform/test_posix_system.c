@@ -2,13 +2,14 @@
 
 #include <string.h>
 
-#include "pal/system_os.h"
 #include "../support/test_framework.h"
+#include "pal/system_os.h"
 
 /* The platform sources only need the shared data block. */
 sys_internal_data_t sys_data;
 
-static void test_format_uptime(void) {
+static void test_format_uptime(void)
+{
     char buffer[64];
 
     sys_data.uptime = 0;
@@ -52,7 +53,8 @@ static void test_format_uptime(void) {
     TEST_STR_EQ(buffer, "1428 days, 21:33:09");
 }
 
-static void test_identity(void) {
+static void test_identity(void)
+{
     char buffer[256] = {0};
 
     sys_get_identity(buffer, sizeof(buffer));
@@ -67,7 +69,8 @@ static void test_identity(void) {
     sys_get_identity(NULL, sizeof(buffer));
 }
 
-int main(void) {
+int main(void)
+{
     test_format_uptime();
     test_identity();
 

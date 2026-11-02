@@ -1,0 +1,29 @@
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: Auto
+
+IndentWidth: 4
+UseTab: Never
+ColumnLimit: 100
+
+# Automated brace insertion (Clang 15+)
+InsertBraces: true
+
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterControlStatement: false
+  AfterStruct: false
+  AfterEnum: false
+  BeforeElse: false
+
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignOperands: true
+AlignTrailingComments: true
+
+PointerAlignment: Right
+SpacesInSquareBrackets: false
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false

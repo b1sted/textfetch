@@ -11,7 +11,8 @@
 
 #include "pal/system_os.h"
 
-void sys_get_distro(char *out_buf, const size_t buf_size) {
+void sys_get_distro(char *out_buf, const size_t buf_size)
+{
     if (!out_buf || buf_size == 0) {
         V_PRINTF("[ERROR] %s: invalid arguments\n", __func__);
         return;
@@ -27,7 +28,8 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
     snprintf(out_buf, buf_size, "Android %s %s", android_version, sys_data.machine);
 }
 
-void sys_get_model_name(char *out_buf, size_t buf_size) {
+void sys_get_model_name(char *out_buf, const size_t buf_size)
+{
     if (!out_buf || buf_size == 0) {
         V_PRINTF("[ERROR] %s: invalid arguments\n", __func__);
         return;
@@ -55,7 +57,7 @@ void sys_get_model_name(char *out_buf, size_t buf_size) {
     }
 
     bool brand_in_model = (strstr(model_buf, brand_buf) != NULL);
-    bool model_is_name  = (strcmp(model_buf, name_buf) == 0);
+    bool model_is_name = (strcmp(model_buf, name_buf) == 0);
     bool brand_is_model = (strcmp(brand_buf, model_buf) == 0);
 
     if (brand_is_model) {

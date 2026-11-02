@@ -16,7 +16,6 @@
  *         or -1 on invalid arguments or when the capture pipeline cannot
  *         be initialized.
  */
-int capture_line(const char *command, const char *arg,
-                 char *out_buf, const size_t buf_size);
+int capture_line(const char *command, const char *arg, char *out_buf, const size_t buf_size);
 
 #endif /* CAPTURE_H */

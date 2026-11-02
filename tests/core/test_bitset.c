@@ -2,10 +2,11 @@
 
 #include <stdint.h>
 
-#include "bitset.h"
 #include "../support/test_framework.h"
+#include "bitset.h"
 
-static void test_size_macros(void) {
+static void test_size_macros(void)
+{
     TEST_INT_EQ(SET_SIZE(0), 0);
     TEST_INT_EQ(SET_SIZE(1), 1);
     TEST_INT_EQ(SET_SIZE(31), 1);
@@ -21,7 +22,8 @@ static void test_size_macros(void) {
     TEST_INT_EQ(BIT(33), 2U);
 }
 
-static void test_add_contains_remove(void) {
+static void test_add_contains_remove(void)
+{
     uint32_t blocks[SET_SIZE(128)] = {0};
     bitset_t set = {.bits = blocks, .capacity = 128};
 
@@ -58,7 +60,8 @@ static void test_add_contains_remove(void) {
     TEST_INT_EQ(count_set_bits(&set, SET_SIZE(128)), 4);
 }
 
-static void test_out_of_range(void) {
+static void test_out_of_range(void)
+{
     uint32_t blocks[SET_SIZE(64)] = {0};
     bitset_t set = {.bits = blocks, .capacity = 64};
 
@@ -75,7 +78,8 @@ static void test_out_of_range(void) {
     TEST_INT_EQ(count_set_bits(&set, SET_SIZE(64)), 1);
 }
 
-static void test_zero_capacity(void) {
+static void test_zero_capacity(void)
+{
     bitset_t set = {.bits = NULL, .capacity = 0};
 
     set_add(&set, 0);
@@ -84,14 +88,16 @@ static void test_zero_capacity(void) {
     TEST_INT_EQ(count_set_bits(&set, 0), 0);
 }
 
-static void test_null_set(void) {
+static void test_null_set(void)
+{
     set_add(NULL, 0);
     set_remove(NULL, 0);
     TEST_CHECK(!set_contains(NULL, 0));
     TEST_INT_EQ(count_set_bits(NULL, 4), 0);
 }
 
-static void test_count_blocks(void) {
+static void test_count_blocks(void)
+{
     uint32_t blocks[SET_SIZE(128)] = {0};
     bitset_t set = {.bits = blocks, .capacity = 128};
 
@@ -105,7 +111,8 @@ static void test_count_blocks(void) {
     TEST_INT_EQ(count_set_bits(&set, SET_SIZE(128)), 64);
 }
 
-int main(void) {
+int main(void)
+{
     test_size_macros();
     test_add_contains_remove();
     test_out_of_range();

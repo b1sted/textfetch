@@ -16,9 +16,11 @@
 #include "capture.h"
 #include "sys_utils.h"
 
-int capture_line(const char *command, const char *arg,
-                 char *out_buf, const size_t buf_size) {
-    if (!command || !out_buf || buf_size == 0) return -1;
+int capture_line(const char *command, const char *arg, char *out_buf, const size_t buf_size)
+{
+    if (!command || !out_buf || buf_size == 0) {
+        return -1;
+    }
 
     out_buf[0] = '\0';
 
@@ -41,8 +43,7 @@ int capture_line(const char *command, const char *arg,
 
         int devnull = open("/dev/null", O_RDWR);
         if (devnull != -1) {
-            if (dup2(devnull, STDIN_FILENO) == -1 ||
-                dup2(devnull, STDERR_FILENO) == -1) {
+            if (dup2(devnull, STDIN_FILENO) == -1 || dup2(devnull, STDERR_FILENO) == -1) {
                 _exit(1);
             }
             close(devnull);
@@ -84,7 +85,7 @@ int capture_line(const char *command, const char *arg,
         }
 
         int status = 0;
-        pid_t waited;
+        pid_t waited = 0;
 
         do {
             waited = waitpid(pid, &status, 0);
@@ -97,10 +98,10 @@ int capture_line(const char *command, const char *arg,
             }
         }
 
-        if (waited == -1) return 1;
+        if (waited == -1) {
+            return 1;
+        }
 
-        return (WIFEXITED(status) &&
-                WEXITSTATUS(status) == 0 &&
-                out_buf[0] != '\0') ? 0 : 1;
+        return (WIFEXITED(status) && WEXITSTATUS(status) == 0 && out_buf[0] != '\0') ? 0 : 1;
     }
 }

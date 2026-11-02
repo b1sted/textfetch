@@ -9,14 +9,14 @@
 #include "defs.h"
 
 /* Multipliers for standardizing CPU clock speeds to Gigahertz. */
-#define KHZ_PER_GHZ   1e6
-#define HZ_PER_GHZ    1e9
+#define KHZ_PER_GHZ 1e6
+#define HZ_PER_GHZ 1e9
 
 /* Maximum number of distinct GPUs to query and store. */
-#define MAX_GPUS      16
+#define MAX_GPUS 16
 
 /* Maximum capacity for the formatted GPU output string buffer. */
-#define GPU_BUFFER    (LINE_BUFFER * MAX_GPUS)
+#define GPU_BUFFER (LINE_BUFFER * MAX_GPUS)
 
 /* Mathematical constants for unit formatting. */
 #define BYTES_PER_KIB 1024
@@ -41,7 +41,7 @@ typedef struct {
 
 /* Bitmask flags indicating which memory types were successfully queried. */
 typedef enum {
-    MEM_RAM  = 1 << 0,
+    MEM_RAM = 1 << 0,
     MEM_SWAP = 1 << 1,
 } mem_flags_t;
 

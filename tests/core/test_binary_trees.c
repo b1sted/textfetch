@@ -3,15 +3,18 @@
 #include <limits.h>
 #include <string.h>
 
-#include "binary_trees.h"
 #include "../support/test_framework.h"
+#include "binary_trees.h"
 
-static void test_create_node(void) {
+static void test_create_node(void)
+{
     char source[] = "root";
     node *root = create_node(7, source);
 
     TEST_CHECK(root != NULL);
-    if (!root) return;
+    if (!root) {
+        return;
+    }
 
     TEST_INT_EQ(root->id, 7);
     TEST_CHECK(root->name != source);
@@ -32,7 +35,8 @@ static void test_create_node(void) {
     free_tree(empty);
 }
 
-static void test_create_forest(void) {
+static void test_create_forest(void)
+{
     forest *f = create_forest(2);
     TEST_CHECK(f != NULL);
     TEST_INT_EQ(f->count, 0);
@@ -43,10 +47,13 @@ static void test_create_forest(void) {
     destroy_forest(f);
 }
 
-static void test_create_forest_zero_capacity(void) {
+static void test_create_forest_zero_capacity(void)
+{
     forest *f = create_forest(0);
     TEST_CHECK(f != NULL);
-    if (!f) return;
+    if (!f) {
+        return;
+    }
 
     TEST_INT_EQ(f->count, 0);
     TEST_CHECK(f->capacity >= 1);
@@ -61,7 +68,9 @@ static void test_create_forest_zero_capacity(void) {
 
     f = create_forest(-4);
     TEST_CHECK(f != NULL);
-    if (!f) return;
+    if (!f) {
+        return;
+    }
 
     TEST_INT_EQ(f->count, 0);
     TEST_CHECK(f->capacity >= 1);
@@ -69,10 +78,13 @@ static void test_create_forest_zero_capacity(void) {
     destroy_forest(f);
 }
 
-static void test_add_child(void) {
+static void test_add_child(void)
+{
     node *root = create_node(1, "root");
     TEST_CHECK(root != NULL);
-    if (!root) return;
+    if (!root) {
+        return;
+    }
 
     add_child(root, 10, "first");
     add_child(root, 11, "second");
@@ -94,10 +106,13 @@ static void test_add_child(void) {
     free_tree(root);
 }
 
-static void test_forest_growth(void) {
+static void test_forest_growth(void)
+{
     forest *f = create_forest(1);
     TEST_CHECK(f != NULL);
-    if (!f) return;
+    if (!f) {
+        return;
+    }
 
     node *roots[5];
     for (int i = 0; i < 5; i++) {
@@ -115,10 +130,13 @@ static void test_forest_growth(void) {
     destroy_forest(f);
 }
 
-static void test_forest_growth_overflow_guard(void) {
+static void test_forest_growth_overflow_guard(void)
+{
     forest *f = create_forest(1);
     TEST_CHECK(f != NULL);
-    if (!f) return;
+    if (!f) {
+        return;
+    }
 
     node *root = create_node(1, "root");
     TEST_CHECK(root != NULL);
@@ -151,7 +169,8 @@ static void test_forest_growth_overflow_guard(void) {
     destroy_forest(f);
 }
 
-static void test_find_in_tree(void) {
+static void test_find_in_tree(void)
+{
     node *root = create_node(1, "root");
     if (!root) {
         TEST_CHECK(root != NULL);
@@ -167,13 +186,13 @@ static void test_find_in_tree(void) {
     TEST_CHECK(find_in_tree(root, 100) == root->first_child->first_child);
     TEST_CHECK(find_in_tree(root, 999) == NULL);
     TEST_CHECK(find_in_tree(NULL, 1) == NULL);
-    TEST_CHECK(find_in_tree(root->first_child, 11) ==
-               root->first_child->next_sibling);
+    TEST_CHECK(find_in_tree(root->first_child, 11) == root->first_child->next_sibling);
 
     free_tree(root);
 }
 
-static void test_find_in_forest(void) {
+static void test_find_in_forest(void)
+{
     forest *f = create_forest(4);
     if (!f) {
         TEST_CHECK(f != NULL);
@@ -195,7 +214,8 @@ static void test_find_in_forest(void) {
     destroy_forest(f);
 }
 
-static void test_invalid_arguments(void) {
+static void test_invalid_arguments(void)
+{
     node *root = create_node(1, "root");
     if (!root) {
         TEST_CHECK(root != NULL);
@@ -210,7 +230,8 @@ static void test_invalid_arguments(void) {
     destroy_forest(NULL);
 }
 
-int main(void) {
+int main(void)
+{
     test_create_node();
     test_create_forest();
     test_create_forest_zero_capacity();

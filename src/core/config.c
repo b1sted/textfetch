@@ -11,8 +11,8 @@ static struct {
     bool kib_format : 1;
     bool mib_format : 1;
     bool gib_format : 1;
-    bool verbose    : 1;
-    bool color      : 1;
+    bool verbose : 1;
+    bool color : 1;
 } settings = {0, 0, 0, 0, 0};
 
 bool cfg_get_kib(void) { return settings.kib_format; }

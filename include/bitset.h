@@ -8,13 +8,13 @@
 #include <stdint.h>
 
 /* Bitset array block width (typically 32 for uint32_t). */
-#define BITS_PER_BLOCK         32
+#define BITS_PER_BLOCK 32
 
 /* Computes block array size, rounding up for remainders. */
 #define SET_SIZE(MAX_ELEMENTS) (((MAX_ELEMENTS) + (BITS_PER_BLOCK - 1)) / BITS_PER_BLOCK)
 
 /* Generates a bitmask with a single bit set. */
-#define BIT(n)                 (1U << ((n) % 32))
+#define BIT(n) (1U << ((n) % 32))
 
 /* Array-backed bitset used to track specific IDs or flag presence. */
 typedef struct {
@@ -61,6 +61,6 @@ void set_remove(bitset_t *set, size_t num);
  * @param blocks Number of uint32_t blocks in the array (e.g., SET_SIZE).
  * @return The total count of bits set to 1.
  */
-uint32_t count_set_bits(bitset_t *set, size_t blocks);
+uint32_t count_set_bits(const bitset_t *set, size_t blocks);
 
 #endif /* BITSET_H */

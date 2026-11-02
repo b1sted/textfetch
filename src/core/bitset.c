@@ -7,7 +7,8 @@
 #include "bitset.h"
 #include "sys_utils.h"
 
-void set_add(bitset_t *set, size_t num) {
+void set_add(bitset_t *set, size_t num)
+{
     if (!set) {
         return;
     }
@@ -20,7 +21,8 @@ void set_add(bitset_t *set, size_t num) {
     V_PRINTF("[ERROR] Bitset add overflow: value %zu exceeds uint32_t limit\n", num);
 }
 
-bool set_contains(const bitset_t *set, size_t num) {
+bool set_contains(const bitset_t *set, size_t num)
+{
     if (!set) {
         return false;
     }
@@ -33,7 +35,8 @@ bool set_contains(const bitset_t *set, size_t num) {
     return false;
 }
 
-void set_remove(bitset_t *set, size_t num) {
+void set_remove(bitset_t *set, size_t num)
+{
     if (!set) {
         return;
     }
@@ -46,7 +49,8 @@ void set_remove(bitset_t *set, size_t num) {
     V_PRINTF("[ERROR] Bitset remove overflow: value %zu exceeds uint32_t limit\n", num);
 }
 
-uint32_t count_set_bits(bitset_t *set, size_t blocks) {
+uint32_t count_set_bits(const bitset_t *set, size_t blocks)
+{
     if (!set || !set->bits) {
         return 0;
     }
