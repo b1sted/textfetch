@@ -483,91 +483,92 @@ static void hw_cpu_apply_single_core_fallback(const char *cpu_dir,
 }
 
 /**
- * Reads the highest value from a set of cpufreq sysfs attributes for one CPU.
+ * Reads the first available frequency from a set of cpufreq sysfs attributes.
+ *
+ * Both the per-CPU cpufreq directory and the policy-based cpufreq directory
+ * are probed for each attribute before moving on to the next one.
  *
  * @param cpu_dir Base sysfs CPU directory to scan.
  * @param cpu_name Directory name of the CPU node (e.g., "cpu0").
  * @param freq_files NULL-terminated list of attribute names to query.
- * @return Highest frequency in kHz, or 0 if none could be read.
+ * @return Frequency in kHz, or 0 if none could be read.
  */
 static uint32_t hw_read_cpu_freq_files(const char *cpu_dir, const char *cpu_name,
                                        const char *const freq_files[]) {
     char freq_path[PATH_BUFFER] = {0};
-    uint32_t peak_freq = 0;
+    uint32_t cpu_index = (uint32_t)strtoul(cpu_name + 3, NULL, 10);
 
     for (size_t i = 0; freq_files[i] != NULL; i++) {
         uint32_t freq_khz = 0;
+
         snprintf(freq_path, sizeof(freq_path), "%s%s/cpufreq/%s",
                  cpu_dir, cpu_name, freq_files[i]);
+        if (util_read_uint32(freq_path, &freq_khz) && freq_khz > 0) {
+            return freq_khz;
+        }
 
-        if (util_read_uint32(freq_path, &freq_khz) && freq_khz > peak_freq) {
-            peak_freq = freq_khz;
+        snprintf(freq_path, sizeof(freq_path),
+                 "%scpufreq/policy%" PRIu32 "/%s",
+                 cpu_dir, cpu_index, freq_files[i]);
+        if (util_read_uint32(freq_path, &freq_khz) && freq_khz > 0) {
+            return freq_khz;
         }
     }
 
-    return peak_freq;
+    return 0;
 }
 
 static void hw_get_cpu_freq(const char *cpu_dir, cpu_data_t *cpus,
                             const int16_t package, const char *cpu_name) {
-    static const char *max_freq_files[] = {
+    static const char *freq_files[] = {
         "cpuinfo_max_freq",
         "scaling_max_freq",
-        NULL
-    };
-    static const char *current_freq_files[] = {
+        "bios_limit",
         "scaling_cur_freq",
         "cpuinfo_cur_freq",
         NULL
     };
 
-    uint32_t peak_max_freq = 0;
-    uint32_t peak_current_freq = 0;
+    uint32_t peak_freq = 0;
 
     DIR *dir = opendir(cpu_dir);
     if (!dir) {
         V_PRINTF("[ERROR] Failed to open sysfs CPU directory %s: %s\n",
                  cpu_dir, strerror(errno));
+    } else {
+        struct dirent *entry;
+        while ((entry = readdir(dir)) != NULL) {
+            if (strncmp(entry->d_name, "cpu", 3) != 0) continue;
+            if (!util_is_numeric_string(entry->d_name + 3)) continue;
 
-        uint32_t freq_khz = hw_read_cpu_freq_files(cpu_dir, cpu_name,
-                                                   max_freq_files);
-        if (freq_khz == 0) {
-            freq_khz = hw_read_cpu_freq_files(cpu_dir, cpu_name,
-                                              current_freq_files);
+            int16_t cpu_package = -1;
+            char package_path[PATH_BUFFER] = {0};
+            snprintf(package_path, sizeof(package_path),
+                     "%s%s/topology/physical_package_id",
+                     cpu_dir, entry->d_name);
+
+            bool has_package = util_read_int16(package_path, &cpu_package);
+            bool same_package = has_package
+                                ? (cpu_package == package)
+                                : (strcmp(entry->d_name, cpu_name) == 0);
+            if (!same_package) continue;
+
+            uint32_t freq_khz = hw_read_cpu_freq_files(cpu_dir, entry->d_name,
+                                                       freq_files);
+            if (freq_khz > peak_freq) peak_freq = freq_khz;
         }
 
-        cpus[package].frequency = (double)freq_khz / KHZ_PER_GHZ;
-        return;
+        closedir(dir);
     }
 
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (strncmp(entry->d_name, "cpu", 3) != 0) continue;
-        if (!util_is_numeric_string(entry->d_name + 3)) continue;
-
-        int16_t cpu_package = -1;
-        char package_path[PATH_BUFFER] = {0};
-        snprintf(package_path, sizeof(package_path),
-                 "%s%s/topology/physical_package_id", cpu_dir, entry->d_name);
-
-        bool has_package = util_read_int16(package_path, &cpu_package);
-        bool same_package = has_package
-                            ? (cpu_package == package)
-                            : (strcmp(entry->d_name, cpu_name) == 0);
-        if (!same_package) continue;
-
-        uint32_t max_freq = hw_read_cpu_freq_files(cpu_dir, entry->d_name,
-                                                   max_freq_files);
-        uint32_t current_freq = hw_read_cpu_freq_files(cpu_dir, entry->d_name,
-                                                       current_freq_files);
-
-        if (max_freq > peak_max_freq) peak_max_freq = max_freq;
-        if (current_freq > peak_current_freq) peak_current_freq = current_freq;
+    /*
+     * Single-core and uniprocessor systems may expose no topology for the
+     * package, so probe CPU 0 directly as a last resort.
+     */
+    if (peak_freq == 0) {
+        peak_freq = hw_read_cpu_freq_files(cpu_dir, "cpu0", freq_files);
     }
 
-    closedir(dir);
-
-    uint32_t peak_freq = (peak_max_freq > 0) ? peak_max_freq : peak_current_freq;
     cpus[package].frequency = (double)peak_freq / KHZ_PER_GHZ;
 }
 
