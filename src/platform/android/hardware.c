@@ -246,6 +246,14 @@ void hw_get_bat_info(void) {
     util_read_line("/sys/class/power_supply/battery/status", status, sizeof(status));
     util_read_line("/sys/class/power_supply/battery/health", health, sizeof(health));
 
+    if (status[0] == '\0') {
+        snprintf(status, sizeof(status), "%s", "Unknown");
+    }
+
+    if (health[0] == '\0') {
+        snprintf(health, sizeof(health), "%s", "Unknown");
+    }
+
     char information[LINE_BUFFER] = {0};
     snprintf(information, sizeof(information),
              "%" PRIu8 "%% (%s, Health: %s)", capacity, status, health);
