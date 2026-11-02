@@ -3,19 +3,25 @@ name: Build, Test and Release
 on:
   push:
     tags:
-      - "v*"
+      - 'v*.*.*'
 
 permissions:
   contents: write
 
 jobs:
   test:
+    name: Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Run Test Suite
         run: make test
+
+      - name: Check for Memory Leaks
+        run: |
+          make leaks
+          ./bin/textfetch-leaks
 
   build-linux-amd64:
     needs: test
@@ -213,7 +219,7 @@ jobs:
           path: bin/textfetch
 
   release:
-    needs: [build-linux-amd64, build-linux-arm64, build-linux-luckfox, build-macos-intel, build-macos-arm64, build-android-termux]
+    needs: [test, build-linux-amd64, build-linux-arm64, build-linux-luckfox, build-macos-intel, build-macos-arm64, build-android-termux]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
