@@ -436,6 +436,60 @@ static void hw_parse_x86_cpu_model(FILE *fp, cpu_data_t *cpus, uint16_t *cpu_map
     }
 }
 
+/**
+ * Removes a standalone word and its adjacent separator from a CPU model string.
+ *
+ * @param out_buf Buffer containing the CPU model string to update.
+ * @param word The standalone word to remove.
+ */
+static void hw_remove_cpu_word(char *out_buf, const char *word) {
+    size_t word_len = strlen(word);
+    char *pos = out_buf;
+
+    while ((pos = strstr(pos, word)) != NULL) {
+        bool left_boundary = (pos == out_buf) || (pos[-1] == ' ');
+        bool right_boundary = (pos[word_len] == '\0') || (pos[word_len] == ' ');
+
+        if (!left_boundary || !right_boundary) {
+            pos += word_len;
+            continue;
+        }
+
+        char *start = pos;
+        char *end = pos + word_len;
+
+        if (*end == '\0') {
+            while (start > out_buf && start[-1] == ' ') start--;
+        } else {
+            while (*end == ' ') end++;
+        }
+
+        memmove(start, end, strlen(end) + 1);
+        pos = start;
+    }
+}
+
+/**
+ * Truncates a CPU model string before a trailing marketing suffix.
+ *
+ * @param out_buf Buffer containing the CPU model string to update.
+ * @param suffix The suffix that marks the start of removable text.
+ */
+static void hw_truncate_cpu_suffix(char *out_buf, const char *suffix) {
+    char *garbage = strstr(out_buf, suffix);
+    if (!garbage || garbage == out_buf) return;
+
+    while (garbage > out_buf && garbage[-1] != ' ') {
+        garbage--;
+    }
+
+    if (garbage > out_buf) {
+        garbage--;
+    }
+
+    *garbage = '\0';
+}
+
 static void hw_sanitize_cpu_name(char *out_buf) {
     if (!out_buf || !*out_buf) return;
 
@@ -451,7 +505,7 @@ static void hw_sanitize_cpu_name(char *out_buf) {
 
     const char *prefix_garbage[] = {"(R)", "(TM)", "(tm)", NULL};
 
-    int i = 0;
+    size_t i = 0;
     while (prefix_garbage[i] != NULL) {
         char *garbage = strstr(out_buf, prefix_garbage[i]);
         if (garbage) {
@@ -463,30 +517,21 @@ static void hw_sanitize_cpu_name(char *out_buf) {
         }
     }
 
-    const char *suffix_garbage[] = {"CPU", "APU", "with", "-Core", "Processor", NULL};
+    hw_remove_cpu_word(out_buf, "CPU");
+    hw_remove_cpu_word(out_buf, "APU");
+
+    const char *suffix_garbage[] = {"with", "-Core", "Processor", NULL};
 
     for (size_t j = 0; suffix_garbage[j] != NULL; j++) {
-        char *garbage = strstr(out_buf, suffix_garbage[j]);
-        if (!garbage) continue;
+        hw_truncate_cpu_suffix(out_buf, suffix_garbage[j]);
+    }
 
-        if (garbage == out_buf) break;
+    char *frequency = strstr(out_buf, " @");
+    if (frequency) *frequency = '\0';
 
-        while (garbage > out_buf && garbage[-1] != ' ') {
-            garbage--;
-        }
-
-        if (garbage > out_buf) {
-            garbage--;
-        }
-
-        *garbage = '\0';
-
-        size_t len = strlen(out_buf);
-        while (len > 0 && out_buf[len - 1] == ' ') {
-            out_buf[--len] = '\0';
-        }
-
-        break;
+    size_t len = strlen(out_buf);
+    while (len > 0 && out_buf[len - 1] == ' ') {
+        out_buf[--len] = '\0';
     }
 }
 #endif
