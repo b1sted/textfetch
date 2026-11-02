@@ -114,7 +114,7 @@ static void test_print_disk(void) {
 }
 
 static void test_print_memory(void) {
-    mem_info_t node = {
+    mem_info_t mem = {
         .ram_size = 1024ULL * 1024ULL * 1024ULL,
         .ram_used = 512ULL * 1024ULL * 1024ULL,
         .swap_size = 2ULL * 1024ULL * 1024ULL * 1024ULL,
@@ -123,21 +123,21 @@ static void test_print_memory(void) {
     test_capture_t capture;
 
     TEST_CHECK(test_capture_begin(&capture));
-    hw_print_mem_info(MEM_RAM, &node);
+    hw_print_mem_info(MEM_RAM, &mem);
     char *output = test_capture_end(&capture);
     TEST_CHECK(output != NULL);
     TEST_STR_EQ(output, "RAM: 0.50 GiB / 1.00 GiB (50%)\n");
     free(output);
 
     TEST_CHECK(test_capture_begin(&capture));
-    hw_print_mem_info(MEM_SWAP, &node);
+    hw_print_mem_info(MEM_SWAP, &mem);
     output = test_capture_end(&capture);
     TEST_CHECK(output != NULL);
     TEST_STR_EQ(output, "Swap: 0.00 GiB / 2.00 GiB (0%)\n");
     free(output);
 
     TEST_CHECK(test_capture_begin(&capture));
-    hw_print_mem_info((mem_flags_t)(MEM_RAM | MEM_SWAP), &node);
+    hw_print_mem_info((mem_flags_t)(MEM_RAM | MEM_SWAP), &mem);
     output = test_capture_end(&capture);
     TEST_CHECK(output != NULL);
     TEST_STR_EQ(output,
@@ -146,7 +146,7 @@ static void test_print_memory(void) {
     free(output);
 
     TEST_CHECK(test_capture_begin(&capture));
-    hw_print_mem_info((mem_flags_t)0, &node);
+    hw_print_mem_info((mem_flags_t)0, &mem);
     output = test_capture_end(&capture);
     TEST_CHECK(output != NULL);
     TEST_STR_EQ(output, "");
@@ -162,22 +162,22 @@ static void test_meminfo_parsing(void) {
         "SReclaimable:     50 kB\n"
         "SwapTotal:       500 kB\n"
         "SwapFree:        200 kB\n";
-    mem_info_t node;
+    mem_info_t mem;
     mem_flags_t flags = 0;
-    memset(&node, 0, sizeof(node));
+    memset(&mem, 0, sizeof(mem));
 
     FILE *fp = fmemopen(without_available, strlen(without_available), "r");
     TEST_CHECK(fp != NULL);
     if (fp) {
-        hw_parse_meminfo(fp, &node, &flags);
+        hw_parse_meminfo(fp, &mem, &flags);
         fclose(fp);
     }
 
     TEST_CHECK((flags & MEM_RAM) != 0);
-    TEST_CHECK(node.ram_size == 1000ULL * BYTES_PER_KIB);
-    TEST_CHECK(node.ram_used == 600ULL * BYTES_PER_KIB);
+    TEST_CHECK(mem.ram_size == 1000ULL * BYTES_PER_KIB);
+    TEST_CHECK(mem.ram_used == 600ULL * BYTES_PER_KIB);
     TEST_CHECK((flags & MEM_SWAP) != 0);
-    TEST_CHECK(node.swap_used == 300ULL * BYTES_PER_KIB);
+    TEST_CHECK(mem.swap_used == 300ULL * BYTES_PER_KIB);
 
     char with_available[] =
         "MemTotal:       1000 kB\n"
@@ -185,18 +185,18 @@ static void test_meminfo_parsing(void) {
         "MemFree:         100 kB\n"
         "Buffers:          50 kB\n"
         "Cached:          200 kB\n";
-    memset(&node, 0, sizeof(node));
+    memset(&mem, 0, sizeof(mem));
     flags = 0;
 
     fp = fmemopen(with_available, strlen(with_available), "r");
     TEST_CHECK(fp != NULL);
     if (fp) {
-        hw_parse_meminfo(fp, &node, &flags);
+        hw_parse_meminfo(fp, &mem, &flags);
         fclose(fp);
     }
 
     TEST_CHECK((flags & MEM_RAM) != 0);
-    TEST_CHECK(node.ram_used == 750ULL * BYTES_PER_KIB);
+    TEST_CHECK(mem.ram_used == 750ULL * BYTES_PER_KIB);
 }
 
 static void test_actual_memory(void) {

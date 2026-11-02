@@ -88,31 +88,31 @@ typedef enum {
 /**
  * Retrieves the total count of physical CPU packages via sysctl.
  *
- * @param node Pointer to the CPU info structure.
+ * @param cpu Pointer to the CPU info structure.
  */
-static void hw_get_cpu_package(cpu_info_t *node);
+static void hw_get_cpu_package(cpu_info_t *cpu);
 
 /**
  * Retrieves the CPU model name string via sysctl.
  *
- * @param node Pointer to the CPU info structure.
+ * @param cpu Pointer to the CPU info structure.
  */
-static void hw_get_cpu_model(cpu_info_t *node);
+static void hw_get_cpu_model(cpu_info_t *cpu);
 
 /**
  * Retrieves the physical core counts, separated by P and E cores on ARM64.
  *
- * @param node Pointer to the CPU info structure.
+ * @param cpu Pointer to the CPU info structure.
  */
-static void hw_get_cpu_cores(cpu_info_t *node);
+static void hw_get_cpu_cores(cpu_info_t *cpu);
 
 /**
  * Retrieves the maximum CPU frequency (IOKit DVFS probe with a static
  * fallback for ARM64, sysctl for x86).
  *
- * @param node Pointer to the CPU info structure.
+ * @param cpu Pointer to the CPU info structure.
  */
-static void hw_get_cpu_freq(cpu_info_t *node);
+static void hw_get_cpu_freq(cpu_info_t *cpu);
 
 #if TARGET_CPU_ARM64
 /**
@@ -146,17 +146,17 @@ static void hw_get_gpu_pci(char *out_buf, const size_t buf_size);
  * Evaluates the current RAM capacity and usage using Mach host statistics.
  *
  * @param flags Bitmask storing the detected memory types.
- * @param node Pointer to the memory info block.
+ * @param mem Pointer to the memory info block.
  */
-static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *node);
+static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *mem);
 
 /**
  * Evaluates swap usage using sysctl vm.swapusage.
  *
  * @param flags Bitmask storing the detected memory types.
- * @param node Pointer to the memory info block.
+ * @param mem Pointer to the memory info block.
  */
-static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *node);
+static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *mem);
 
 /**
  * Calculates current battery percentage from an IOPowerSources dictionary.
@@ -185,21 +185,21 @@ static const char *hw_get_bat_status(const CFDictionaryRef power_source,
 static io_iterator_t get_matching_iterator(const char *class_name);
 
 void hw_get_cpu_info(void) {
-    cpu_info_t node;
-    memset(&node, 0, sizeof(cpu_info_t));
+    cpu_info_t cpu;
+    memset(&cpu, 0, sizeof(cpu_info_t));
 
-    hw_get_cpu_package(&node);
-    hw_get_cpu_model(&node);
-    hw_get_cpu_cores(&node);
-    hw_get_cpu_freq(&node);
+    hw_get_cpu_package(&cpu);
+    hw_get_cpu_model(&cpu);
+    hw_get_cpu_cores(&cpu);
+    hw_get_cpu_freq(&cpu);
 
     char cpu_info[LINE_BUFFER] = {0};
-    snprintf(cpu_info, sizeof(cpu_info), "%s%s%s", node.model, node.cores, node.frequency);
+    snprintf(cpu_info, sizeof(cpu_info), "%s%s%s", cpu.model, cpu.cores, cpu.frequency);
 
     ui_print_info("CPU", cpu_info);
 }
 
-static void hw_get_cpu_package(cpu_info_t *node) {
+static void hw_get_cpu_package(cpu_info_t *cpu) {
     uint32_t packages = 0;
     size_t packages_size = sizeof(packages);
 
@@ -207,40 +207,40 @@ static void hw_get_cpu_package(cpu_info_t *node) {
         V_PRINTF("[ERROR] sysctlbyname(hw.packages) failed: %s\n", strerror(errno));
     }
 
-    node->packages = (packages) ? (uint8_t)packages : 1;
+    cpu->packages = (packages) ? (uint8_t)packages : 1;
 }
 
-static void hw_get_cpu_model(cpu_info_t *node) {
-    size_t model_size = sizeof(node->model);
+static void hw_get_cpu_model(cpu_info_t *cpu) {
+    size_t model_size = sizeof(cpu->model);
 
-    if (sysctlbyname("machdep.cpu.brand_string", node->model, &model_size, NULL, 0) != 0) {
+    if (sysctlbyname("machdep.cpu.brand_string", cpu->model, &model_size, NULL, 0) != 0) {
         V_PRINTF("[ERROR] sysctlbyname(machdep.cpu.brand_string) failed: %s\n", strerror(errno));
     }
 
-    if (node->model[0] == '\0') {
-        snprintf(node->model, sizeof(node->model), "Unknown");
+    if (cpu->model[0] == '\0') {
+        snprintf(cpu->model, sizeof(cpu->model), "Unknown");
         return;
     }
 
-    if (node->packages > 1) {
+    if (cpu->packages > 1) {
         char prefix[TINY_BUFFER] = {0};
-        snprintf(prefix, sizeof(prefix), "%" PRIu32 " x ", node->packages);
+        snprintf(prefix, sizeof(prefix), "%" PRIu32 " x ", cpu->packages);
         size_t prefix_len = strlen(prefix);
 
-        size_t model_len = strlen(node->model);
-        if (model_len + prefix_len < sizeof(node->model)) {
-            memmove(node->model + prefix_len, node->model, model_len + 1);
-            memcpy(node->model, prefix, prefix_len);
+        size_t model_len = strlen(cpu->model);
+        if (model_len + prefix_len < sizeof(cpu->model)) {
+            memmove(cpu->model + prefix_len, cpu->model, model_len + 1);
+            memcpy(cpu->model, prefix, prefix_len);
         }
     }
 
-    size_t len = strlen(node->model);
-    while (len > 0 && isspace((unsigned char)node->model[len - 1])) {
-        node->model[--len] = '\0';
+    size_t len = strlen(cpu->model);
+    while (len > 0 && isspace((unsigned char)cpu->model[len - 1])) {
+        cpu->model[--len] = '\0';
     }
 }
 
-static void hw_get_cpu_cores(cpu_info_t *node) {
+static void hw_get_cpu_cores(cpu_info_t *cpu) {
     uint64_t common_cores = 0;
     size_t common_size = sizeof(common_cores);
 
@@ -248,8 +248,8 @@ static void hw_get_cpu_cores(cpu_info_t *node) {
         V_PRINTF("[ERROR] sysctlbyname(hw.physicalcpu) failed: %s\n", strerror(errno));
     }
 
-    size_t core_size = sizeof(node->cores);
-    snprintf(node->cores, core_size, " (%" PRIu64 ")", common_cores);
+    size_t core_size = sizeof(cpu->cores);
+    snprintf(cpu->cores, core_size, " (%" PRIu64 ")", common_cores);
 
 #if TARGET_CPU_ARM64
     uint64_t p_cores = 0;
@@ -266,8 +266,8 @@ static void hw_get_cpu_cores(cpu_info_t *node) {
         V_PRINTF("[ERROR] sysctlbyname(hw.perflevel1.physicalcpu) failed: %s\n", strerror(errno));
     }
 
-    size_t current_len = strlen(node->cores) - 1;
-    snprintf(node->cores + current_len, core_size - current_len,
+    size_t current_len = strlen(cpu->cores) - 1;
+    snprintf(cpu->cores + current_len, core_size - current_len,
              "-core: %" PRIu64 "P + %" PRIu64 "E)", p_cores, e_cores);
 #endif
 }
@@ -449,8 +449,8 @@ static uint64_t hw_get_arm_cpu_freq(void) {
     return peak;
 }
 
-static void hw_get_cpu_freq(cpu_info_t *node) {
-    if (node == NULL) return;
+static void hw_get_cpu_freq(cpu_info_t *cpu) {
+    if (cpu == NULL) return;
 
     /*
      * Prefer the live PMGR DVFS tables when the running SoC exposes them.
@@ -459,7 +459,7 @@ static void hw_get_cpu_freq(cpu_info_t *node) {
      */
     uint64_t peak_hz = hw_get_arm_cpu_freq();
     if (peak_hz > 0) {
-        snprintf(node->frequency, sizeof(node->frequency),
+        snprintf(cpu->frequency, sizeof(cpu->frequency),
                  " @ %.2f GHz", (double)peak_hz / HZ_PER_GHZ);
         return;
     }
@@ -496,9 +496,9 @@ static void hw_get_cpu_freq(cpu_info_t *node) {
         {0, 0, NULL}
     };
 
-    for (uint8_t i = 0; m_series[i].model != NULL; i++) {
-        if (strstr(node->model, m_series[i].model) != NULL) {
-            snprintf(node->frequency, sizeof(node->frequency),
+    for (size_t i = 0; m_series[i].model != NULL; i++) {
+        if (strstr(cpu->model, m_series[i].model) != NULL) {
+            snprintf(cpu->frequency, sizeof(cpu->frequency),
                      " @ %.2f / %.2f GHz", m_series[i].p_frequency,
                      m_series[i].e_frequency);
             return;
@@ -506,7 +506,7 @@ static void hw_get_cpu_freq(cpu_info_t *node) {
     }
 }
 #else
-static void hw_get_cpu_freq(cpu_info_t *node) {
+static void hw_get_cpu_freq(cpu_info_t *cpu) {
     uint64_t hz = 0;
     size_t size = sizeof(hz);
 
@@ -515,7 +515,7 @@ static void hw_get_cpu_freq(cpu_info_t *node) {
         V_PRINTF("[ERROR] sysctlbyname(hw.cpufrequency_max) failed: %s\n", strerror(errno));
     }
 
-    snprintf(node->frequency, sizeof(node->frequency), " @ %.2f GHz", (double)hz / HZ_PER_GHZ);
+    snprintf(cpu->frequency, sizeof(cpu->frequency), " @ %.2f GHz", (double)hz / HZ_PER_GHZ);
 }
 #endif
 
@@ -645,25 +645,25 @@ static void hw_get_gpu_pci(char *out_buf, const size_t buf_size) {
 }
 
 void hw_get_mem_info(void) {
-    mem_info_t node;
-    memset(&node, 0, sizeof(mem_info_t));
+    mem_info_t mem;
+    memset(&mem, 0, sizeof(mem_info_t));
 
     mem_flags_t flags = 0;
 
-    hw_get_ram_info(&flags, &node);
-    hw_get_swap_info(&flags, &node);
-    hw_print_mem_info(flags, &node);
+    hw_get_ram_info(&flags, &mem);
+    hw_get_swap_info(&flags, &mem);
+    hw_print_mem_info(flags, &mem);
 }
 
-static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *node) {
-    size_t len = sizeof(node->ram_size);
+static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *mem) {
+    size_t len = sizeof(mem->ram_size);
 
-    if (sysctlbyname("hw.memsize", &node->ram_size, &len, NULL, 0) != 0) {
+    if (sysctlbyname("hw.memsize", &mem->ram_size, &len, NULL, 0) != 0) {
         V_PRINTF("[ERROR] sysctlbyname(hw.memsize) failed: %s\n", strerror(errno));
         return;
     }
 
-    if (node->ram_size == 0) return;
+    if (mem->ram_size == 0) return;
 
     mach_port_t host = mach_host_self();
     vm_statistics64_data_t vm = {0};
@@ -689,11 +689,11 @@ static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *node) {
 #if MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_X_VERSION_10_9
     int64_t active = (int64_t)vm.active_count * pg;
     int64_t inactive = (int64_t)vm.inactive_count * pg;
-    node->ram_used = active + inactive + wired;
+    mem->ram_used = active + inactive + wired;
 #else
     int64_t app = (int64_t)(vm.internal_page_count - vm.purgeable_count) * pg;
     int64_t compressed = (int64_t)vm.compressor_page_count * pg;
-    node->ram_used = app + wired + compressed;
+    mem->ram_used = app + wired + compressed;
 #endif
 
     /*
@@ -701,14 +701,14 @@ static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *node) {
      * pages are being reclaimed or compressed. Clamp the result so callers
      * never report more than 100% RAM usage.
      */
-    if (node->ram_used > node->ram_size) {
-        node->ram_used = node->ram_size;
+    if (mem->ram_used > mem->ram_size) {
+        mem->ram_used = mem->ram_size;
     }
 
     *flags |= MEM_RAM;
 }
 
-static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *node) {
+static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *mem) {
     struct xsw_usage xsw;
     size_t xsw_len = sizeof(struct xsw_usage);
 
@@ -721,8 +721,8 @@ static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *node) {
 
     *flags |= MEM_SWAP;
 
-    node->swap_size = xsw.xsu_total;
-    node->swap_used = xsw.xsu_used;
+    mem->swap_size = xsw.xsu_total;
+    mem->swap_used = xsw.xsu_used;
 }
 
 void hw_get_drives_info(void) {

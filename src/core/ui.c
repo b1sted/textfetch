@@ -25,9 +25,9 @@ void ui_render_header(const char *username, const char *nodename) {
     printf("%s%s@%s%s\n",
            get_color(COLOR_BOLD), username, nodename, get_color(COLOR_RESET));
 
-    int print_len = strlen(username) + strlen(nodename) + 1;
+    size_t print_len = strlen(username) + strlen(nodename) + 1;
 
-    for (int i = 0; i < print_len; i++) putchar('-');
+    for (size_t i = 0; i < print_len; i++) putchar('-');
     printf("\n");
 }
 
