@@ -339,9 +339,22 @@ static void hw_cpu_process_core_node(const char *node_name, cpu_data_t *cpus,
 
     snprintf(full_path, sizeof(full_path),
              "%s%s/topology/physical_package_id", SYS_CPU_DIR, node_name);
-    util_read_int16(full_path, &physical_package_id);
+    if (!util_read_int16(full_path, &physical_package_id)) {
+        V_PRINTF("[WARNING] Skipping CPU %s: missing physical package ID\n",
+                 node_name);
+        return;
+    }
+
     if (physical_package_id < 0 || physical_package_id >= MAX_CPU_PACKAGES) {
-        physical_package_id = 0;
+        V_PRINTF("[WARNING] Skipping CPU %s: invalid physical package ID %d\n",
+                 node_name, physical_package_id);
+        return;
+    }
+
+    snprintf(full_path, sizeof(full_path), "%s%s/topology/core_id", SYS_CPU_DIR, node_name);
+    if (!util_read_uint16(full_path, &core_id)) {
+        V_PRINTF("[WARNING] Skipping CPU %s: missing core ID\n", node_name);
+        return;
     }
 
     if (!cpus[physical_package_id].exists) {
@@ -356,8 +369,6 @@ static void hw_cpu_process_core_node(const char *node_name, cpu_data_t *cpus,
         cpu_map[physical_package_id] = current_id;
     }
 
-    snprintf(full_path, sizeof(full_path), "%s%s/topology/core_id", SYS_CPU_DIR, node_name);
-    util_read_uint16(full_path, &core_id);
     set_add(&(bitset_t){.bits = cpus[physical_package_id].core_bits,
                         .capacity = MAX_CPU_CORES}, core_id);
 }
