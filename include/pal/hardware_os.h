@@ -20,8 +20,6 @@
 
 /* Mathematical constants for unit formatting. */
 #define BYTES_PER_KIB 1024
-#define BYTES_PER_MIB (1024.0 * 1024.0)
-#define BYTES_PER_GIB (1024.0 * 1024.0 * 1024.0)
 
 #if defined(__ANDROID__) || defined(__APPLE__)
 /* Parsed CPU layout data (packages, model, topology, and speed). */

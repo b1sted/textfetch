@@ -38,7 +38,7 @@ EOF
 $PROGRAM -i "$IDS_FILE" | sed 's/data_arm_ids/arm_ids/g' >> "$TARGET"
 
 sed -i \
-    -e 's/^unsigned char arm_ids/static unsigned char arm_ids/' \
+    -e 's/^unsigned char arm_ids/static const unsigned char arm_ids/' \
     -e 's/^unsigned int arm_ids_len/static const unsigned int arm_ids_len/' \
     "$TARGET"
 
