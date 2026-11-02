@@ -1,18 +1,18 @@
 /* SPDX-License-Identifier: MIT */
 
-#include <stdbool.h>
-
 #include "config.h"
 
+#include <stdbool.h>
+
 /* Compiled application version string exposed to runtime consumers. */
-const char version_string[] = APP_VERSION;
+const char cfg_version_string[] = APP_VERSION;
 
 static struct {
     bool kib_format : 1;
     bool mib_format : 1;
     bool gib_format : 1;
-    bool verbose    : 1;
-    bool color      : 1;
+    bool verbose : 1;
+    bool color : 1;
 } settings = {0, 0, 0, 0, 0};
 
 bool cfg_get_kib(void) { return settings.kib_format; }

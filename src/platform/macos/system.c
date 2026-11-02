@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "pal/system_os.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -25,8 +27,6 @@
 #include "defs.h"
 #include "sys_utils.h"
 
-#include "pal/system_os.h"
-
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_VERSION_11_0
 /* Multiplier to convert clock_gettime_nsec_np nanosecond ticks into seconds. */
 #define NANOSECONDS_IN_SECONDS 1000000000ULL
@@ -37,7 +37,7 @@
  * with macOS marketing/release names.
  */
 typedef struct {
-    int major;
+    uint32_t major;
     const char *name;
 } macos_name_map_t;
 
@@ -46,30 +46,28 @@ typedef struct {
  * Darwin version = macOS version + 9 (for macOS 11+).
  * Darwin version = macOS minor + 4 (for Mac OS X 10.x).
  */
-static const macos_name_map_t darwin_map[] = {
-    {25, "macOS Tahoe"},           /* macOS 26 */
-    {24, "macOS Sequoia"},         /* macOS 15 */
-    {23, "macOS Sonoma"},          /* macOS 14 */
-    {22, "macOS Ventura"},         /* macOS 13 */
-    {21, "macOS Monterey"},        /* macOS 12 */
-    {20, "macOS Big Sur"},         /* macOS 11 */
-    {19, "macOS Catalina"},        /* 10.15 */
-    {18, "macOS Mojave"},          /* 10.14 */
-    {17, "macOS High Sierra"},     /* 10.13 */
-    {16, "macOS Sierra"},          /* 10.12 */
-    {15, "OS X El Capitan"},       /* 10.11 */
-    {14, "OS X Yosemite"},         /* 10.10 */
-    {13, "OS X Mavericks"},        /* 10.9 */
-    {12, "OS X Mountain Lion"},    /* 10.8 */
-    {11, "Mac OS X Lion"},         /* 10.7 */
-    {10, "Mac OS X Snow Leopard"}, /* 10.6 */
-    {9, "Mac OS X Leopard"},       /* 10.5 */
-    {8, "Mac OS X Tiger"},         /* 10.4 */
-    {7, "Mac OS X Panther"},       /* 10.3 */
-    {6, "Mac OS X Jaguar"},        /* 10.2 */
-    {5, "Mac OS X Puma"},          /* 10.1 */
-    {0, NULL}
-};
+static const macos_name_map_t darwin_map[] = {{25, "macOS Tahoe"},           /* macOS 26 */
+                                              {24, "macOS Sequoia"},         /* macOS 15 */
+                                              {23, "macOS Sonoma"},          /* macOS 14 */
+                                              {22, "macOS Ventura"},         /* macOS 13 */
+                                              {21, "macOS Monterey"},        /* macOS 12 */
+                                              {20, "macOS Big Sur"},         /* macOS 11 */
+                                              {19, "macOS Catalina"},        /* 10.15 */
+                                              {18, "macOS Mojave"},          /* 10.14 */
+                                              {17, "macOS High Sierra"},     /* 10.13 */
+                                              {16, "macOS Sierra"},          /* 10.12 */
+                                              {15, "OS X El Capitan"},       /* 10.11 */
+                                              {14, "OS X Yosemite"},         /* 10.10 */
+                                              {13, "OS X Mavericks"},        /* 10.9 */
+                                              {12, "OS X Mountain Lion"},    /* 10.8 */
+                                              {11, "Mac OS X Lion"},         /* 10.7 */
+                                              {10, "Mac OS X Snow Leopard"}, /* 10.6 */
+                                              {9, "Mac OS X Leopard"},       /* 10.5 */
+                                              {8, "Mac OS X Tiger"},         /* 10.4 */
+                                              {7, "Mac OS X Panther"},       /* 10.3 */
+                                              {6, "Mac OS X Jaguar"},        /* 10.2 */
+                                              {5, "Mac OS X Puma"},          /* 10.1 */
+                                              {0, NULL}};
 
 /**
  * Maps the current Darwin release version to a macOS marketing name.
@@ -103,27 +101,28 @@ static void sys_get_uptime(void);
  */
 static void sys_get_procs_count(void);
 
-void system_init(void) {
+void sys_init(void)
+{
     const char *fallback = "unknown";
     static struct utsname uts;
 
     bool uname_ok = (uname(&uts) == 0);
-    if (!uname_ok) V_PRINTF("[ERROR] uname failed: %s\n", strerror(errno));
+    if (!uname_ok) {
+        V_PRINTF("[ERROR] uname failed: %s\n", strerror(errno));
+    }
 
-    snprintf(sys_data.sysname, sizeof(sys_data.sysname),
-             "%s", uname_ok ? uts.sysname : fallback);
-    snprintf(sys_data.nodename, sizeof(sys_data.nodename),
-             "%s", uname_ok ? uts.nodename : fallback);
-    snprintf(sys_data.release, sizeof(sys_data.release),
-             "%s", uname_ok ? uts.release : fallback);
-    snprintf(sys_data.machine, sizeof(sys_data.machine),
-             "%s", uname_ok ? uts.machine : fallback);
+    snprintf(sys_data.sysname, sizeof(sys_data.sysname), "%s", uname_ok ? uts.sysname : fallback);
+    snprintf(sys_data.nodename, sizeof(sys_data.nodename), "%s",
+             uname_ok ? uts.nodename : fallback);
+    snprintf(sys_data.release, sizeof(sys_data.release), "%s", uname_ok ? uts.release : fallback);
+    snprintf(sys_data.machine, sizeof(sys_data.machine), "%s", uname_ok ? uts.machine : fallback);
 
     sys_get_uptime();
     sys_get_procs_count();
 }
 
-void sys_get_distro(char *out_buf, const size_t buf_size) {
+void sys_get_distro(char *out_buf, const size_t buf_size)
+{
     /* At least one character plus the terminating NUL is required. */
     if (!out_buf || buf_size < 2) {
         V_PRINTF("[ERROR] %s: invalid arguments\n", __func__);
@@ -138,8 +137,8 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
 
     /* Try modern sysctl first (macOS 10.13.4+) */
     if (sysctlbyname("kern.osproductversion", product_version, &size, NULL, 0) == 0) {
-        snprintf(out_buf + current_len, buf_size - current_len,
-                 "%s (%s)", product_version, sys_data.machine);
+        snprintf(out_buf + current_len, buf_size - current_len, "%s (%s)", product_version,
+                 sys_data.machine);
         return;
     }
 
@@ -149,14 +148,15 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
         strncpy(product_version, "unknown", sizeof(product_version) - 1);
     }
 
-    snprintf(out_buf + current_len, buf_size - current_len,
-             "%s (%s)", product_version, sys_data.machine);
+    snprintf(out_buf + current_len, buf_size - current_len, "%s (%s)", product_version,
+             sys_data.machine);
 }
 
-static const char *sys_get_os_name(void) {
-    int kern_major_number = atoi(sys_data.release);
+static const char *sys_get_os_name(void)
+{
+    uint32_t kern_major_number = (uint32_t)atoi(sys_data.release);
 
-    for (int i = 0; darwin_map[i].name != NULL; i++) {
+    for (size_t i = 0; darwin_map[i].name != NULL; i++) {
         if (darwin_map[i].major == kern_major_number) {
             return darwin_map[i].name;
         }
@@ -165,7 +165,8 @@ static const char *sys_get_os_name(void) {
     return "macOS";
 }
 
-void sys_get_model_name(char *out_buf, size_t buf_size) {
+void sys_get_model_name(char *out_buf, const size_t buf_size)
+{
     /* At least one character plus the terminating NUL is required. */
     if (!out_buf || buf_size < 2) {
         V_PRINTF("[ERROR] %s: invalid arguments\n", __func__);
@@ -197,40 +198,40 @@ void sys_get_model_name(char *out_buf, size_t buf_size) {
     }
 
     if (!plist) {
-        V_PRINTF("[ERROR] %s: SIMachineAttributes.plist not found or failed to parse\n",
-                 __func__);
+        V_PRINTF("[ERROR] %s: SIMachineAttributes.plist not found or failed to parse\n", __func__);
         return;
     }
 
     if (CFGetTypeID(plist) == CFDictionaryGetTypeID()) {
         CFDictionaryRef main_dict = (CFDictionaryRef)plist;
 
-        CFStringRef model_key = CFStringCreateWithCString(kCFAllocatorDefault,
-                                                          out_buf, kCFStringEncodingUTF8);
+        CFStringRef model_key =
+            CFStringCreateWithCString(kCFAllocatorDefault, out_buf, kCFStringEncodingUTF8);
         if (model_key) {
             CFDictionaryRef model_dict = CFDictionaryGetValue(main_dict, model_key);
 
             if (model_dict && CFGetTypeID(model_dict) == CFDictionaryGetTypeID()) {
-                CFDictionaryRef local_dict = CFDictionaryGetValue(model_dict,
-                                                                  CFSTR("_LOCALIZABLE_"));
+                CFDictionaryRef local_dict =
+                    CFDictionaryGetValue(model_dict, CFSTR("_LOCALIZABLE_"));
 
                 if (local_dict && CFGetTypeID(local_dict) == CFDictionaryGetTypeID()) {
-                    CFStringRef marketing_name = CFDictionaryGetValue(local_dict,
-                                                                      CFSTR("marketingModel"));
+                    CFStringRef marketing_name =
+                        CFDictionaryGetValue(local_dict, CFSTR("marketingModel"));
 
                     if (marketing_name && CFGetTypeID(marketing_name) == CFStringGetTypeID()) {
-                        CFStringGetCString(marketing_name, out_buf, buf_size, kCFStringEncodingUTF8);
+                        CFStringGetCString(marketing_name, out_buf, buf_size,
+                                           kCFStringEncodingUTF8);
                     } else {
-                        V_PRINTF("[WARNING] %s: 'marketingModel' key missing for %s\n",
-                                 __func__, out_buf);
+                        V_PRINTF("[WARNING] %s: 'marketingModel' key missing for %s\n", __func__,
+                                 out_buf);
                     }
                 } else {
-                    V_PRINTF("[WARNING] %s: '_LOCALIZABLE_' dictionary missing for %s\n",
-                             __func__, out_buf);
+                    V_PRINTF("[WARNING] %s: '_LOCALIZABLE_' dictionary missing for %s\n", __func__,
+                             out_buf);
                 }
             } else {
-                V_PRINTF("[WARNING] %s: Model ID %s not found in attributes database\n",
-                         __func__, out_buf);
+                V_PRINTF("[WARNING] %s: Model ID %s not found in attributes database\n", __func__,
+                         out_buf);
             }
 
             CFRelease(model_key);
@@ -244,57 +245,65 @@ void sys_get_model_name(char *out_buf, size_t buf_size) {
 }
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_9
-static CFPropertyListRef create_plist_from_file(const char *path) {
-    int fd = open(path, O_RDONLY);
-    if (fd < 0) return NULL;
+static CFPropertyListRef create_plist_from_file(const char *path)
+{
+    int fd = -1;
+    struct stat sb = {0};
+    size_t file_size = 0;
+    void *ptr = MAP_FAILED;
+    CFDataRef data_ref = NULL;
+    CFPropertyListRef plist = NULL;
 
-    struct stat sb;
+    fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        goto cleanup;
+    }
+
     if (fstat(fd, &sb) == -1) {
-        close(fd);
-        return NULL;
+        goto cleanup;
     }
 
     if (sb.st_size <= 0) {
         V_PRINTF("[ERROR] create_plist_from_file(%s): file is empty\n", path);
-        close(fd);
-        return NULL;
+        goto cleanup;
     }
 
-    size_t file_size = (size_t)sb.st_size;
+    file_size = (size_t)sb.st_size;
 
-    void *ptr = mmap(NULL, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    ptr = mmap(NULL, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
     if (ptr == MAP_FAILED) {
-        close(fd);
-        return NULL;
+        goto cleanup;
     }
 
-    CFDataRef data_ref = CFDataCreateWithBytesNoCopy(kCFAllocatorDefault, ptr,
-                                                     (CFIndex)file_size, kCFAllocatorNull);
+    data_ref =
+        CFDataCreateWithBytesNoCopy(kCFAllocatorDefault, ptr, (CFIndex)file_size, kCFAllocatorNull);
     if (!data_ref) {
-        V_PRINTF("[ERROR] create_plist_from_file(%s): CFDataCreateWithBytesNoCopy failed\n",
-                 path);
-        munmap(ptr, file_size);
-        close(fd);
-        return NULL;
+        V_PRINTF("[ERROR] create_plist_from_file(%s): CFDataCreateWithBytesNoCopy failed\n", path);
+        goto cleanup;
     }
 
-    CFPropertyListRef plist = CFPropertyListCreateWithData(kCFAllocatorDefault, data_ref,
-                                                           kCFPropertyListImmutable, NULL,
-                                                           NULL);
+    plist = CFPropertyListCreateWithData(kCFAllocatorDefault, data_ref, kCFPropertyListImmutable,
+                                         NULL, NULL);
     if (!plist) {
-        V_PRINTF("[ERROR] create_plist_from_file(%s): CFPropertyListCreateWithData failed\n",
-                 path);
+        V_PRINTF("[ERROR] create_plist_from_file(%s): CFPropertyListCreateWithData failed\n", path);
     }
 
-    CFRelease(data_ref);
-    munmap(ptr, file_size);
-    close(fd);
-
+cleanup:
+    if (data_ref) {
+        CFRelease(data_ref);
+    }
+    if (ptr != MAP_FAILED) {
+        munmap(ptr, file_size);
+    }
+    if (fd >= 0) {
+        close(fd);
+    }
     return plist;
 }
 #endif
 
-static void sys_get_uptime(void) {
+static void sys_get_uptime(void)
+{
     sys_data.uptime = 0;
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_VERSION_11_0
@@ -312,7 +321,7 @@ static void sys_get_uptime(void) {
     int mib[2] = {CTL_KERN, KERN_BOOTTIME};
 
     if (sysctl(mib, 2, &boottime, &size, NULL, 0) == 0) {
-        struct timeval now;
+        struct timeval now = {0};
         gettimeofday(&now, NULL);
 
         if (now.tv_sec >= boottime.tv_sec) {
@@ -324,29 +333,32 @@ static void sys_get_uptime(void) {
 #endif
 }
 
-static void sys_get_procs_count(void) {
+static void sys_get_procs_count(void)
+{
     int mib[3] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
-    size_t len;
+    size_t len = 0;
+    struct kinfo_proc *procs = NULL;
 
     /* First call to get the required buffer size */
     if (sysctl(mib, 3, NULL, &len, NULL, 0) < 0) {
         V_PRINTF("[ERROR] sysctl(KERN_PROC_ALL) size query failed: %s\n", strerror(errno));
-        return;
+        goto cleanup;
     }
 
-    struct kinfo_proc *procs = malloc(len);
+    procs = malloc(len);
     if (!procs) {
         V_PRINTF("[ERROR] malloc(%zu) for kinfo_proc failed: %s\n", len, strerror(errno));
-        return;
+        goto cleanup;
     }
 
     /* Second call to fetch the actual process list */
     if (sysctl(mib, 3, procs, &len, NULL, 0) < 0) {
         V_PRINTF("[ERROR] sysctl(KERN_PROC_ALL) data fetch failed: %s\n", strerror(errno));
-        free(procs);
-        return;
+        goto cleanup;
     }
 
     sys_data.procs = (uint32_t)(len / sizeof(struct kinfo_proc));
+
+cleanup:
     free(procs);
 }

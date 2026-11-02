@@ -17,33 +17,27 @@
 // NOLINTNEXTLINE(bugprone-suspicious-include)
 #include "../../src/platform/linux/hardware.c"
 
-static void check_cpu_name(const char *input, const char *expected) {
+static void check_cpu_name(const char *input, const char *expected)
+{
     char buffer[128];
     snprintf(buffer, sizeof(buffer), "%s", input);
     hw_sanitize_cpu_name(buffer);
     TEST_STR_EQ(buffer, expected);
 }
 
-static void test_sanitize_cpu_name(void) {
-    check_cpu_name("Intel(R) Core(TM) i7-8700 CPU @ 3.20GHz",
-                   "Intel Core i7-8700");
-    check_cpu_name("12th Gen Intel(R) Core(TM) i7-12700K",
-                   "Intel Core i7-12700K");
-    check_cpu_name("AMD Ryzen 7 5800X 8-Core Processor",
-                   "AMD Ryzen 7 5800X");
-    check_cpu_name("AMD Ryzen 5 5600X 6-Core Processor",
-                   "AMD Ryzen 5 5600X");
-    check_cpu_name("Intel Core i5-8250U CPU @ 1.60GHz",
-                   "Intel Core i5-8250U");
-    check_cpu_name("Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz",
-                   "Intel Xeon E5-2697 v2");
+static void test_sanitize_cpu_name(void)
+{
+    check_cpu_name("Intel(R) Core(TM) i7-8700 CPU @ 3.20GHz", "Intel Core i7-8700");
+    check_cpu_name("12th Gen Intel(R) Core(TM) i7-12700K", "Intel Core i7-12700K");
+    check_cpu_name("AMD Ryzen 7 5800X 8-Core Processor", "AMD Ryzen 7 5800X");
+    check_cpu_name("AMD Ryzen 5 5600X 6-Core Processor", "AMD Ryzen 5 5600X");
+    check_cpu_name("Intel Core i5-8250U CPU @ 1.60GHz", "Intel Core i5-8250U");
+    check_cpu_name("Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz", "Intel Xeon E5-2697 v2");
     check_cpu_name("Intel(R) Xeon(R) CPU @ 2.20GHz", "Intel Xeon");
-    check_cpu_name("Intel(R) Atom(TM) CPU N450 @ 1.66GHz",
-                   "Intel Atom N450");
+    check_cpu_name("Intel(R) Atom(TM) CPU N450 @ 1.66GHz", "Intel Atom N450");
     check_cpu_name("AMD APU", "AMD");
     check_cpu_name("Intel Core i7-8700 Processor", "Intel Core i7-8700");
-    check_cpu_name("Intel Core i7-8700 with Radeon Graphics",
-                   "Intel Core i7-8700");
+    check_cpu_name("Intel Core i7-8700 with Radeon Graphics", "Intel Core i7-8700");
     check_cpu_name("Apple M1", "Apple M1");
     check_cpu_name("Unknown", "Unknown");
     check_cpu_name("", "");
@@ -51,24 +45,28 @@ static void test_sanitize_cpu_name(void) {
     hw_sanitize_cpu_name(NULL);
 }
 
-static forest *make_pci_forest(void) {
-    forest *ids = create_forest(2);
-    if (!ids) return NULL;
+static tree_forest_t *make_pci_forest(void)
+{
+    tree_forest_t *ids = tree_create_forest(2);
+    if (!ids) {
+        return NULL;
+    }
 
-    node *nvidia = create_node(0x10de, "NVIDIA");
-    add_child(nvidia, 0x1c82, "GeForce GTX 1050 Ti");
-    add_child(nvidia, 0x0de1, "GeForce GT 630");
-    add_tree_to_forest(ids, nvidia);
+    tree_node_t *nvidia = tree_create_node(0x10de, "NVIDIA");
+    tree_add_child(nvidia, 0x1c82, "GeForce GTX 1050 Ti");
+    tree_add_child(nvidia, 0x0de1, "GeForce GT 630");
+    tree_add_to_forest(ids, nvidia);
 
-    node *amd = create_node(0x1002, "AMD");
-    add_child(amd, 0x73ff, "Navi 23");
-    add_tree_to_forest(ids, amd);
+    tree_node_t *amd = tree_create_node(0x1002, "AMD");
+    tree_add_child(amd, 0x73ff, "Navi 23");
+    tree_add_to_forest(ids, amd);
 
     return ids;
 }
 
-static void test_gpu_lookup(void) {
-    char buffer[256];
+static void test_gpu_lookup(void)
+{
+    char buffer[256] = {0};
     gpu_node_t *list = NULL;
 
     list = add_gpu(list, 0x10de, 0x1c82);
@@ -77,11 +75,12 @@ static void test_gpu_lookup(void) {
     TEST_INT_EQ(list->part_id, 0x1c82);
     TEST_CHECK(list->next == NULL);
 
-    forest *ids = make_pci_forest();
+    tree_forest_t *ids = make_pci_forest();
     TEST_CHECK(ids != NULL);
     memset(buffer, 0, sizeof(buffer));
     hw_gpu_lookup_names(buffer, sizeof(buffer), ids, list);
     TEST_STR_EQ(buffer, "NVIDIA GeForce GTX 1050 Ti [0x1C82]");
+    tree_destroy_forest(ids);
     free_gpu_list(list);
 
     list = add_gpu(NULL, 0x10de, 0x1c82);
@@ -90,6 +89,7 @@ static void test_gpu_lookup(void) {
     memset(buffer, 0, sizeof(buffer));
     hw_gpu_lookup_names(buffer, sizeof(buffer), ids, list);
     TEST_STR_EQ(buffer, "2 x NVIDIA GeForce GTX 1050 Ti [0x1C82]");
+    tree_destroy_forest(ids);
     free_gpu_list(list);
 
     list = add_gpu(NULL, 0x10de, 0x9999);
@@ -97,6 +97,7 @@ static void test_gpu_lookup(void) {
     memset(buffer, 0, sizeof(buffer));
     hw_gpu_lookup_names(buffer, sizeof(buffer), ids, list);
     TEST_STR_EQ(buffer, "NVIDIA [0x9999]");
+    tree_destroy_forest(ids);
     free_gpu_list(list);
 
     list = add_gpu(NULL, 0x1234, 0x5678);
@@ -115,19 +116,21 @@ static void test_gpu_lookup(void) {
     list = add_gpu(NULL, 0x1234, 0x5678);
     ids = make_pci_forest();
     hw_gpu_lookup_names(NULL, 0, ids, list);
+    tree_destroy_forest(ids);
     free_gpu_list(list);
 
     list = add_gpu(NULL, 0x1234, 0x5678);
     ids = make_pci_forest();
     hw_gpu_lookup_names(buffer, sizeof(buffer), ids, list);
+    tree_destroy_forest(ids);
     free_gpu_list(list);
 
     free_gpu_list(NULL);
 }
 
-static void test_battery_metrics(void) {
-    bat_data_t data;
-    memset(&data, 0, sizeof(data));
+static void test_battery_metrics(void)
+{
+    bat_data_t data = {0};
 
     hw_battery_read_metrics("textfetch-missing-battery", &data);
 
@@ -137,7 +140,8 @@ static void test_battery_metrics(void) {
     TEST_CHECK((data.health & HEALTH_UNKNOWN) != 0);
 }
 
-static void test_hardware_lists(void) {
+static void test_hardware_lists(void)
+{
     hw_node_t *elements = add_element(NULL, "BAT0");
     TEST_CHECK(elements != NULL);
     TEST_STR_EQ(elements->name, "BAT0");
@@ -159,59 +163,76 @@ static void test_hardware_lists(void) {
     free_data_list(NULL);
 }
 
-static bool fake_sysfs_write(const char *path, const char *value) {
+static bool fake_sysfs_write(const char *path, const char *value)
+{
     FILE *fp = fopen(path, "w");
-    if (!fp) return false;
+    if (!fp) {
+        return false;
+    }
 
     bool written = (fputs(value, fp) >= 0);
-    if (fclose(fp) != 0) written = false;
+    if (fclose(fp) != 0) {
+        written = false;
+    }
 
     return written;
 }
 
-static bool fake_sysfs_add_cpu(const char *cpu_dir, const char *cpu_name,
-                               const char *package_id, const char *core_id,
-                               const char *max_freq) {
+static bool fake_sysfs_add_cpu(const char *cpu_dir, const char *cpu_name, const char *package_id,
+                               const char *core_id, const char *max_freq)
+{
     char path[PATH_BUFFER];
 
     snprintf(path, sizeof(path), "%s%s", cpu_dir, cpu_name);
-    if (mkdir(path, 0700) != 0) return false;
+    if (mkdir(path, 0700) != 0) {
+        return false;
+    }
 
     snprintf(path, sizeof(path), "%s%s/topology", cpu_dir, cpu_name);
-    if (mkdir(path, 0700) != 0) return false;
+    if (mkdir(path, 0700) != 0) {
+        return false;
+    }
 
-    snprintf(path, sizeof(path), "%s%s/topology/physical_package_id",
-             cpu_dir, cpu_name);
-    if (!fake_sysfs_write(path, package_id)) return false;
+    snprintf(path, sizeof(path), "%s%s/topology/physical_package_id", cpu_dir, cpu_name);
+    if (!fake_sysfs_write(path, package_id)) {
+        return false;
+    }
 
     snprintf(path, sizeof(path), "%s%s/topology/core_id", cpu_dir, cpu_name);
-    if (!fake_sysfs_write(path, core_id)) return false;
+    if (!fake_sysfs_write(path, core_id)) {
+        return false;
+    }
 
-    if (max_freq == NULL) return true;
+    if (max_freq == NULL) {
+        return true;
+    }
 
     snprintf(path, sizeof(path), "%s%s/cpufreq", cpu_dir, cpu_name);
-    if (mkdir(path, 0700) != 0) return false;
+    if (mkdir(path, 0700) != 0) {
+        return false;
+    }
 
-    snprintf(path, sizeof(path), "%s%s/cpufreq/cpuinfo_max_freq",
-             cpu_dir, cpu_name);
+    snprintf(path, sizeof(path), "%s%s/cpufreq/cpuinfo_max_freq", cpu_dir, cpu_name);
     return fake_sysfs_write(path, max_freq);
 }
 
-static bool fake_sysfs_add_cpufreq_attr(const char *cpu_dir,
-                                        const char *cpu_name,
-                                        const char *attr, const char *value) {
+static bool fake_sysfs_add_cpufreq_attr(const char *cpu_dir, const char *cpu_name, const char *attr,
+                                        const char *value)
+{
     char path[PATH_BUFFER * 2];
 
     snprintf(path, sizeof(path), "%s%s/cpufreq", cpu_dir, cpu_name);
-    if (mkdir(path, 0700) != 0 && errno != EEXIST) return false;
+    if (mkdir(path, 0700) != 0 && errno != EEXIST) {
+        return false;
+    }
 
     snprintf(path, sizeof(path), "%s%s/cpufreq/%s", cpu_dir, cpu_name, attr);
     return fake_sysfs_write(path, value);
 }
 
-static void fake_sysfs_remove_cpufreq_attr(const char *cpu_dir,
-                                           const char *cpu_name,
-                                           const char *attr) {
+static void fake_sysfs_remove_cpufreq_attr(const char *cpu_dir, const char *cpu_name,
+                                           const char *attr)
+{
     char path[PATH_BUFFER * 2];
 
     snprintf(path, sizeof(path), "%s%s/cpufreq/%s", cpu_dir, cpu_name, attr);
@@ -221,13 +242,13 @@ static void fake_sysfs_remove_cpufreq_attr(const char *cpu_dir,
     rmdir(path);
 }
 
-static void fake_sysfs_remove_cpu(const char *cpu_dir, const char *cpu_name,
-                                  bool has_topology, bool has_freq) {
+static void fake_sysfs_remove_cpu(const char *cpu_dir, const char *cpu_name, bool has_topology,
+                                  bool has_freq)
+{
     char path[PATH_BUFFER];
 
     if (has_freq) {
-        snprintf(path, sizeof(path), "%s%s/cpufreq/cpuinfo_max_freq",
-                 cpu_dir, cpu_name);
+        snprintf(path, sizeof(path), "%s%s/cpufreq/cpuinfo_max_freq", cpu_dir, cpu_name);
         unlink(path);
 
         snprintf(path, sizeof(path), "%s%s/cpufreq", cpu_dir, cpu_name);
@@ -235,12 +256,10 @@ static void fake_sysfs_remove_cpu(const char *cpu_dir, const char *cpu_name,
     }
 
     if (has_topology) {
-        snprintf(path, sizeof(path), "%s%s/topology/physical_package_id",
-                 cpu_dir, cpu_name);
+        snprintf(path, sizeof(path), "%s%s/topology/physical_package_id", cpu_dir, cpu_name);
         unlink(path);
 
-        snprintf(path, sizeof(path), "%s%s/topology/core_id",
-                 cpu_dir, cpu_name);
+        snprintf(path, sizeof(path), "%s%s/topology/core_id", cpu_dir, cpu_name);
         unlink(path);
 
         snprintf(path, sizeof(path), "%s%s/topology", cpu_dir, cpu_name);
@@ -251,11 +270,14 @@ static void fake_sysfs_remove_cpu(const char *cpu_dir, const char *cpu_name,
     rmdir(path);
 }
 
-static void test_sparse_cpu_packages(void) {
+static void test_sparse_cpu_packages(void)
+{
     char template[] = "/tmp/textfetch-cpu-XXXXXX";
     char *root = mkdtemp(template);
     TEST_CHECK(root != NULL);
-    if (!root) return;
+    if (!root) {
+        return;
+    }
 
     char cpu_dir[PATH_BUFFER];
     snprintf(cpu_dir, sizeof(cpu_dir), "%s/", root);
@@ -294,12 +316,12 @@ static void test_sparse_cpu_packages(void) {
     TEST_INT_EQ(cpu_map[1], 0xFFFF);
     TEST_INT_EQ(cpu_map[2], 2);
 
-    TEST_INT_EQ(count_set_bits(&(bitset_t){.bits = cpus[0].core_bits,
-                                           .capacity = MAX_CPU_CORES},
-                               CORES_SET_BLOCKS), 2);
-    TEST_INT_EQ(count_set_bits(&(bitset_t){.bits = cpus[2].core_bits,
-                                           .capacity = MAX_CPU_CORES},
-                               CORES_SET_BLOCKS), 2);
+    TEST_INT_EQ(set_count_bits(&(bitset_t){.bits = cpus[0].core_bits, .capacity = MAX_CPU_CORES},
+                               CORES_SET_BLOCKS),
+                2);
+    TEST_INT_EQ(set_count_bits(&(bitset_t){.bits = cpus[2].core_bits, .capacity = MAX_CPU_CORES},
+                               CORES_SET_BLOCKS),
+                2);
 
     /* The peak frequency must come from the fastest core in each package. */
     TEST_CHECK(cpus[0].frequency > 3.19 && cpus[0].frequency < 3.21);
@@ -314,11 +336,14 @@ static void test_sparse_cpu_packages(void) {
     rmdir(root);
 }
 
-static void test_uniprocessor_without_topology(void) {
+static void test_uniprocessor_without_topology(void)
+{
     char template[] = "/tmp/textfetch-cpu-uni-XXXXXX";
     char *root = mkdtemp(template);
     TEST_CHECK(root != NULL);
-    if (!root) return;
+    if (!root) {
+        return;
+    }
 
     char cpu_dir[PATH_BUFFER];
     snprintf(cpu_dir, sizeof(cpu_dir), "%s/", root);
@@ -340,9 +365,9 @@ static void test_uniprocessor_without_topology(void) {
     TEST_INT_EQ(packages, 1);
     TEST_CHECK(cpus[0].exists);
     TEST_INT_EQ(cpu_map[0], 0);
-    TEST_INT_EQ(count_set_bits(&(bitset_t){.bits = cpus[0].core_bits,
-                                           .capacity = MAX_CPU_CORES},
-                               CORES_SET_BLOCKS), 1);
+    TEST_INT_EQ(set_count_bits(&(bitset_t){.bits = cpus[0].core_bits, .capacity = MAX_CPU_CORES},
+                               CORES_SET_BLOCKS),
+                1);
 
     /* No cpufreq nodes: the model must survive and print without a suffix. */
     snprintf(cpus[0].model, sizeof(cpus[0].model), "%s", "ARM Cortex-A7");
@@ -360,11 +385,14 @@ static void test_uniprocessor_without_topology(void) {
     rmdir(root);
 }
 
-static void test_current_freq_fallback(void) {
+static void test_current_freq_fallback(void)
+{
     char template[] = "/tmp/textfetch-cpu-cur-XXXXXX";
     char *root = mkdtemp(template);
     TEST_CHECK(root != NULL);
-    if (!root) return;
+    if (!root) {
+        return;
+    }
 
     char cpu_dir[PATH_BUFFER];
     snprintf(cpu_dir, sizeof(cpu_dir), "%s/", root);
@@ -372,8 +400,7 @@ static void test_current_freq_fallback(void) {
     TEST_CHECK(fake_sysfs_add_cpu(cpu_dir, "cpu0", "0", "0", NULL));
 
     /* Fixed-clock kernels expose only the current frequency. */
-    TEST_CHECK(fake_sysfs_add_cpufreq_attr(cpu_dir, "cpu0", "scaling_cur_freq",
-                                           "1104000"));
+    TEST_CHECK(fake_sysfs_add_cpufreq_attr(cpu_dir, "cpu0", "scaling_cur_freq", "1104000"));
 
     cpu_data_t cpus[MAX_CPU_PACKAGES];
     uint16_t cpu_map[MAX_CPU_PACKAGES];
@@ -399,11 +426,14 @@ static void test_current_freq_fallback(void) {
     rmdir(root);
 }
 
-static void test_policy_current_freq_fallback(void) {
+static void test_policy_current_freq_fallback(void)
+{
     char template[] = "/tmp/textfetch-cpu-policy-XXXXXX";
     char *root = mkdtemp(template);
     TEST_CHECK(root != NULL);
-    if (!root) return;
+    if (!root) {
+        return;
+    }
 
     char cpu_dir[PATH_BUFFER];
     snprintf(cpu_dir, sizeof(cpu_dir), "%s/", root);
@@ -446,11 +476,14 @@ static void test_policy_current_freq_fallback(void) {
     rmdir(root);
 }
 
-static void test_cpu_fallback_without_nodes(void) {
+static void test_cpu_fallback_without_nodes(void)
+{
     char template[] = "/tmp/textfetch-cpu-empty-XXXXXX";
     char *root = mkdtemp(template);
     TEST_CHECK(root != NULL);
-    if (!root) return;
+    if (!root) {
+        return;
+    }
 
     char cpu_dir[PATH_BUFFER];
     snprintf(cpu_dir, sizeof(cpu_dir), "%s/", root);
@@ -468,14 +501,15 @@ static void test_cpu_fallback_without_nodes(void) {
     TEST_INT_EQ(packages, 1);
     TEST_CHECK(cpus[0].exists);
     TEST_INT_EQ(cpu_map[0], 0);
-    TEST_INT_EQ(count_set_bits(&(bitset_t){.bits = cpus[0].core_bits,
-                                           .capacity = MAX_CPU_CORES},
-                               CORES_SET_BLOCKS), 1);
+    TEST_INT_EQ(set_count_bits(&(bitset_t){.bits = cpus[0].core_bits, .capacity = MAX_CPU_CORES},
+                               CORES_SET_BLOCKS),
+                1);
 
     rmdir(root);
 }
 
-static void test_actual_cpu(void) {
+static void test_actual_cpu(void)
+{
     cpu_data_t cpus[MAX_CPU_PACKAGES];
     uint16_t cpu_map[MAX_CPU_PACKAGES];
     uint8_t packages = 0;
@@ -491,7 +525,7 @@ static void test_actual_cpu(void) {
     TEST_CHECK(strlen(cpus[0].model) > 0);
     TEST_CHECK(cpus[0].frequency >= 0.0);
 
-    test_capture_t capture;
+    test_capture_t capture = {0};
     TEST_CHECK(test_capture_begin(&capture));
     hw_get_cpu_info();
     char *output = test_capture_end(&capture);
@@ -500,9 +534,10 @@ static void test_actual_cpu(void) {
     free(output);
 }
 
-static void test_actual_hardware(void) {
-    test_capture_t capture;
-    char *output;
+static void test_actual_hardware(void)
+{
+    test_capture_t capture = {0};
+    char *output = NULL;
 
     TEST_CHECK(test_capture_begin(&capture));
     hw_get_gpu_info();
@@ -523,7 +558,8 @@ static void test_actual_hardware(void) {
     free_data_list(batteries);
 }
 
-int main(void) {
+int main(void)
+{
     test_sanitize_cpu_name();
     test_gpu_lookup();
     test_battery_metrics();

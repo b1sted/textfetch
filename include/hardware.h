@@ -8,6 +8,6 @@
  * Gathers data for CPU, GPU, RAM, Swap, Disks, and Battery,
  * then routes formatted output to the UI module.
  */
-void hardware_print_info(void);
+void hw_print_info(void);
 
 #endif /* HARDWARE_H */

@@ -1,5 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "capture.h"
+
+#include <stdint.h>
 #include <string.h>
 
 #include <dirent.h>
@@ -7,19 +10,23 @@
 
 #include <sys/resource.h>
 
-#include "capture.h"
 #include "../support/test_framework.h"
 
 /* Counts open descriptors, excluding the descriptor used to read the directory. */
-static int count_open_fds(void) {
+static int32_t count_open_fds(void)
+{
     DIR *dir = opendir("/proc/self/fd");
-    if (!dir) return -1;
+    if (!dir) {
+        return -1;
+    }
 
-    int count = 0;
-    struct dirent *entry;
+    int32_t count = 0;
+    struct dirent *entry = NULL;
 
     while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_name[0] != '.') count++;
+        if (entry->d_name[0] != '.') {
+            count++;
+        }
     }
 
     closedir(dir);
@@ -27,7 +34,8 @@ static int count_open_fds(void) {
     return count - 1;
 }
 
-static void test_successful_capture(void) {
+static void test_successful_capture(void)
+{
     char buffer[64] = {0};
 
     TEST_INT_EQ(capture_line("echo", "hello", buffer, sizeof(buffer)), 0);
@@ -38,8 +46,7 @@ static void test_successful_capture(void) {
     TEST_STR_EQ(buffer, "hello world");
 
     memset(buffer, 0, sizeof(buffer));
-    TEST_INT_EQ(capture_line("printf", "first\\nsecond\\n", buffer,
-                             sizeof(buffer)), 0);
+    TEST_INT_EQ(capture_line("printf", "first\\nsecond\\n", buffer, sizeof(buffer)), 0);
     TEST_STR_EQ(buffer, "first");
 
     memset(buffer, 0, sizeof(buffer));
@@ -48,14 +55,16 @@ static void test_successful_capture(void) {
     TEST_STR_NOT_CONTAINS(buffer, "\n");
 }
 
-static void test_truncation(void) {
+static void test_truncation(void)
+{
     char buffer[5] = {'X', 'X', 'X', 'X', 'X'};
 
     TEST_INT_EQ(capture_line("echo", "0123456789", buffer, sizeof(buffer)), 0);
     TEST_STR_EQ(buffer, "0123");
 }
 
-static void test_empty_output(void) {
+static void test_empty_output(void)
+{
     char buffer[32] = {'X'};
 
     TEST_INT_EQ(capture_line("echo", NULL, buffer, sizeof(buffer)), 1);
@@ -74,11 +83,12 @@ static void test_empty_output(void) {
     TEST_STR_EQ(buffer, "");
 }
 
-static void test_capture_failures(void) {
+static void test_capture_failures(void)
+{
     char buffer[32] = {'X'};
 
-    TEST_INT_EQ(capture_line("textfetch-command-that-does-not-exist", NULL,
-                             buffer, sizeof(buffer)), 1);
+    TEST_INT_EQ(capture_line("textfetch-command-that-does-not-exist", NULL, buffer, sizeof(buffer)),
+                1);
     TEST_STR_EQ(buffer, "");
 
     TEST_INT_EQ(capture_line(NULL, NULL, buffer, sizeof(buffer)), -1);
@@ -89,21 +99,28 @@ static void test_capture_failures(void) {
     TEST_STR_EQ(buffer, "X");
 }
 
-static void test_fork_failure_closes_pipe(void) {
-    struct rlimit original;
+static void test_fork_failure_closes_pipe(void)
+{
+    struct rlimit original = {0};
 
-    if (getrlimit(RLIMIT_NPROC, &original) != 0) return;
-    if (geteuid() == 0) return;
+    if (getrlimit(RLIMIT_NPROC, &original) != 0) {
+        return;
+    }
+    if (geteuid() == 0) {
+        return;
+    }
 
     struct rlimit no_processes = original;
     no_processes.rlim_cur = 0;
 
-    if (setrlimit(RLIMIT_NPROC, &no_processes) != 0) return;
+    if (setrlimit(RLIMIT_NPROC, &no_processes) != 0) {
+        return;
+    }
 
-    int before = count_open_fds();
+    int32_t before = count_open_fds();
     char buffer[32] = {'X'};
     int result = capture_line("echo", "hello", buffer, sizeof(buffer));
-    int after = count_open_fds();
+    int32_t after = count_open_fds();
 
     setrlimit(RLIMIT_NPROC, &original);
 
@@ -115,7 +132,8 @@ static void test_fork_failure_closes_pipe(void) {
     }
 }
 
-int main(void) {
+int main(void)
+{
     test_successful_capture();
     test_truncation();
     test_empty_output();

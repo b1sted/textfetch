@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "sys_utils.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -8,13 +10,13 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "binary_trees.h"
-#include "config.h"
-#include "sys_utils.h"
 #include "../support/test_framework.h"
 #include "../support/test_helpers.h"
+#include "binary_trees.h"
+#include "config.h"
 
-static void test_string_in_array(void) {
+static void test_string_in_array(void)
+{
     const char *array[] = {"world", "planet", NULL};
 
     TEST_CHECK(util_string_in_array("hello world", array) != NULL);
@@ -27,7 +29,8 @@ static void test_string_in_array(void) {
     TEST_CHECK(util_string_in_array("hello", empty) == NULL);
 }
 
-static void test_string_lookup(void) {
+static void test_string_lookup(void)
+{
     const char *dict[][2] = {
         {"alpha", "A"},
         {"beta", "B"},
@@ -44,7 +47,8 @@ static void test_string_lookup(void) {
     TEST_CHECK(util_string_lookup("alpha", dict, 0) == NULL);
 }
 
-static void test_read_line(void) {
+static void test_read_line(void)
+{
     char buffer[16];
 
     char *path = test_write_temp_file("hello\nworld\n");
@@ -76,14 +80,14 @@ static void test_read_line(void) {
     unlink(path);
     free(path);
 
-    TEST_CHECK(!util_read_line("/tmp/textfetch-does-not-exist", buffer,
-                               sizeof(buffer)));
+    TEST_CHECK(!util_read_line("/tmp/textfetch-does-not-exist", buffer, sizeof(buffer)));
     TEST_CHECK(!util_read_line(NULL, buffer, sizeof(buffer)));
     TEST_CHECK(!util_read_line("/tmp/anything", NULL, sizeof(buffer)));
     TEST_CHECK(!util_read_line("/tmp/anything", buffer, 0));
 }
 
-static void test_read_integers(void) {
+static void test_read_integers(void)
+{
     uint8_t u8 = 0;
     uint16_t u16 = 0;
     uint32_t u32 = 0;
@@ -186,7 +190,8 @@ static void test_read_integers(void) {
     TEST_CHECK(!util_read_int32("/tmp/anything", NULL));
 }
 
-static void test_read_hex(void) {
+static void test_read_hex(void)
+{
     uint16_t hex16 = 0;
     uint32_t hex32 = 0;
 
@@ -239,7 +244,8 @@ static void test_read_hex(void) {
     TEST_CHECK(!util_read_hex16("/tmp/anything", NULL));
 }
 
-static void test_file_exists(void) {
+static void test_file_exists(void)
+{
     char *path = test_write_temp_file("content");
     TEST_CHECK(path != NULL);
     TEST_CHECK(util_is_file_exist(path));
@@ -250,7 +256,8 @@ static void test_file_exists(void) {
     TEST_CHECK(!util_is_file_exist(NULL));
 }
 
-static void test_numeric_string(void) {
+static void test_numeric_string(void)
+{
     TEST_CHECK(util_is_numeric_string("0"));
     TEST_CHECK(util_is_numeric_string("1234567890"));
     TEST_CHECK(!util_is_numeric_string(""));
@@ -261,7 +268,8 @@ static void test_numeric_string(void) {
     TEST_CHECK(!util_is_numeric_string("1 "));
 }
 
-static void test_duplicate_hardware(void) {
+static void test_duplicate_hardware(void)
+{
     char buffer[256];
 
     const char *single[] = {"GPU A"};
@@ -299,25 +307,37 @@ static void test_duplicate_hardware(void) {
     TEST_STR_EQ(buffer, "prefix\n     GPU A");
 }
 
-static bool format_size_in_child(bool kib, bool mib, bool gib, double total,
-                                 double used, data_unit_t from_unit,
-                                 char *out_buf, size_t out_size) {
-    int pipe_fds[2];
-    if (pipe(pipe_fds) != 0) return false;
+static bool format_size_in_child(bool kib, bool mib, bool gib, double total, double used,
+                                 data_unit_t from_unit, char *out_buf, size_t out_size)
+{
+    int pipe_fds[2] = {-1, -1};
+    pid_t pid = -1;
+    int status = 0;
+    ssize_t read_count = 0;
+    bool result = false;
 
-    pid_t pid = fork();
+    if (pipe(pipe_fds) != 0) {
+        goto cleanup;
+    }
+
+    pid = fork();
     if (pid < 0) {
-        close(pipe_fds[0]);
-        close(pipe_fds[1]);
-        return false;
+        goto cleanup;
     }
 
     if (pid == 0) {
         close(pipe_fds[0]);
+        pipe_fds[0] = -1;
 
-        if (kib) util_set_output_unit(UNIT_KIB);
-        if (mib) util_set_output_unit(UNIT_MIB);
-        if (gib) util_set_output_unit(UNIT_GIB);
+        if (kib) {
+            util_set_output_unit(UNIT_KIB);
+        }
+        if (mib) {
+            util_set_output_unit(UNIT_MIB);
+        }
+        if (gib) {
+            util_set_output_unit(UNIT_GIB);
+        }
 
         char buffer[128] = {0};
         util_format_size(total, used, buffer, sizeof(buffer), from_unit);
@@ -326,7 +346,9 @@ static bool format_size_in_child(bool kib, bool mib, bool gib, double total,
         size_t remaining = strlen(buffer) + 1;
         while (remaining > 0) {
             ssize_t written = write(pipe_fds[1], cursor, remaining);
-            if (written <= 0) break;
+            if (written <= 0) {
+                break;
+            }
             cursor += written;
             remaining -= (size_t)written;
         }
@@ -336,23 +358,33 @@ static bool format_size_in_child(bool kib, bool mib, bool gib, double total,
     }
 
     close(pipe_fds[1]);
+    pipe_fds[1] = -1;
 
-    ssize_t read_count = read(pipe_fds[0], out_buf, out_size - 1);
+    read_count = read(pipe_fds[0], out_buf, out_size - 1);
     close(pipe_fds[0]);
+    pipe_fds[0] = -1;
 
-    int status = 0;
     waitpid(pid, &status, 0);
 
-    if (read_count <= 0 || !WIFEXITED(status) ||
-        WEXITSTATUS(status) != EXIT_SUCCESS) {
-        return false;
+    if (read_count <= 0 || !WIFEXITED(status) || WEXITSTATUS(status) != EXIT_SUCCESS) {
+        goto cleanup;
     }
 
     out_buf[read_count] = '\0';
-    return true;
+    result = true;
+
+cleanup:
+    if (pipe_fds[0] != -1) {
+        close(pipe_fds[0]);
+    }
+    if (pipe_fds[1] != -1) {
+        close(pipe_fds[1]);
+    }
+    return result;
 }
 
-static void test_format_size(void) {
+static void test_format_size(void)
+{
     char buffer[128];
 
     memset(buffer, 0, sizeof(buffer));
@@ -380,33 +412,29 @@ static void test_format_size(void) {
     TEST_STR_EQ(buffer, "2.00 KiB / 0.50 KiB (100%)");
 
     memset(buffer, 0, sizeof(buffer));
-    util_format_size(32.0 * 1024 * 1024 * 1024, 0, buffer, sizeof(buffer),
-                     UNIT_B);
+    util_format_size(32.0 * 1024 * 1024 * 1024, 0, buffer, sizeof(buffer), UNIT_B);
     TEST_STR_EQ(buffer, "0.00 GiB / 32.00 GiB (0%)");
 
     memset(buffer, 0, sizeof(buffer));
-    TEST_CHECK(format_size_in_child(true, false, false, 1048576, 524288,
-                                    UNIT_B, buffer, sizeof(buffer)));
+    TEST_CHECK(
+        format_size_in_child(true, false, false, 1048576, 524288, UNIT_B, buffer, sizeof(buffer)));
     TEST_STR_EQ(buffer, "512 KiB / 1024 KiB (50%)");
 
     memset(buffer, 0, sizeof(buffer));
-    TEST_CHECK(format_size_in_child(false, true, false, 1073741824, 536870912,
-                                    UNIT_B, buffer, sizeof(buffer)));
+    TEST_CHECK(format_size_in_child(false, true, false, 1073741824, 536870912, UNIT_B, buffer,
+                                    sizeof(buffer)));
     TEST_STR_EQ(buffer, "512 MiB / 1024 MiB (50%)");
 
     memset(buffer, 0, sizeof(buffer));
-    TEST_CHECK(format_size_in_child(false, false, true, 2, 1, UNIT_GIB,
-                                    buffer, sizeof(buffer)));
+    TEST_CHECK(format_size_in_child(false, false, true, 2, 1, UNIT_GIB, buffer, sizeof(buffer)));
     TEST_STR_EQ(buffer, "1.00 GiB / 2.00 GiB (50%)");
 
     memset(buffer, 0, sizeof(buffer));
-    TEST_CHECK(format_size_in_child(true, true, false, 2, 1, UNIT_GIB,
-                                    buffer, sizeof(buffer)));
+    TEST_CHECK(format_size_in_child(true, true, false, 2, 1, UNIT_GIB, buffer, sizeof(buffer)));
     TEST_STR_EQ(buffer, "1024 MiB / 2048 MiB (50%)");
 
     memset(buffer, 0, sizeof(buffer));
-    TEST_CHECK(format_size_in_child(true, true, true, 2, 1, UNIT_GIB,
-                                    buffer, sizeof(buffer)));
+    TEST_CHECK(format_size_in_child(true, true, true, 2, 1, UNIT_GIB, buffer, sizeof(buffer)));
     TEST_STR_EQ(buffer, "1.00 GiB / 2.00 GiB (50%)");
 
     char small[8];
@@ -415,104 +443,105 @@ static void test_format_size(void) {
     TEST_CHECK(small[sizeof(small) - 1] == '\0');
 }
 
-static void test_parse_ids_file(void) {
-    const char *content =
-        "# comment line\n"
-        "\n"
-        "10de  NVIDIA\n"
-        "\t1c82  GeForce GTX 1050 Ti\n"
-        "\t0de1  GeForce GT 630\n"
-        "1002  AMD\n"
-        "\t73ff  Navi 23\n";
+static tree_forest_t *parse_ids_from_content(const char *content, size_t capacity)
+{
+    char *path = NULL;
+    FILE *fp = NULL;
+    tree_forest_t *ids = NULL;
 
-    char *path = test_write_temp_file(content);
-    TEST_CHECK(path != NULL);
+    path = test_write_temp_file(content);
+    if (!path) {
+        goto cleanup;
+    }
 
-    FILE *fp = fopen(path, "r");
-    TEST_CHECK(fp != NULL);
-    if (!fp) return;
-
-    forest *ids = util_parse_ids_file(fp, 2);
-    TEST_CHECK(ids != NULL);
-    TEST_INT_EQ(ids->count, 2);
-    TEST_CHECK(ids->capacity >= 2);
-
-    node *nvidia = find_in_forest(ids, 0x10de);
-    node *amd = find_in_forest(ids, 0x1002);
-    TEST_CHECK(nvidia != NULL);
-    TEST_CHECK(amd != NULL);
-    TEST_STR_EQ(nvidia->name, "NVIDIA");
-    TEST_STR_EQ(amd->name, "AMD");
-
-    node *gtx = find_in_tree(nvidia, 0x1c82);
-    node *gt630 = find_in_tree(nvidia, 0x0de1);
-    node *navi = find_in_tree(amd, 0x73ff);
-    TEST_CHECK(gtx != NULL);
-    TEST_CHECK(gt630 != NULL);
-    TEST_CHECK(navi != NULL);
-    TEST_STR_EQ(gtx->name, "GeForce GTX 1050 Ti");
-    TEST_STR_EQ(gt630->name, "GeForce GT 630");
-    TEST_STR_EQ(navi->name, "Navi 23");
-
-    TEST_CHECK(find_in_tree(nvidia, 0xFFFF) == NULL);
-    TEST_CHECK(find_in_forest(ids, 0x1c82) == NULL);
-
-    destroy_forest(ids);
-    unlink(path);
-    free(path);
-
-    path = test_write_temp_file("");
-    TEST_CHECK(path != NULL);
     fp = fopen(path, "r");
-    TEST_CHECK(fp != NULL);
-    if (!fp) return;
-    ids = util_parse_ids_file(fp, 4);
-    TEST_CHECK(ids != NULL);
-    TEST_INT_EQ(ids->count, 0);
-    destroy_forest(ids);
-    unlink(path);
-    free(path);
+    if (!fp) {
+        goto cleanup;
+    }
 
-    path = test_write_temp_file("\t1c82  Device Without Vendor\n");
-    TEST_CHECK(path != NULL);
-    fp = fopen(path, "r");
-    TEST_CHECK(fp != NULL);
-    if (!fp) return;
-    ids = util_parse_ids_file(fp, 4);
-    TEST_CHECK(ids != NULL);
-    TEST_INT_EQ(ids->count, 0);
-    destroy_forest(ids);
-    unlink(path);
-    free(path);
+    ids = util_parse_ids_file(fp, capacity);
+    fp = NULL;
 
-    path = test_write_temp_file("10de  NVIDIA\r\n\t1c82  Device\r\n");
-    TEST_CHECK(path != NULL);
-    fp = fopen(path, "r");
-    TEST_CHECK(fp != NULL);
-    if (!fp) return;
-    ids = util_parse_ids_file(fp, 1);
-    TEST_CHECK(ids != NULL);
-    TEST_INT_EQ(ids->count, 1);
-    TEST_STR_EQ(ids->roots[0]->name, "NVIDIA");
-    TEST_CHECK(find_in_tree(ids->roots[0], 0x1c82) != NULL);
-    destroy_forest(ids);
-    unlink(path);
-    free(path);
-
-    TEST_CHECK(util_parse_ids_file(NULL, 4) == NULL);
-
-    path = test_write_temp_file("10de  NVIDIA\n");
-    TEST_CHECK(path != NULL);
-    fp = fopen(path, "r");
-    TEST_CHECK(fp != NULL);
-    if (!fp) return;
-    TEST_CHECK(util_parse_ids_file(fp, 0) == NULL);
-    fclose(fp);
-    unlink(path);
-    free(path);
+cleanup:
+    if (fp) {
+        fclose(fp);
+    }
+    if (path) {
+        unlink(path);
+        free(path);
+    }
+    return ids;
 }
 
-int main(void) {
+static void test_parse_ids_file(void)
+{
+    const char *content = "# comment line\n"
+                          "\n"
+                          "10de  NVIDIA\n"
+                          "\t1c82  GeForce GTX 1050 Ti\n"
+                          "\t0de1  GeForce GT 630\n"
+                          "1002  AMD\n"
+                          "\t73ff  Navi 23\n";
+
+    tree_forest_t *ids = parse_ids_from_content(content, 2);
+    TEST_CHECK(ids != NULL);
+    if (ids) {
+        TEST_INT_EQ(ids->count, 2);
+        TEST_CHECK(ids->capacity >= 2);
+
+        tree_node_t *nvidia = tree_find_root(ids, 0x10de);
+        tree_node_t *amd = tree_find_root(ids, 0x1002);
+        TEST_CHECK(nvidia != NULL);
+        TEST_CHECK(amd != NULL);
+        if (nvidia && amd) {
+            TEST_STR_EQ(nvidia->name, "NVIDIA");
+            TEST_STR_EQ(amd->name, "AMD");
+
+            const tree_node_t *gtx = tree_find(nvidia, 0x1c82);
+            const tree_node_t *gt630 = tree_find(nvidia, 0x0de1);
+            const tree_node_t *navi = tree_find(amd, 0x73ff);
+            TEST_CHECK(gtx != NULL);
+            TEST_CHECK(gt630 != NULL);
+            TEST_CHECK(navi != NULL);
+            TEST_STR_EQ(gtx->name, "GeForce GTX 1050 Ti");
+            TEST_STR_EQ(gt630->name, "GeForce GT 630");
+            TEST_STR_EQ(navi->name, "Navi 23");
+        }
+
+        TEST_CHECK(tree_find(nvidia, 0xFFFF) == NULL);
+        TEST_CHECK(tree_find_root(ids, 0x1c82) == NULL);
+        tree_destroy_forest(ids);
+    }
+
+    ids = parse_ids_from_content("", 4);
+    TEST_CHECK(ids != NULL);
+    if (ids) {
+        TEST_INT_EQ(ids->count, 0);
+        tree_destroy_forest(ids);
+    }
+
+    ids = parse_ids_from_content("\t1c82  Device Without Vendor\n", 4);
+    TEST_CHECK(ids != NULL);
+    if (ids) {
+        TEST_INT_EQ(ids->count, 0);
+        tree_destroy_forest(ids);
+    }
+
+    ids = parse_ids_from_content("10de  NVIDIA\r\n\t1c82  Device\r\n", 1);
+    TEST_CHECK(ids != NULL);
+    if (ids) {
+        TEST_INT_EQ(ids->count, 1);
+        TEST_STR_EQ(ids->roots[0]->name, "NVIDIA");
+        TEST_CHECK(tree_find(ids->roots[0], 0x1c82) != NULL);
+        tree_destroy_forest(ids);
+    }
+
+    TEST_CHECK(util_parse_ids_file(NULL, 4) == NULL);
+    TEST_CHECK(parse_ids_from_content("10de  NVIDIA\n", 0) == NULL);
+}
+
+int main(void)
+{
     test_string_in_array();
     test_string_lookup();
     test_read_line();

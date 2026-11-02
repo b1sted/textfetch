@@ -1,21 +1,26 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "terminal.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "pal/terminal_os.h"
-#include "terminal.h"
 #include "../support/test_framework.h"
 #include "../support/test_helpers.h"
+#include "pal/terminal_os.h"
 
 /* Deterministic shell value used by terminal_print_info(). */
-void term_get_shell(char *out_buf, const size_t buf_size) {
-    if (!out_buf || buf_size == 0) return;
+void term_get_shell(char *out_buf, const size_t buf_size)
+{
+    if (!out_buf || buf_size == 0) {
+        return;
+    }
     snprintf(out_buf, buf_size, "%s", "bash 5.2.15");
 }
 
-static void test_fallback_shell(void) {
+static void test_fallback_shell(void)
+{
     char buffer[64];
 
     setenv("SHELL", "/bin/zsh", 1);
@@ -43,7 +48,8 @@ static void test_fallback_shell(void) {
     term_fallback_shell(buffer, 0);
 }
 
-static void test_sanitize_name(void) {
+static void test_sanitize_name(void)
+{
     char buffer[128];
 
     snprintf(buffer, sizeof(buffer), "%s",
@@ -51,13 +57,11 @@ static void test_sanitize_name(void) {
     term_sanitize_name(buffer);
     TEST_STR_EQ(buffer, "bash 5.2.15");
 
-    snprintf(buffer, sizeof(buffer), "%s",
-             "GNU bash, version 5.1.16(1)-release");
+    snprintf(buffer, sizeof(buffer), "%s", "GNU bash, version 5.1.16(1)-release");
     term_sanitize_name(buffer);
     TEST_STR_EQ(buffer, "bash 5.1.16");
 
-    snprintf(buffer, sizeof(buffer), "%s",
-             "zsh 5.9 (x86_64-apple-darwin23.0)");
+    snprintf(buffer, sizeof(buffer), "%s", "zsh 5.9 (x86_64-apple-darwin23.0)");
     term_sanitize_name(buffer);
     TEST_STR_EQ(buffer, "zsh 5.9");
 
@@ -92,11 +96,12 @@ static void test_sanitize_name(void) {
     term_sanitize_name(NULL);
 }
 
-static void test_print_info(void) {
-    test_capture_t capture;
+static void test_print_info(void)
+{
+    test_capture_t capture = {0};
     TEST_CHECK(test_capture_begin(&capture));
 
-    terminal_print_info();
+    term_print_info();
 
     char *output = test_capture_end(&capture);
     TEST_CHECK(output != NULL);
@@ -105,7 +110,8 @@ static void test_print_info(void) {
     free(output);
 }
 
-int main(void) {
+int main(void)
+{
     test_fallback_shell();
     test_sanitize_name();
     test_print_info();

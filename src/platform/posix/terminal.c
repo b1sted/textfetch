@@ -1,19 +1,19 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "pal/terminal_os.h"
+
+#include <locale.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include <locale.h>
 
 #include "defs.h"
 #include "sys_utils.h"
 #include "terminal.h"
 #include "ui.h"
 
-#include "pal/terminal_os.h"
-
-void terminal_print_info(void) {
+void term_print_info(void)
+{
     char shell_buf[LINE_BUFFER] = {0};
     term_get_shell(shell_buf, LINE_BUFFER);
 
@@ -27,8 +27,11 @@ void terminal_print_info(void) {
     ui_print_info("Locale", locale);
 }
 
-void term_fallback_shell(char *out_buf, const size_t buf_size) {
-    if (!out_buf || buf_size == 0) return;
+void term_fallback_shell(char *out_buf, const size_t buf_size)
+{
+    if (!out_buf || buf_size == 0) {
+        return;
+    }
 
     const char *env_shell = getenv("SHELL");
 
@@ -44,16 +47,19 @@ void term_fallback_shell(char *out_buf, const size_t buf_size) {
     snprintf(out_buf, buf_size, "%s", name);
 }
 
-void term_sanitize_name(char *out_buf) {
-    if (!out_buf || !*out_buf) return;
+void term_sanitize_name(char *out_buf)
+{
+    if (!out_buf || !*out_buf) {
+        return;
+    }
 
-    char *gnu_prefix = "GNU ";
+    const char *gnu_prefix = "GNU ";
     size_t prefix_len = strlen(gnu_prefix);
     if (strncmp(out_buf, gnu_prefix, prefix_len) == 0) {
         memmove(out_buf, out_buf + prefix_len, strlen(out_buf) - prefix_len + 1);
     }
 
-    char *version_marker = ", version";
+    const char *version_marker = ", version";
     char *version_ptr = strstr(out_buf, version_marker);
     if (version_ptr) {
         size_t marker_len = strlen(version_marker);
@@ -72,6 +78,8 @@ void term_sanitize_name(char *out_buf) {
     version_start = strpbrk(out_buf, "0123456789");
     if (version_start) {
         char *garbage = strpbrk(version_start, " (");
-        if (garbage) *garbage = '\0';
+        if (garbage) {
+            *garbage = '\0';
+        }
     }
 }

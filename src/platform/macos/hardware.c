@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 
+#include "pal/hardware_os.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -30,8 +32,6 @@
 #include "sys_utils.h"
 #include "ui.h"
 
-#include "pal/hardware_os.h"
-
 /**
  * Compatibility shim for kIOMainPortDefault.
  *
@@ -59,31 +59,27 @@ typedef struct {
 } dvfs_entry_t;
 
 /* IOKit service class exposing the Apple Silicon power-management node. */
-#define PMGR_SERVICE_CLASS   "AppleARMIODevice"
+#define PMGR_SERVICE_CLASS "AppleARMIODevice"
 
 /* PMGR node names used by current and newer Apple Silicon generations. */
-#define PMGR_NODE_NAME       "pmgr"
+#define PMGR_NODE_NAME "pmgr"
 #define PMGR_CHILD_NODE_NAME "pmgr-child"
 
 /* Prefix shared by the binary DVFS tables published by PMGR. */
 #define DVFS_PROPERTY_PREFIX "voltage-states"
 
 /* Each DVFS state is a little-endian (frequency, voltage) pair of uint32_t. */
-#define DVFS_ENTRY_BYTES     8U
+#define DVFS_ENTRY_BYTES 8U
 
 /* Accepted frequency ranges for tables expressed in Hz and kHz. */
-#define CPU_FREQ_MIN_HZ      100000000ULL
-#define CPU_FREQ_MAX_HZ      10000000000ULL
-#define CPU_FREQ_MIN_KHZ     100000ULL
-#define CPU_FREQ_MAX_KHZ     10000000ULL
+#define CPU_FREQ_MIN_HZ 100000000ULL
+#define CPU_FREQ_MAX_HZ 10000000000ULL
+#define CPU_FREQ_MIN_KHZ 100000ULL
+#define CPU_FREQ_MAX_KHZ 10000000ULL
 #endif
 
 /* System power status bitmask flags indicating charging state. */
-typedef enum {
-    FLAG_AC       = 1 << 0,
-    FLAG_CHARGING = 1 << 1,
-    FLAG_FULL     = 1 << 2
-} power_flags;
+typedef enum { FLAG_AC = 1 << 0, FLAG_CHARGING = 1 << 1, FLAG_FULL = 1 << 2 } power_flags_t;
 
 /**
  * Retrieves the total count of physical CPU packages via sysctl.
@@ -184,9 +180,9 @@ static const char *hw_get_bat_status(const CFDictionaryRef power_source,
  */
 static io_iterator_t get_matching_iterator(const char *class_name);
 
-void hw_get_cpu_info(void) {
-    cpu_info_t cpu;
-    memset(&cpu, 0, sizeof(cpu_info_t));
+void hw_get_cpu_info(void)
+{
+    cpu_info_t cpu = {0};
 
     hw_get_cpu_package(&cpu);
     hw_get_cpu_model(&cpu);
@@ -199,7 +195,8 @@ void hw_get_cpu_info(void) {
     ui_print_info("CPU", cpu_info);
 }
 
-static void hw_get_cpu_package(cpu_info_t *cpu) {
+static void hw_get_cpu_package(cpu_info_t *cpu)
+{
     uint32_t packages = 0;
     size_t packages_size = sizeof(packages);
 
@@ -210,7 +207,8 @@ static void hw_get_cpu_package(cpu_info_t *cpu) {
     cpu->packages = (packages) ? (uint8_t)packages : 1;
 }
 
-static void hw_get_cpu_model(cpu_info_t *cpu) {
+static void hw_get_cpu_model(cpu_info_t *cpu)
+{
     size_t model_size = sizeof(cpu->model);
 
     if (sysctlbyname("machdep.cpu.brand_string", cpu->model, &model_size, NULL, 0) != 0) {
@@ -240,7 +238,8 @@ static void hw_get_cpu_model(cpu_info_t *cpu) {
     }
 }
 
-static void hw_get_cpu_cores(cpu_info_t *cpu) {
+static void hw_get_cpu_cores(cpu_info_t *cpu)
+{
     uint64_t common_cores = 0;
     size_t common_size = sizeof(common_cores);
 
@@ -282,11 +281,10 @@ static void hw_get_cpu_cores(cpu_info_t *cpu) {
  * @param bytes Pointer to the first byte of the value.
  * @return The decoded 32-bit value.
  */
-static uint32_t dvfs_read_le32(const uint8_t *bytes) {
-    return (uint32_t)bytes[0]
-         | ((uint32_t)bytes[1] << 8)
-         | ((uint32_t)bytes[2] << 16)
-         | ((uint32_t)bytes[3] << 24);
+static uint32_t dvfs_read_le32(const uint8_t *bytes)
+{
+    return (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8) | ((uint32_t)bytes[2] << 16) |
+           ((uint32_t)bytes[3] << 24);
 }
 
 /**
@@ -298,7 +296,8 @@ static uint32_t dvfs_read_le32(const uint8_t *bytes) {
  * @param raw Frequency field as stored in the DVFS table.
  * @return Frequency in Hz, or 0 when the value is not a plausible CPU clock.
  */
-static uint64_t dvfs_normalize_frequency(const uint32_t raw) {
+static uint64_t dvfs_normalize_frequency(const uint32_t raw)
+{
     uint64_t frequency = raw;
 
     if (frequency >= CPU_FREQ_MIN_HZ && frequency <= CPU_FREQ_MAX_HZ) {
@@ -318,21 +317,27 @@ static uint64_t dvfs_normalize_frequency(const uint32_t raw) {
  * @param data CoreFoundation data containing (frequency, voltage) pairs.
  * @return Peak frequency in Hz, or 0 when the table is empty or malformed.
  */
-static uint64_t dvfs_peak_frequency(CFDataRef data) {
-    if (!data || CFGetTypeID(data) != CFDataGetTypeID()) return 0;
+static uint64_t dvfs_peak_frequency(CFDataRef data)
+{
+    if (!data || CFGetTypeID(data) != CFDataGetTypeID()) {
+        return 0;
+    }
 
     CFIndex length = CFDataGetLength(data);
     const uint8_t *bytes = CFDataGetBytePtr(data);
 
-    if (!bytes || length < (CFIndex)DVFS_ENTRY_BYTES) return 0;
+    if (!bytes || length < (CFIndex)DVFS_ENTRY_BYTES) {
+        return 0;
+    }
 
     uint64_t peak = 0;
 
-    for (CFIndex offset = 0;
-         offset + (CFIndex)DVFS_ENTRY_BYTES <= length;
+    for (CFIndex offset = 0; offset + (CFIndex)DVFS_ENTRY_BYTES <= length;
          offset += (CFIndex)DVFS_ENTRY_BYTES) {
         uint64_t frequency = dvfs_normalize_frequency(dvfs_read_le32(bytes + offset));
-        if (frequency > peak) peak = frequency;
+        if (frequency > peak) {
+            peak = frequency;
+        }
     }
 
     return peak;
@@ -344,17 +349,18 @@ static uint64_t dvfs_peak_frequency(CFDataRef data) {
  * @param key Property dictionary key.
  * @return true when the key is a CFString starting with "voltage-states".
  */
-static bool dvfs_is_property_name(CFTypeRef key) {
-    if (!key || CFGetTypeID(key) != CFStringGetTypeID()) return false;
-
-    char name[SMALL_BUFFER] = {0};
-    if (!CFStringGetCString((CFStringRef)key, name, sizeof(name),
-                            kCFStringEncodingUTF8)) {
+static bool dvfs_is_property_name(CFTypeRef key)
+{
+    if (!key || CFGetTypeID(key) != CFStringGetTypeID()) {
         return false;
     }
 
-    return strncmp(name, DVFS_PROPERTY_PREFIX,
-                   sizeof(DVFS_PROPERTY_PREFIX) - 1) == 0;
+    char name[SMALL_BUFFER] = {0};
+    if (!CFStringGetCString((CFStringRef)key, name, sizeof(name), kCFStringEncodingUTF8)) {
+        return false;
+    }
+
+    return strncmp(name, DVFS_PROPERTY_PREFIX, sizeof(DVFS_PROPERTY_PREFIX) - 1) == 0;
 }
 
 /**
@@ -363,37 +369,47 @@ static bool dvfs_is_property_name(CFTypeRef key) {
  * @param properties Property dictionary copied from an AppleARMIODevice node.
  * @return Highest frequency across all voltage-states tables, in Hz.
  */
-static uint64_t dvfs_peak_from_properties(CFDictionaryRef properties) {
+static uint64_t dvfs_peak_from_properties(CFDictionaryRef properties)
+{
     if (!properties || CFGetTypeID(properties) != CFDictionaryGetTypeID()) {
         return 0;
     }
 
     CFIndex count = CFDictionaryGetCount(properties);
-    if (count <= 0) return 0;
+    if (count <= 0) {
+        return 0;
+    }
 
-    const void **keys = malloc((size_t)count * sizeof(*keys));
-    const void **values = malloc((size_t)count * sizeof(*values));
+    const void **keys = NULL;
+    const void **values = NULL;
+    uint64_t peak = 0;
+
+    keys = malloc((size_t)count * sizeof(*keys));
+    values = malloc((size_t)count * sizeof(*values));
 
     if (!keys || !values) {
-        free(keys);
-        free(values);
-        return 0;
+        goto cleanup;
     }
 
     CFDictionaryGetKeysAndValues(properties, keys, values);
 
-    uint64_t peak = 0;
-
     for (CFIndex i = 0; i < count; i++) {
-        if (!dvfs_is_property_name(keys[i])) continue;
+        if (!dvfs_is_property_name(keys[i])) {
+            continue;
+        }
 
         CFTypeRef value = values[i];
-        if (!value || CFGetTypeID(value) != CFDataGetTypeID()) continue;
+        if (!value || CFGetTypeID(value) != CFDataGetTypeID()) {
+            continue;
+        }
 
         uint64_t frequency = dvfs_peak_frequency((CFDataRef)value);
-        if (frequency > peak) peak = frequency;
+        if (frequency > peak) {
+            peak = frequency;
+        }
     }
 
+cleanup:
     free(keys);
     free(values);
 
@@ -409,48 +425,64 @@ static uint64_t dvfs_peak_from_properties(CFDictionaryRef properties) {
  * @param name IORegistry entry name.
  * @return true for a PMGR node.
  */
-static bool is_pmgr_node_name(const char *name) {
+static bool is_pmgr_node_name(const char *name)
+{
     return name != NULL &&
-           (strcmp(name, PMGR_NODE_NAME) == 0 ||
-            strcmp(name, PMGR_CHILD_NODE_NAME) == 0);
+           (strcmp(name, PMGR_NODE_NAME) == 0 || strcmp(name, PMGR_CHILD_NODE_NAME) == 0);
 }
 
-static uint64_t hw_get_arm_cpu_freq(void) {
-    io_iterator_t iterator = get_matching_iterator(PMGR_SERVICE_CLASS);
-    if (iterator == IO_OBJECT_NULL) return 0;
-
+static uint64_t hw_get_arm_cpu_freq(void)
+{
+    io_iterator_t iterator = IO_OBJECT_NULL;
+    io_service_t service = IO_OBJECT_NULL;
     uint64_t peak = 0;
-    io_service_t service;
+
+    iterator = get_matching_iterator(PMGR_SERVICE_CLASS);
+    if (iterator == IO_OBJECT_NULL) {
+        goto cleanup;
+    }
 
     while ((service = IOIteratorNext(iterator))) {
         char name[MEDIUM_BUFFER] = {0};
 
-        if (IORegistryEntryGetName(service, name) == kIOReturnSuccess &&
-            is_pmgr_node_name(name)) {
+        if (IORegistryEntryGetName(service, name) == kIOReturnSuccess && is_pmgr_node_name(name)) {
             CFMutableDictionaryRef properties = NULL;
 
-            if (IORegistryEntryCreateCFProperties(service, &properties,
-                                                  kCFAllocatorDefault, 0) == kIOReturnSuccess &&
+            if (IORegistryEntryCreateCFProperties(service, &properties, kCFAllocatorDefault, 0) ==
+                    kIOReturnSuccess &&
                 properties) {
                 uint64_t candidate = dvfs_peak_from_properties(properties);
-                if (candidate > peak) peak = candidate;
+                if (candidate > peak) {
+                    peak = candidate;
+                }
 
                 CFRelease(properties);
             }
         }
 
         IOObjectRelease(service);
+        service = IO_OBJECT_NULL;
 
-        if (peak > 0) break;
+        if (peak > 0) {
+            goto cleanup;
+        }
     }
 
-    IOObjectRelease(iterator);
-
+cleanup:
+    if (service) {
+        IOObjectRelease(service);
+    }
+    if (iterator) {
+        IOObjectRelease(iterator);
+    }
     return peak;
 }
 
-static void hw_get_cpu_freq(cpu_info_t *cpu) {
-    if (cpu == NULL) return;
+static void hw_get_cpu_freq(cpu_info_t *cpu)
+{
+    if (cpu == NULL) {
+        return;
+    }
 
     /*
      * Prefer the live PMGR DVFS tables when the running SoC exposes them.
@@ -459,8 +491,8 @@ static void hw_get_cpu_freq(cpu_info_t *cpu) {
      */
     uint64_t peak_hz = hw_get_arm_cpu_freq();
     if (peak_hz > 0) {
-        snprintf(cpu->frequency, sizeof(cpu->frequency),
-                 " @ %.2f GHz", (double)peak_hz / HZ_PER_GHZ);
+        snprintf(cpu->frequency, sizeof(cpu->frequency), " @ %.2f GHz",
+                 (double)peak_hz / HZ_PER_GHZ);
         return;
     }
 
@@ -474,39 +506,37 @@ static void hw_get_cpu_freq(cpu_info_t *cpu) {
      *
      * Note: Search order is crucial (e.g., "M1 Max" must be checked before "M1").
      */
-    static const dvfs_entry_t m_series[] = {
-        {3.23, 2.06, "M1 Ultra"},
-        {3.23, 2.06, "M1 Max"},
-        {3.23, 2.06, "M1 Pro"},
-        {3.20, 2.06, "M1"},
-        {3.70, 2.42, "M2 Ultra"},
-        {3.69, 2.42, "M2 Max"},
-        {3.50, 2.42, "M2 Pro"},
-        {3.50, 2.42, "M2"},
-        {4.05, 2.75, "M3 Ultra"},
-        {4.05, 2.75, "M3 Max"},
-        {4.05, 2.75, "M3 Pro"},
-        {4.05, 2.75, "M3"},
-        {4.51, 2.89, "M4 Max"},
-        {4.51, 2.89, "M4 Pro"},
-        {4.41, 2.89, "M4"},
-        {4.61, 3.05, "M5 Max"},
-        {4.61, 3.05, "M5 Pro"},
-        {4.61, 3.05, "M5"},
-        {0, 0, NULL}
-    };
+    static const dvfs_entry_t m_series[] = {{3.23, 2.06, "M1 Ultra"},
+                                            {3.23, 2.06, "M1 Max"},
+                                            {3.23, 2.06, "M1 Pro"},
+                                            {3.20, 2.06, "M1"},
+                                            {3.70, 2.42, "M2 Ultra"},
+                                            {3.69, 2.42, "M2 Max"},
+                                            {3.50, 2.42, "M2 Pro"},
+                                            {3.50, 2.42, "M2"},
+                                            {4.05, 2.75, "M3 Ultra"},
+                                            {4.05, 2.75, "M3 Max"},
+                                            {4.05, 2.75, "M3 Pro"},
+                                            {4.05, 2.75, "M3"},
+                                            {4.51, 2.89, "M4 Max"},
+                                            {4.51, 2.89, "M4 Pro"},
+                                            {4.41, 2.89, "M4"},
+                                            {4.61, 3.05, "M5 Max"},
+                                            {4.61, 3.05, "M5 Pro"},
+                                            {4.61, 3.05, "M5"},
+                                            {0, 0, NULL}};
 
     for (size_t i = 0; m_series[i].model != NULL; i++) {
         if (strstr(cpu->model, m_series[i].model) != NULL) {
-            snprintf(cpu->frequency, sizeof(cpu->frequency),
-                     " @ %.2f / %.2f GHz", m_series[i].p_frequency,
-                     m_series[i].e_frequency);
+            snprintf(cpu->frequency, sizeof(cpu->frequency), " @ %.2f / %.2f GHz",
+                     m_series[i].p_frequency, m_series[i].e_frequency);
             return;
         }
     }
 }
 #else
-static void hw_get_cpu_freq(cpu_info_t *cpu) {
+static void hw_get_cpu_freq(cpu_info_t *cpu)
+{
     uint64_t hz = 0;
     size_t size = sizeof(hz);
 
@@ -530,33 +560,46 @@ static void hw_get_cpu_freq(cpu_info_t *cpu) {
  * @param buf_size Size of the destination buffer.
  * @return true if a non-empty string was copied.
  */
-static bool cf_value_to_string(CFTypeRef value, char *out_buf, const size_t buf_size) {
-    if (!value || !out_buf || buf_size == 0) return false;
+static bool cf_value_to_string(CFTypeRef value, char *out_buf, const size_t buf_size)
+{
+    if (!value || !out_buf || buf_size == 0) {
+        return false;
+    }
 
     out_buf[0] = '\0';
 
     CFTypeID type = CFGetTypeID(value);
 
     if (type == CFStringGetTypeID()) {
-        return CFStringGetCString((CFStringRef)value, out_buf,
-                                  (CFIndex)buf_size, kCFStringEncodingUTF8) != 0;
+        return CFStringGetCString((CFStringRef)value, out_buf, (CFIndex)buf_size,
+                                  kCFStringEncodingUTF8) != 0;
     }
 
-    if (type != CFDataGetTypeID()) return false;
+    if (type != CFDataGetTypeID()) {
+        return false;
+    }
 
     CFDataRef data = (CFDataRef)value;
     CFIndex length = CFDataGetLength(data);
     const uint8_t *bytes = CFDataGetBytePtr(data);
 
-    if (!bytes || length <= 0) return false;
+    if (!bytes || length <= 0) {
+        return false;
+    }
 
     size_t copy = (size_t)length;
-    if (copy >= buf_size) copy = buf_size - 1;
+    if (copy >= buf_size) {
+        copy = buf_size - 1;
+    }
 
     size_t actual = 0;
-    while (actual < copy && bytes[actual] != '\0') actual++;
+    while (actual < copy && bytes[actual] != '\0') {
+        actual++;
+    }
 
-    if (actual == 0) return false;
+    if (actual == 0) {
+        return false;
+    }
 
     memcpy(out_buf, bytes, actual);
     out_buf[actual] = '\0';
@@ -564,28 +607,37 @@ static bool cf_value_to_string(CFTypeRef value, char *out_buf, const size_t buf_
     return true;
 }
 
-void hw_get_gpu_info(void) {
+void hw_get_gpu_info(void)
+{
     char gpu_buf[GPU_BUFFER] = {0};
     size_t gpu_size = sizeof(gpu_buf);
 
     hw_get_gpu_accelerator(gpu_buf, gpu_size);
 
-    if (gpu_buf[0] == '\0') hw_get_gpu_pci(gpu_buf, gpu_size);
+    if (gpu_buf[0] == '\0') {
+        hw_get_gpu_pci(gpu_buf, gpu_size);
+    }
 
-    if (gpu_buf[0] != '\0') ui_print_info("GPU", gpu_buf);
+    if (gpu_buf[0] != '\0') {
+        ui_print_info("GPU", gpu_buf);
+    }
 }
 
-static void hw_get_gpu_accelerator(char *out_buf, const size_t buf_size) {
+static void hw_get_gpu_accelerator(char *out_buf, const size_t buf_size)
+{
     io_iterator_t iterator = get_matching_iterator("IOAccelerator");
     if (iterator != IO_OBJECT_NULL) {
-        io_service_t service;
+        io_service_t service = IO_OBJECT_NULL;
         while ((service = IOIteratorNext(iterator))) {
-            CFTypeRef model = IORegistryEntryCreateCFProperty(service, CFSTR("model"), kCFAllocatorDefault, 0);
+            CFTypeRef model =
+                IORegistryEntryCreateCFProperty(service, CFSTR("model"), kCFAllocatorDefault, 0);
 
             if (!model) {
-                io_registry_entry_t parent;
-                if (IORegistryEntryGetParentEntry(service, kIOServicePlane, &parent) == kIOReturnSuccess) {
-                    model = IORegistryEntryCreateCFProperty(parent, CFSTR("model"), kCFAllocatorDefault, 0);
+                io_registry_entry_t parent = IO_OBJECT_NULL;
+                if (IORegistryEntryGetParentEntry(service, kIOServicePlane, &parent) ==
+                    kIOReturnSuccess) {
+                    model = IORegistryEntryCreateCFProperty(parent, CFSTR("model"),
+                                                            kCFAllocatorDefault, 0);
                     IOObjectRelease(parent);
                 }
             }
@@ -594,7 +646,9 @@ static void hw_get_gpu_accelerator(char *out_buf, const size_t buf_size) {
                 char name[MEDIUM_BUFFER] = {0};
 
                 if (cf_value_to_string(model, name, sizeof(name))) {
-                    if (out_buf[0] != '\0') strlcat(out_buf, "\n     ", buf_size);
+                    if (out_buf[0] != '\0') {
+                        strlcat(out_buf, "\n     ", buf_size);
+                    }
                     strlcat(out_buf, name, buf_size);
                 }
 
@@ -608,24 +662,29 @@ static void hw_get_gpu_accelerator(char *out_buf, const size_t buf_size) {
     }
 }
 
-static void hw_get_gpu_pci(char *out_buf, const size_t buf_size) {
+static void hw_get_gpu_pci(char *out_buf, const size_t buf_size)
+{
     io_iterator_t iterator = get_matching_iterator("IOPCIDevice");
     if (iterator != IO_OBJECT_NULL) {
-        io_registry_entry_t entry;
+        io_registry_entry_t entry = IO_OBJECT_NULL;
         while ((entry = IOIteratorNext(iterator))) {
-            CFTypeRef class_code = IORegistryEntryCreateCFProperty(entry, CFSTR("class-code"), kCFAllocatorDefault, 0);
+            CFTypeRef class_code =
+                IORegistryEntryCreateCFProperty(entry, CFSTR("class-code"), kCFAllocatorDefault, 0);
             if (class_code) {
                 if (CFGetTypeID(class_code) == CFDataGetTypeID() &&
                     CFDataGetLength((CFDataRef)class_code) >= 3) {
                     const uint8_t *code = CFDataGetBytePtr((CFDataRef)class_code);
 
                     if (code && code[2] == 0x03) {
-                        CFTypeRef model = IORegistryEntryCreateCFProperty(entry, CFSTR("model"), kCFAllocatorDefault, 0);
+                        CFTypeRef model = IORegistryEntryCreateCFProperty(entry, CFSTR("model"),
+                                                                          kCFAllocatorDefault, 0);
                         if (model) {
                             char name[MEDIUM_BUFFER] = {0};
 
                             if (cf_value_to_string(model, name, sizeof(name))) {
-                                if (out_buf[0] != '\0') strlcat(out_buf, "\n     ", buf_size);
+                                if (out_buf[0] != '\0') {
+                                    strlcat(out_buf, "\n     ", buf_size);
+                                }
                                 strlcat(out_buf, name, buf_size);
                             }
 
@@ -644,10 +703,9 @@ static void hw_get_gpu_pci(char *out_buf, const size_t buf_size) {
     }
 }
 
-void hw_get_mem_info(void) {
-    mem_info_t mem;
-    memset(&mem, 0, sizeof(mem_info_t));
-
+void hw_get_mem_info(void)
+{
+    mem_info_t mem = {0};
     mem_flags_t flags = 0;
 
     hw_get_ram_info(&flags, &mem);
@@ -655,7 +713,8 @@ void hw_get_mem_info(void) {
     hw_print_mem_info(flags, &mem);
 }
 
-static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *mem) {
+static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *mem)
+{
     size_t len = sizeof(mem->ram_size);
 
     if (sysctlbyname("hw.memsize", &mem->ram_size, &len, NULL, 0) != 0) {
@@ -663,26 +722,24 @@ static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *mem) {
         return;
     }
 
-    if (mem->ram_size == 0) return;
+    if (mem->ram_size == 0) {
+        return;
+    }
 
     mach_port_t host = mach_host_self();
     vm_statistics64_data_t vm = {0};
     mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
-    vm_size_t pg;
+    vm_size_t pg = 0;
 
     if (host_page_size(host, &pg) != KERN_SUCCESS) {
         V_PRINTF("[ERROR] Mach host_page_size() failed\n");
-        mach_port_deallocate(mach_task_self(), host);
-        return;
+        goto cleanup;
     }
 
     if (host_statistics64(host, HOST_VM_INFO64, (host_info64_t)&vm, &count) != KERN_SUCCESS) {
         V_PRINTF("[ERROR] Mach host_statistics64() failed\n");
-        mach_port_deallocate(mach_task_self(), host);
-        return;
+        goto cleanup;
     }
-
-    mach_port_deallocate(mach_task_self(), host);
 
     int64_t wired = (int64_t)vm.wire_count * pg;
 
@@ -706,10 +763,14 @@ static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *mem) {
     }
 
     *flags |= MEM_RAM;
+
+cleanup:
+    mach_port_deallocate(mach_task_self(), host);
 }
 
-static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *mem) {
-    struct xsw_usage xsw;
+static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *mem)
+{
+    struct xsw_usage xsw = {0};
     size_t xsw_len = sizeof(struct xsw_usage);
 
     if (sysctlbyname("vm.swapusage", &xsw, &xsw_len, NULL, 0) != 0) {
@@ -717,7 +778,9 @@ static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *mem) {
         return;
     }
 
-    if (xsw.xsu_total == 0) return;
+    if (xsw.xsu_total == 0) {
+        return;
+    }
 
     *flags |= MEM_SWAP;
 
@@ -725,41 +788,50 @@ static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *mem) {
     mem->swap_used = xsw.xsu_used;
 }
 
-void hw_get_drives_info(void) {
-    int n = getfsstat(NULL, 0, MNT_WAIT);
+void hw_get_drives_info(void)
+{
+    int32_t n = 0;
+    struct statfs *st = NULL;
+    string_set_t *outputted_disks = NULL;
+
+    n = getfsstat(NULL, 0, MNT_WAIT);
     if (n <= 0) {
         V_PRINTF("[ERROR] getfsstat() size query failed: %s\n", strerror(errno));
-        return;
+        goto cleanup;
     }
 
-    struct statfs *st = malloc(sizeof(struct statfs) * n);
+    st = malloc(sizeof(struct statfs) * (size_t)n);
     if (!st) {
-        V_PRINTF("[ERROR] malloc(%zu) for statfs failed: %s\n",
-                 sizeof(struct statfs) * n, strerror(errno));
-        return;
+        V_PRINTF("[ERROR] malloc(%zu) for statfs failed: %s\n", sizeof(struct statfs) * (size_t)n,
+                 strerror(errno));
+        goto cleanup;
     }
 
-    n = getfsstat(st, (int)(sizeof(struct statfs) * n), MNT_NOWAIT);
+    n = getfsstat(st, (int)(sizeof(struct statfs) * (size_t)n), MNT_NOWAIT);
     if (n <= 0) {
         V_PRINTF("[ERROR] getfsstat() data fetch failed: %s\n", strerror(errno));
-        free(st);
-        return;
+        goto cleanup;
     }
 
-    string_set_t *outputted_disks = strset_create(INITIAL_CAPACITY);
+    outputted_disks = strset_create(INITIAL_CAPACITY);
 
-    for (int i = 0; i < n; i++) {
+    for (size_t i = 0; i < (size_t)n; i++) {
         if (strcmp(st[i].f_mntonname, "/") != 0 &&
-            strncmp(st[i].f_mntonname, "/Volumes/", 9) != 0) continue;
+            strncmp(st[i].f_mntonname, "/Volumes/", 9) != 0) {
+            continue;
+        }
 
-        if (strset_contains(outputted_disks, st[i].f_mntfromname)) continue;
+        if (strset_contains(outputted_disks, st[i].f_mntfromname)) {
+            continue;
+        }
 
         strset_add(outputted_disks, st[i].f_mntfromname);
 
         uint64_t total = (uint64_t)st[i].f_blocks * st[i].f_bsize;
         uint64_t used = total - ((uint64_t)st[i].f_bfree * st[i].f_bsize);
 
-        char label[LINE_BUFFER], info[LINE_BUFFER];
+        char label[LINE_BUFFER] = {0};
+        char info[LINE_BUFFER] = {0};
         snprintf(label, sizeof(label), "Disk (%s)", st[i].f_mntonname);
         util_format_size((double)total, (double)used, info, sizeof(info), UNIT_B);
 
@@ -768,31 +840,34 @@ void hw_get_drives_info(void) {
         ui_print_info(label, info);
     }
 
-    strset_destroy(outputted_disks);
+cleanup:
+    if (outputted_disks) {
+        strset_destroy(outputted_disks);
+    }
     free(st);
 }
 
-void hw_get_bat_info(void) {
-    CFTypeRef info = IOPSCopyPowerSourcesInfo();
+void hw_get_bat_info(void)
+{
+    CFTypeRef info = NULL;
+    CFArrayRef list = NULL;
+    CFDictionaryRef dict = NULL;
+
+    info = IOPSCopyPowerSourcesInfo();
     if (!info) {
         V_PRINTF("[ERROR] IOPSCopyPowerSourcesInfo() failed (no power sources found)\n");
-        return;
+        goto cleanup;
     }
 
-    CFArrayRef list = IOPSCopyPowerSourcesList(info);
+    list = IOPSCopyPowerSourcesList(info);
     if (!list || CFArrayGetCount(list) == 0) {
-        if (list) CFRelease(list);
-        CFRelease(info);
-        return;
+        goto cleanup;
     }
 
-    CFDictionaryRef dict = IOPSGetPowerSourceDescription(info,
-                                                         CFArrayGetValueAtIndex(list, 0));
+    dict = IOPSGetPowerSourceDescription(info, CFArrayGetValueAtIndex(list, 0));
     if (!dict || CFGetTypeID(dict) != CFDictionaryGetTypeID()) {
         V_PRINTF("[ERROR] IOPSGetPowerSourceDescription() returned an invalid description\n");
-        CFRelease(list);
-        CFRelease(info);
-        return;
+        goto cleanup;
     }
 
     char model[SMALL_BUFFER] = "Unknown";
@@ -820,18 +895,27 @@ void hw_get_bat_info(void) {
     char info_buf[MEDIUM_BUFFER] = {0};
 
     snprintf(label_buf, sizeof(label_buf), "Battery (%s)", model);
-    snprintf(info_buf, sizeof(info_buf), "%u%% (%s, Health: %s)", pct, status, health);
+    snprintf(info_buf, sizeof(info_buf), "%" PRIu8 "%% (%s, Health: %s)", pct, status, health);
 
     ui_print_info(label_buf, info_buf);
 
-    CFRelease(list);
-    CFRelease(info);
+cleanup:
+    if (list) {
+        CFRelease(list);
+    }
+    if (info) {
+        CFRelease(info);
+    }
 }
 
-static uint8_t hw_get_bat_percentage(const CFDictionaryRef power_source) {
-    if (!power_source || CFGetTypeID(power_source) != CFDictionaryGetTypeID()) return 0;
+static uint8_t hw_get_bat_percentage(const CFDictionaryRef power_source)
+{
+    if (!power_source || CFGetTypeID(power_source) != CFDictionaryGetTypeID()) {
+        return 0;
+    }
 
-    int cur_cap = 0, max_cap = 0;
+    int32_t cur_cap = 0;
+    int32_t max_cap = 0;
 
     CFNumberRef cur_ref = CFDictionaryGetValue(power_source, CFSTR(kIOPSCurrentCapacityKey));
     CFNumberRef max_ref = CFDictionaryGetValue(power_source, CFSTR(kIOPSMaxCapacityKey));
@@ -844,17 +928,23 @@ static uint8_t hw_get_bat_percentage(const CFDictionaryRef power_source) {
     }
 
     /* Check max_cap > 0 to avoid division by zero if battery is reporting error */
-    if (max_cap <= 0) return 0;
+    if (max_cap <= 0) {
+        return 0;
+    }
 
     double percentage = ((double)cur_cap / (double)max_cap) * 100.0;
-    if (percentage < 0.0) percentage = 0.0;
-    if (percentage > 100.0) percentage = 100.0;
+    if (percentage < 0.0) {
+        percentage = 0.0;
+    }
+    if (percentage > 100.0) {
+        percentage = 100.0;
+    }
 
     return (uint8_t)percentage;
 }
 
-static const char *hw_get_bat_status(const CFDictionaryRef power_source,
-                                     uint8_t battery_percentage) {
+static const char *hw_get_bat_status(const CFDictionaryRef power_source, uint8_t battery_percentage)
+{
     if (!power_source || CFGetTypeID(power_source) != CFDictionaryGetTypeID()) {
         return "Unknown";
     }
@@ -862,36 +952,46 @@ static const char *hw_get_bat_status(const CFDictionaryRef power_source,
     CFStringRef state = CFDictionaryGetValue(power_source, CFSTR(kIOPSPowerSourceStateKey));
 
     CFBooleanRef is_charging = CFDictionaryGetValue(power_source, CFSTR(kIOPSIsChargingKey));
-    CFBooleanRef is_charged  = CFDictionaryGetValue(power_source, CFSTR(kIOPSIsChargedKey));
+    CFBooleanRef is_charged = CFDictionaryGetValue(power_source, CFSTR(kIOPSIsChargedKey));
 
     uint8_t status = 0;
 
     if (state && CFGetTypeID(state) == CFStringGetTypeID() &&
-        CFStringCompare(state, CFSTR(kIOPSACPowerValue), 0) == kCFCompareEqualTo)
+        CFStringCompare(state, CFSTR(kIOPSACPowerValue), 0) == kCFCompareEqualTo) {
         status |= FLAG_AC;
+    }
     if (is_charging && CFGetTypeID(is_charging) == CFBooleanGetTypeID() &&
-        CFBooleanGetValue(is_charging))
+        CFBooleanGetValue(is_charging)) {
         status |= FLAG_CHARGING;
+    }
     if ((is_charged && CFGetTypeID(is_charged) == CFBooleanGetTypeID() &&
-         CFBooleanGetValue(is_charged)) || (battery_percentage >= 100))
+         CFBooleanGetValue(is_charged)) ||
+        (battery_percentage >= 100)) {
         status |= FLAG_FULL;
+    }
 
-    if (status & FLAG_FULL && status & FLAG_AC)
+    if (status & FLAG_FULL && status & FLAG_AC) {
         return "Full";
-    if (status & FLAG_CHARGING)
+    }
+    if (status & FLAG_CHARGING) {
         return "Charging";
-    if (status & FLAG_AC)
+    }
+    if (status & FLAG_AC) {
         return "Not Charging";
+    }
     return "Discharging";
 }
 
-static io_iterator_t get_matching_iterator(const char *class_name) {
+static io_iterator_t get_matching_iterator(const char *class_name)
+{
     CFMutableDictionaryRef matching_dict = IOServiceMatching(class_name);
-    if (!matching_dict) return IO_OBJECT_NULL;
+    if (!matching_dict) {
+        return IO_OBJECT_NULL;
+    }
 
-    io_iterator_t iterator;
-    if (IOServiceGetMatchingServices(kIOMainPortDefault,
-                                     matching_dict, &iterator) != kIOReturnSuccess) {
+    io_iterator_t iterator = IO_OBJECT_NULL;
+    if (IOServiceGetMatchingServices(kIOMainPortDefault, matching_dict, &iterator) !=
+        kIOReturnSuccess) {
         V_PRINTF("[ERROR] IOServiceGetMatchingServices failed to find %s\n", class_name);
         return IO_OBJECT_NULL;
     }

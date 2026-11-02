@@ -22,6 +22,12 @@ echo "Generating $TARGET from $IDS_FILE..."
 cat <<EOF > "$TARGET"
 /* SPDX-License-Identifier: MIT */
 
+#include <stddef.h>
+#include <stdint.h>
+
+#ifndef ARM_IDS_H
+#define ARM_IDS_H
+
 /**
  * Auto-generated database of ARM CPU implementer and part IDs.
  * 
@@ -38,8 +44,10 @@ EOF
 $PROGRAM -i "$IDS_FILE" | sed 's/data_arm_ids/arm_ids/g' >> "$TARGET"
 
 sed -i \
-    -e 's/^unsigned char arm_ids/static const unsigned char arm_ids/' \
-    -e 's/^unsigned int arm_ids_len/static const unsigned int arm_ids_len/' \
+    -e 's/^unsigned char arm_ids/static const uint8_t arm_ids/' \
+    -e 's/^unsigned int arm_ids_len/static const size_t arm_ids_len/' \
     "$TARGET"
+
+printf '\n#endif /* ARM_IDS_H */\n' >> "$TARGET"
 
 echo "Done!"

@@ -52,7 +52,7 @@ bool strset_add(string_set_t *set, const char *key);
  * @param key String to find.
  * @return true if key exists, false otherwise.
  */
-bool strset_contains(string_set_t *set, const char *key);
+bool strset_contains(const string_set_t *set, const char *key);
 
 /**
  * Retrieves the total number of items currently in the set.
