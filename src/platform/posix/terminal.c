@@ -8,6 +8,7 @@
 
 #include "defs.h"
 #include "sys_utils.h"
+#include "terminal.h"
 #include "ui.h"
 
 #include "pal/terminal_os.h"
