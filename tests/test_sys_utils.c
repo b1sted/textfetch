@@ -179,6 +179,11 @@ static void test_read_integers(void) {
 
     TEST_CHECK(!util_read_uint8("/tmp/textfetch-does-not-exist", &u8));
     TEST_CHECK(!util_read_uint8(NULL, &u8));
+    TEST_CHECK(!util_read_uint8("/tmp/anything", NULL));
+    TEST_CHECK(!util_read_uint16("/tmp/anything", NULL));
+    TEST_CHECK(!util_read_uint32("/tmp/anything", NULL));
+    TEST_CHECK(!util_read_int16("/tmp/anything", NULL));
+    TEST_CHECK(!util_read_int32("/tmp/anything", NULL));
 }
 
 static void test_read_hex(void) {
@@ -230,6 +235,8 @@ static void test_read_hex(void) {
 
     TEST_CHECK(!util_read_hex("/tmp/textfetch-does-not-exist", &hex32));
     TEST_CHECK(!util_read_hex(NULL, &hex32));
+    TEST_CHECK(!util_read_hex("/tmp/anything", NULL));
+    TEST_CHECK(!util_read_hex16("/tmp/anything", NULL));
 }
 
 static void test_file_exists(void) {
@@ -308,9 +315,9 @@ static bool format_size_in_child(bool kib, bool mib, bool gib, double total,
     if (pid == 0) {
         close(pipe_fds[0]);
 
-        if (kib) cfg_set_kib();
-        if (mib) cfg_set_mib();
-        if (gib) cfg_set_gib();
+        if (kib) util_set_output_unit(UNIT_KIB);
+        if (mib) util_set_output_unit(UNIT_MIB);
+        if (gib) util_set_output_unit(UNIT_GIB);
 
         char buffer[128] = {0};
         util_format_size(total, used, buffer, sizeof(buffer), from_unit);
@@ -350,7 +357,7 @@ static void test_format_size(void) {
 
     memset(buffer, 0, sizeof(buffer));
     util_format_size(1024, 512, buffer, sizeof(buffer), UNIT_B);
-    TEST_STR_EQ(buffer, "512.00 B / 1.00 KiB (50%)");
+    TEST_STR_EQ(buffer, "0.50 KiB / 1.00 KiB (50%)");
 
     memset(buffer, 0, sizeof(buffer));
     util_format_size(0, 0, buffer, sizeof(buffer), UNIT_B);
@@ -358,14 +365,26 @@ static void test_format_size(void) {
 
     memset(buffer, 0, sizeof(buffer));
     util_format_size(1.5, 0.75, buffer, sizeof(buffer), UNIT_GIB);
-    TEST_STR_EQ(buffer, "768.00 MiB / 1.50 GiB (50%)");
+    TEST_STR_EQ(buffer, "0.75 GiB / 1.50 GiB (50%)");
 
     memset(buffer, 0, sizeof(buffer));
     util_format_size(2048, 1024, buffer, sizeof(buffer), UNIT_KIB);
     TEST_STR_EQ(buffer, "1.00 MiB / 2.00 MiB (50%)");
 
     memset(buffer, 0, sizeof(buffer));
-    util_format_size(1024, 512, buffer, sizeof(buffer), UNIT_B);
+    util_format_size(1024, 2048, buffer, sizeof(buffer), UNIT_B);
+    TEST_STR_EQ(buffer, "2.00 KiB / 1.00 KiB (100%)");
+
+    memset(buffer, 0, sizeof(buffer));
+    util_format_size(512, 2048, buffer, sizeof(buffer), UNIT_B);
+    TEST_STR_EQ(buffer, "2.00 KiB / 0.50 KiB (100%)");
+
+    memset(buffer, 0, sizeof(buffer));
+    util_format_size(32.0 * 1024 * 1024 * 1024, 0, buffer, sizeof(buffer),
+                     UNIT_B);
+    TEST_STR_EQ(buffer, "0.00 GiB / 32.00 GiB (0%)");
+
+    memset(buffer, 0, sizeof(buffer));
     TEST_CHECK(format_size_in_child(true, false, false, 1048576, 524288,
                                     UNIT_B, buffer, sizeof(buffer)));
     TEST_STR_EQ(buffer, "512 KiB / 1024 KiB (50%)");
@@ -377,6 +396,16 @@ static void test_format_size(void) {
 
     memset(buffer, 0, sizeof(buffer));
     TEST_CHECK(format_size_in_child(false, false, true, 2, 1, UNIT_GIB,
+                                    buffer, sizeof(buffer)));
+    TEST_STR_EQ(buffer, "1.00 GiB / 2.00 GiB (50%)");
+
+    memset(buffer, 0, sizeof(buffer));
+    TEST_CHECK(format_size_in_child(true, true, false, 2, 1, UNIT_GIB,
+                                    buffer, sizeof(buffer)));
+    TEST_STR_EQ(buffer, "1024 MiB / 2048 MiB (50%)");
+
+    memset(buffer, 0, sizeof(buffer));
+    TEST_CHECK(format_size_in_child(true, true, true, 2, 1, UNIT_GIB,
                                     buffer, sizeof(buffer)));
     TEST_STR_EQ(buffer, "1.00 GiB / 2.00 GiB (50%)");
 

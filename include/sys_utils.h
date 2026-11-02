@@ -15,10 +15,10 @@
  * Verbose formatted print wrapper.
  * Sends output to stderr only if the verbose flag is set.
  */
-#define V_PRINTF(fmt, ...)                       \
+#define V_PRINTF(...)                            \
     do {                                         \
         if (cfg_get_verbose())                   \
-            fprintf(stderr, fmt, ##__VA_ARGS__); \
+            fprintf(stderr, __VA_ARGS__);        \
     } while (0)
 
 /* Standard macro to evaluate and return the smaller of two values. */
@@ -31,8 +31,25 @@ typedef enum {
     UNIT_MIB,
     UNIT_GIB,
     UNIT_TIB,
-    UNIT_PIB
+    UNIT_PIB,
+    UNIT_AUTO
 } data_unit_t;
+
+/**
+ * Returns the unit currently forced for size formatting.
+ *
+ * @return The active output unit, or UNIT_AUTO when sizes are scaled
+ * automatically.
+ */
+data_unit_t util_get_output_unit(void);
+
+/**
+ * Sets the unit used for size formatting. The most recent call wins, which
+ * makes command-line flag order determine the final output format.
+ *
+ * @param unit The unit to force, or UNIT_AUTO for automatic scaling.
+ */
+void util_set_output_unit(data_unit_t unit);
 
 /**
  * Searches for any string from a null-terminated array within a target string.

@@ -126,14 +126,14 @@ static void test_print_memory(void) {
     hw_print_mem_info(MEM_RAM, &node);
     char *output = test_capture_end(&capture);
     TEST_CHECK(output != NULL);
-    TEST_STR_EQ(output, "RAM: 512.00 MiB / 1.00 GiB (50%)\n");
+    TEST_STR_EQ(output, "RAM: 0.50 GiB / 1.00 GiB (50%)\n");
     free(output);
 
     TEST_CHECK(test_capture_begin(&capture));
     hw_print_mem_info(MEM_SWAP, &node);
     output = test_capture_end(&capture);
     TEST_CHECK(output != NULL);
-    TEST_STR_EQ(output, "Swap: 0.00 B / 2.00 GiB (0%)\n");
+    TEST_STR_EQ(output, "Swap: 0.00 GiB / 2.00 GiB (0%)\n");
     free(output);
 
     TEST_CHECK(test_capture_begin(&capture));
@@ -141,8 +141,8 @@ static void test_print_memory(void) {
     output = test_capture_end(&capture);
     TEST_CHECK(output != NULL);
     TEST_STR_EQ(output,
-                "RAM: 512.00 MiB / 1.00 GiB (50%)\n"
-                "Swap: 0.00 B / 2.00 GiB (0%)\n");
+                "RAM: 0.50 GiB / 1.00 GiB (50%)\n"
+                "Swap: 0.00 GiB / 2.00 GiB (0%)\n");
     free(output);
 
     TEST_CHECK(test_capture_begin(&capture));
