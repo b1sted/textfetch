@@ -124,7 +124,8 @@ void system_init(void) {
 }
 
 void sys_get_distro(char *out_buf, const size_t buf_size) {
-    if (!out_buf || buf_size == 0) {
+    /* At least one character plus the terminating NUL is required. */
+    if (!out_buf || buf_size < 2) {
         V_PRINTF("[ERROR] %s: invalid arguments\n", __func__);
         return;
     }
@@ -165,7 +166,8 @@ static const char *sys_get_os_name(void) {
 }
 
 void sys_get_model_name(char *out_buf, size_t buf_size) {
-    if (!out_buf || buf_size == 0) {
+    /* At least one character plus the terminating NUL is required. */
+    if (!out_buf || buf_size < 2) {
         V_PRINTF("[ERROR] %s: invalid arguments\n", __func__);
         return;
     }
@@ -176,6 +178,9 @@ void sys_get_model_name(char *out_buf, size_t buf_size) {
         snprintf(out_buf, buf_size, "Unknown Apple Device");
         return;
     }
+
+    /* Defensively guarantee NUL termination even if the kernel fills the buffer. */
+    out_buf[buf_size - 1] = '\0';
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_9
     const char *path = "/System/Library/PrivateFrameworks/ServerInformation.framework/"
