@@ -22,7 +22,9 @@
 
 /* Temporary or pseudo-filesystems to ignore when summarizing disk space. */
 #define IGNORE_MOUNT_POINTS                                                                        \
-    {"/.", "/boot", "/mnt/wslg/distro", "/run/user", "/var", "/apex", "/bootstrap-apex", NULL}
+    {                                                                                              \
+        "/.", "/boot", "/mnt/wslg/distro", "/run/user", "/var", "/apex", "/bootstrap-apex", NULL   \
+    }
 
 /* Path for reading virtual memory usage. */
 #define MEMINFO_PATH "/proc/meminfo"
