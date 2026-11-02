@@ -4,7 +4,8 @@
 
 #include "config.h"
 
-const char version_string[] __attribute__((used, section(VERSION_SECTION))) = APP_VERSION;
+/* Compiled application version string exposed to runtime consumers. */
+const char version_string[] = APP_VERSION;
 
 static struct {
     bool kib_format : 1;

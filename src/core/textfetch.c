@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
                 ui_print_help(argv[0]);
                 exit(EXIT_SUCCESS);
             case 'V':
-                ui_print_version(APP_VERSION);
+                ui_print_version(version_string);
                 exit(EXIT_SUCCESS);
             default:
                 fprintf(stderr, 
