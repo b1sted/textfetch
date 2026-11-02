@@ -44,19 +44,58 @@ CORE_SRCS     := $(wildcard $(SRCDIR)/core/*.c)
 PLATFORM_SRCS := $(foreach dir,$(PLATFORM_SUBDIRS),$(wildcard $(SRCDIR)/platform/$(dir)/*.c))
 SRCS          := $(CORE_SRCS) $(PLATFORM_SRCS)
 
+LINT_SRCS     := $(CORE_SRCS) $(wildcard $(SRCDIR)/platform/posix/*.c)
+LINT_TESTS    := $(filter-out tests/test_capture.c tests/test_linux_%.c,$(wildcard tests/test_*.c))
+
+ifeq ($(UNAME_S), Darwin)
+    LINT_SRCS += $(wildcard $(SRCDIR)/platform/macos/*.c)
+else ifneq (,$(filter $(UNAME_S),Linux Android))
+    LINT_SRCS += $(wildcard $(SRCDIR)/platform/linux-common/*.c)
+    LINT_TESTS += tests/test_capture.c $(wildcard tests/test_linux_*.c)
+
+    ifneq ($(UNAME_O), Android)
+        LINT_SRCS += $(wildcard $(SRCDIR)/platform/linux/*.c)
+    endif
+endif
+
 OBJS_REL      := $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/release/%.o, $(SRCS))
 OBJS_DEV      := $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/dev/%.o, $(SRCS))
 OBJS_LEAKS    := $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/leaks/%.o, $(SRCS))
 
 DEPS          := $(OBJS_REL:.o=.d) $(OBJS_DEV:.o=.d) $(OBJS_LEAKS:.o=.d)
 
-.PHONY: all dev leaks clean
+.PHONY: all dev leaks test lint clean
 
 all: $(TARGET)
 
 dev: $(TARGET_DEV)
 
 leaks: $(TARGET_LEAKS)
+
+test: $(TARGET)
+	$(MAKE) -C tests test TEXTFETCH_BIN="$(abspath $(TARGET))"
+
+lint:
+	@command -v clang-tidy >/dev/null 2>&1 || { \
+		echo "error: clang-tidy is required for linting" >&2; exit 1; \
+	}
+	@set -e; \
+	for file in $(LINT_SRCS); do \
+		echo "clang-tidy $$file"; \
+		clang-tidy --quiet "$$file" -- -Iinclude -std=c99; \
+	done
+	@set -e; \
+	for file in $(LINT_TESTS); do \
+		echo "clang-tidy $$file"; \
+		clang-tidy --quiet "$$file" -- -Iinclude -Itests -std=c99 \
+			-D_POSIX_C_SOURCE=200809L; \
+	done
+	@command -v cppcheck >/dev/null 2>&1 || { \
+		echo "error: cppcheck is required for linting" >&2; exit 1; \
+	}
+	cppcheck --enable=warning,performance,portability --error-exitcode=1 \
+		--std=c99 --suppress=missingIncludeSystem --suppress=unusedFunction \
+		--suppress=normalCheckLevelMaxBranches -Iinclude $(LINT_SRCS)
 
 $(TARGET): $(OBJS_REL) | $(BINDIR)
 	$(CC) $(CFLAGS) $(REL_CFLAGS) $^ -o $@ $(LDFLAGS) $(REL_LDFLAGS)

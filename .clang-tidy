@@ -1,0 +1,21 @@
+---
+Checks: >
+  -*,
+  clang-analyzer-*,
+  bugprone-*,
+  -bugprone-reserved-identifier,
+  -bugprone-signed-bitwise,
+  -bugprone-narrowing-conversions,
+  -bugprone-multi-level-implicit-pointer-conversion,
+  -bugprone-macro-parentheses,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-not-null-terminated-result,
+  -bugprone-suspicious-memset-usage,
+  -bugprone-too-small-loop-variable,
+  -bugprone-assignment-in-if-condition,
+  -clang-analyzer-security.ArrayBound,
+  -clang-analyzer-optin.core.EnumCastOutOfRange
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*'
+FormatStyle: none
+...
