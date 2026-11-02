@@ -73,7 +73,7 @@ const char *util_string_lookup(const char *str, const char *dict[][2],
 }
 
 bool util_read_line(const char *path, char *out_buf, const size_t buf_size) {
-    if (!out_buf || buf_size == 0) return false;
+    if (!path || !out_buf || buf_size == 0) return false;
     out_buf[0] = '\0';
 
     int fd = open(path, O_RDONLY);
@@ -148,11 +148,16 @@ bool util_read_int32(const char *path, int32_t *value) {
 
 static bool util_parse_long(const char *path, long *out_val) {
     char buf[TINY_BUFFER] = {0};
-    util_read_line(path, buf, sizeof(buf));
 
-    if (buf[0] == '\0') return false;
+    if (!out_val || !util_read_line(path, buf, sizeof(buf))) return false;
 
-    *out_val = strtoul(buf, NULL, 10);
+    char *endptr = NULL;
+    errno = 0;
+
+    long value = strtol(buf, &endptr, 10);
+    if (endptr == buf || *endptr != '\0' || errno == ERANGE) return false;
+
+    *out_val = value;
     return true;
 }
 
@@ -165,7 +170,7 @@ bool util_read_hex(const char *path, uint32_t *value) {
 
     unsigned long long val = strtoull(buf, &endptr, 16);
 
-    if (endptr == buf) return false;
+    if (endptr == buf || *endptr != '\0') return false;
 
     if (errno == ERANGE) return false;
 
@@ -188,11 +193,11 @@ bool util_read_hex16(const char *path, uint16_t *value) {
 }
 
 bool util_is_file_exist(const char *path) {
-    return access(path, R_OK) == 0;
+    return path != NULL && access(path, R_OK) == 0;
 }
 
 bool util_is_numeric_string(const char *str) {
-    if (*str == '\0') return false;
+    if (!str || *str == '\0') return false;
 
     const char *cursor = str;
     while (*cursor) {
@@ -205,6 +210,8 @@ bool util_is_numeric_string(const char *str) {
 
 void util_format_duplicate_hardware(const char **strings, uint8_t count, 
                                     char *out_buf, size_t buf_size) {
+    if (!strings || !out_buf || buf_size == 0) return;
+
     for (uint8_t i = 0; i < count; i++) {
         if (!strings[i] || strings[i][0] == '\0') continue;
         
@@ -239,6 +246,8 @@ void util_format_duplicate_hardware(const char **strings, uint8_t count,
 
 void util_format_size(double total_size, double used_size, char *out_buf,
                       const size_t buf_size, data_unit_t from_unit) {
+    if (!out_buf || buf_size == 0) return;
+
     static const char *memory_units[] = MEMORY_UNITS;
     static const double divisors[] = MEMORY_DIVISORS;
 
