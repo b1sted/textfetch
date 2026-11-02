@@ -296,6 +296,51 @@ static void hw_get_cpu_freq(cpu_info_t *node) {
 }
 #endif
 
+/**
+ * Copies a string-like CoreFoundation value into a NUL-terminated buffer.
+ *
+ * IOKit exposes some string properties as CFData, which carries no guaranteed
+ * terminator. CFString values are converted to UTF-8 when possible.
+ *
+ * @param value The CoreFoundation object to read.
+ * @param out_buf Destination buffer.
+ * @param buf_size Size of the destination buffer.
+ * @return true if a non-empty string was copied.
+ */
+static bool cf_value_to_string(CFTypeRef value, char *out_buf, const size_t buf_size) {
+    if (!value || !out_buf || buf_size == 0) return false;
+
+    out_buf[0] = '\0';
+
+    CFTypeID type = CFGetTypeID(value);
+
+    if (type == CFStringGetTypeID()) {
+        return CFStringGetCString((CFStringRef)value, out_buf,
+                                  (CFIndex)buf_size, kCFStringEncodingUTF8) != 0;
+    }
+
+    if (type != CFDataGetTypeID()) return false;
+
+    CFDataRef data = (CFDataRef)value;
+    CFIndex length = CFDataGetLength(data);
+    const uint8_t *bytes = CFDataGetBytePtr(data);
+
+    if (!bytes || length <= 0) return false;
+
+    size_t copy = (size_t)length;
+    if (copy >= buf_size) copy = buf_size - 1;
+
+    size_t actual = 0;
+    while (actual < copy && bytes[actual] != '\0') actual++;
+
+    if (actual == 0) return false;
+
+    memcpy(out_buf, bytes, actual);
+    out_buf[actual] = '\0';
+
+    return true;
+}
+
 void hw_get_gpu_info(void) {
     char gpu_buf[GPU_BUFFER] = {0};
     size_t gpu_size = sizeof(gpu_buf);
@@ -325,13 +370,7 @@ static void hw_get_gpu_accelerator(char *out_buf, const size_t buf_size) {
             if (model) {
                 char name[MEDIUM_BUFFER] = {0};
 
-                if (CFGetTypeID(model) == CFDataGetTypeID()) {
-                    snprintf(name, sizeof(name), "%s", (const char *)CFDataGetBytePtr((CFDataRef)model));
-                } else if (CFGetTypeID(model) == CFStringGetTypeID()) {
-                    CFStringGetCString((CFStringRef)model, name, sizeof(name), kCFStringEncodingUTF8);
-                }
-
-                if (name[0] != '\0') {
+                if (cf_value_to_string(model, name, sizeof(name))) {
                     if (out_buf[0] != '\0') strlcat(out_buf, "\n     ", buf_size);
                     strlcat(out_buf, name, buf_size);
                 }
@@ -353,15 +392,22 @@ static void hw_get_gpu_pci(char *out_buf, const size_t buf_size) {
         while ((entry = IOIteratorNext(iterator))) {
             CFTypeRef class_code = IORegistryEntryCreateCFProperty(entry, CFSTR("class-code"), kCFAllocatorDefault, 0);
             if (class_code) {
-                const uint8_t *code = CFDataGetBytePtr((CFDataRef)class_code);
-                if (code[2] == 0x03) {
-                    CFTypeRef model = IORegistryEntryCreateCFProperty(entry, CFSTR("model"), kCFAllocatorDefault, 0);
-                    if (model) {
-                        const char *m_ptr = (const char *)CFDataGetBytePtr((CFDataRef)model);
+                if (CFGetTypeID(class_code) == CFDataGetTypeID() &&
+                    CFDataGetLength((CFDataRef)class_code) >= 3) {
+                    const uint8_t *code = CFDataGetBytePtr((CFDataRef)class_code);
 
-                        if (out_buf[0] != '\0') strlcat(out_buf, "\n     ", buf_size);
-                        strlcat(out_buf, m_ptr, buf_size);
-                        CFRelease(model);
+                    if (code && code[2] == 0x03) {
+                        CFTypeRef model = IORegistryEntryCreateCFProperty(entry, CFSTR("model"), kCFAllocatorDefault, 0);
+                        if (model) {
+                            char name[MEDIUM_BUFFER] = {0};
+
+                            if (cf_value_to_string(model, name, sizeof(name))) {
+                                if (out_buf[0] != '\0') strlcat(out_buf, "\n     ", buf_size);
+                                strlcat(out_buf, name, buf_size);
+                            }
+
+                            CFRelease(model);
+                        }
                     }
                 }
 
