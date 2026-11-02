@@ -139,6 +139,8 @@ static void hw_remove_vendor_from_model(const char *vendor_name, char *device_na
 #endif
 
 void sys_get_distro(char *out_buf, const size_t buf_size) {
+    if (out_buf == NULL || buf_size == 0) return;
+
     const char *os_release[] = OS_RELEASE_PATH;
 
     FILE *fp = NULL;
@@ -192,6 +194,8 @@ void sys_get_distro(char *out_buf, const size_t buf_size) {
 
 #if defined(__arm__) || defined(__aarch64__) || defined(__riscv) || defined(__powerpc__)
 void sys_get_model_name(char *out_buf, const size_t buf_size) {
+    if (out_buf == NULL || buf_size == 0) return;
+
     const char *model_file[] = DEVICE_MODEL_FILE;
 
     for (uint8_t i = 0; model_file[i] != NULL; i++) {
@@ -202,6 +206,8 @@ void sys_get_model_name(char *out_buf, const size_t buf_size) {
 }
 #else
 void sys_get_model_name(char *out_buf, const size_t buf_size) {
+    if (out_buf == NULL || buf_size == 0) return;
+
     if (!sys_is_portable()) return;
 
     char vendor_buf[SMALL_BUFFER] = {0};

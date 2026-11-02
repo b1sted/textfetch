@@ -60,10 +60,11 @@ static void hw_print_disk(const char *mnt, const struct statvfs *fs,
  * Parses /proc/meminfo data and derives used RAM and swap capacities.
  *
  * @param memory_file Open stream for the memory information file.
- * @param node Pointer to the memory info structure to populate.
+ * @param mem_node Pointer to the memory info structure to populate.
  * @param flags Pointer to the flags mask to update.
  */
-static void hw_parse_meminfo(FILE *memory_file, mem_info_t *node, mem_flags_t *flags) {
+static void hw_parse_meminfo(FILE *memory_file, mem_info_t *mem_node,
+                             mem_flags_t *flags) {
     uint64_t ram_free = 0, swap_free = 0;
     uint64_t mem_free = 0, buffers = 0, cached = 0, sreclaimable = 0;
     bool has_mem_available = false;
@@ -83,7 +84,7 @@ static void hw_parse_meminfo(FILE *memory_file, mem_info_t *node, mem_flags_t *f
         if (value == endptr) continue;
 
         if (strcmp(key, "MemTotal") == 0) {
-            node->ram_size = temp_val * BYTES_PER_KIB;
+            mem_node->ram_size = temp_val * BYTES_PER_KIB;
         } else if (strcmp(key, "MemAvailable") == 0) {
             ram_free = temp_val * BYTES_PER_KIB;
             has_mem_available = true;
@@ -96,7 +97,7 @@ static void hw_parse_meminfo(FILE *memory_file, mem_info_t *node, mem_flags_t *f
         } else if (strcmp(key, "SReclaimable") == 0) {
             sreclaimable = temp_val * BYTES_PER_KIB;
         } else if (strcmp(key, "SwapTotal") == 0) {
-            node->swap_size = temp_val * BYTES_PER_KIB;
+            mem_node->swap_size = temp_val * BYTES_PER_KIB;
         } else if (strcmp(key, "SwapFree") == 0) {
             swap_free = temp_val * BYTES_PER_KIB;
         }
@@ -106,22 +107,22 @@ static void hw_parse_meminfo(FILE *memory_file, mem_info_t *node, mem_flags_t *f
         ram_free = mem_free + buffers + cached + sreclaimable;
     }
 
-    if (node->ram_size > 0) {
+    if (mem_node->ram_size > 0) {
         *flags |= MEM_RAM;
-        node->ram_used = (ram_free < node->ram_size)
-                         ? node->ram_size - ram_free : 0;
+        mem_node->ram_used = (ram_free < mem_node->ram_size)
+                             ? mem_node->ram_size - ram_free : 0;
     }
 
-    if (node->swap_size > 0) {
+    if (mem_node->swap_size > 0) {
         *flags |= MEM_SWAP;
-        node->swap_used = (swap_free < node->swap_size)
-                          ? node->swap_size - swap_free : 0;
+        mem_node->swap_used = (swap_free < mem_node->swap_size)
+                              ? mem_node->swap_size - swap_free : 0;
     }
 }
 
 void hw_get_mem_info(void) {
-    mem_info_t node;
-    memset(&node, 0, sizeof(mem_info_t));
+    mem_info_t mem_node;
+    memset(&mem_node, 0, sizeof(mem_info_t));
 
     mem_flags_t flags = 0;
 
@@ -131,11 +132,11 @@ void hw_get_mem_info(void) {
         return;
     }
 
-    hw_parse_meminfo(memory_file, &node, &flags);
+    hw_parse_meminfo(memory_file, &mem_node, &flags);
 
     fclose(memory_file);
 
-    hw_print_mem_info(flags, &node);
+    hw_print_mem_info(flags, &mem_node);
 }
 
 void hw_get_drives_info(void) {
