@@ -128,7 +128,7 @@ static void hw_cpu_process_core_node(const char *node_name, cpu_data_t *cpus,
                                      uint16_t *cpu_map, uint8_t *packages);
 
 /**
- * Reads the current scaling frequency for a given CPU package.
+ * Reads the maximum available frequency for a given CPU package.
  *
  * @param cpus Array of CPU data structures.
  * @param package The physical package ID.
@@ -283,9 +283,16 @@ void hw_get_cpu_info(void) {
         uint32_t cores = count_set_bits(&(bitset_t){.bits = cpus[i].core_bits,
                                                     .capacity = MAX_CPU_CORES}, 8);
 
-        snprintf(cpu_formatted[i], sizeof(cpu_formatted[i]),
-                 "%.*s (%" PRIu32 ") @ %.03f GHz",
-                 (int)sizeof(cpus[i].model), cpus[i].model, cores, cpus[i].frequency);
+        if (cpus[i].frequency > 0.0) {
+            snprintf(cpu_formatted[i], sizeof(cpu_formatted[i]),
+                     "%.*s (%" PRIu32 ") @ %.03f GHz",
+                     (int)sizeof(cpus[i].model), cpus[i].model, cores,
+                     cpus[i].frequency);
+        } else {
+            snprintf(cpu_formatted[i], sizeof(cpu_formatted[i]),
+                     "%.*s (%" PRIu32 ")",
+                     (int)sizeof(cpus[i].model), cpus[i].model, cores);
+        }
 
         cpu_strings[i] = cpu_formatted[i];
     }
@@ -352,16 +359,20 @@ static void hw_cpu_process_core_node(const char *node_name, cpu_data_t *cpus,
 }
 
 static void hw_get_cpu_freq(cpu_data_t *cpus, const int16_t package, const char *cpu_suffix) {
+    static const char *freq_files[] = {
+        "cpuinfo_max_freq",
+        "scaling_max_freq",
+        "scaling_cur_freq",
+        "cpuinfo_cur_freq",
+        NULL
+    };
+
     char freq_path[PATH_BUFFER] = {0};
-    snprintf(freq_path, sizeof(freq_path),
-             "%s%s/cpufreq/scaling_cur_freq", SYS_CPU_DIR, cpu_suffix);
-
     uint32_t freq_khz = 0;
-    util_read_uint32(freq_path, &freq_khz);
 
-    if (freq_khz == 0) {
-        snprintf(freq_path, sizeof(freq_path),
-                 "%s%s/cpufreq/cpuinfo_cur_freq", SYS_CPU_DIR, cpu_suffix);
+    for (size_t i = 0; freq_files[i] != NULL && freq_khz == 0; i++) {
+        snprintf(freq_path, sizeof(freq_path), "%s%s/cpufreq/%s",
+                 SYS_CPU_DIR, cpu_suffix, freq_files[i]);
         util_read_uint32(freq_path, &freq_khz);
     }
 
