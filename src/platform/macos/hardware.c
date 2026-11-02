@@ -57,6 +57,25 @@ typedef struct {
     double e_frequency; /* Peak Efficiency-core clock speed in GHz */
     const char *model;
 } dvfs_entry_t;
+
+/* IOKit service class exposing the Apple Silicon power-management node. */
+#define PMGR_SERVICE_CLASS   "AppleARMIODevice"
+
+/* PMGR node names used by current and newer Apple Silicon generations. */
+#define PMGR_NODE_NAME       "pmgr"
+#define PMGR_CHILD_NODE_NAME "pmgr-child"
+
+/* Prefix shared by the binary DVFS tables published by PMGR. */
+#define DVFS_PROPERTY_PREFIX "voltage-states"
+
+/* Each DVFS state is a little-endian (frequency, voltage) pair of uint32_t. */
+#define DVFS_ENTRY_BYTES     8U
+
+/* Accepted frequency ranges for tables expressed in Hz and kHz. */
+#define CPU_FREQ_MIN_HZ      100000000ULL
+#define CPU_FREQ_MAX_HZ      10000000000ULL
+#define CPU_FREQ_MIN_KHZ     100000ULL
+#define CPU_FREQ_MAX_KHZ     10000000ULL
 #endif
 
 /* System power status bitmask flags indicating charging state. */
@@ -88,11 +107,24 @@ static void hw_get_cpu_model(cpu_info_t *node);
 static void hw_get_cpu_cores(cpu_info_t *node);
 
 /**
- * Retrieves the maximum CPU frequency (hardcoded lookup for ARM64, sysctl for x86).
+ * Retrieves the maximum CPU frequency (IOKit DVFS probe with a static
+ * fallback for ARM64, sysctl for x86).
  *
  * @param node Pointer to the CPU info structure.
  */
 static void hw_get_cpu_freq(cpu_info_t *node);
+
+#if TARGET_CPU_ARM64
+/**
+ * Probes the IOKit PMGR DVFS tables for the highest CPU clock speed.
+ *
+ * The lookup is best-effort: VMs and unsupported SoCs have no usable PMGR
+ * node, in which case zero is returned so callers can use a static fallback.
+ *
+ * @return Peak frequency in Hz, or 0 when no valid DVFS table was found.
+ */
+static uint64_t hw_get_arm_cpu_freq(void);
+#endif
 
 /**
  * Queries IOKit for GPUs handled by the IOAccelerator subsystem (typically Apple GPUs).
@@ -241,8 +273,196 @@ static void hw_get_cpu_cores(cpu_info_t *node) {
 }
 
 #if TARGET_CPU_ARM64
+/**
+ * Reads an unaligned little-endian 32-bit value from a byte buffer.
+ *
+ * PMGR property data is not guaranteed to be naturally aligned, so byte-wise
+ * assembly avoids unaligned access penalties and sanitizer complaints.
+ *
+ * @param bytes Pointer to the first byte of the value.
+ * @return The decoded 32-bit value.
+ */
+static uint32_t dvfs_read_le32(const uint8_t *bytes) {
+    return (uint32_t)bytes[0]
+         | ((uint32_t)bytes[1] << 8)
+         | ((uint32_t)bytes[2] << 16)
+         | ((uint32_t)bytes[3] << 24);
+}
+
+/**
+ * Normalizes a raw DVFS frequency field to Hz.
+ *
+ * M1-M3 PMGR tables store frequencies in Hz, while M4 and newer tables use
+ * kHz. Values outside both plausible CPU ranges are rejected as malformed.
+ *
+ * @param raw Frequency field as stored in the DVFS table.
+ * @return Frequency in Hz, or 0 when the value is not a plausible CPU clock.
+ */
+static uint64_t dvfs_normalize_frequency(const uint32_t raw) {
+    uint64_t frequency = raw;
+
+    if (frequency >= CPU_FREQ_MIN_HZ && frequency <= CPU_FREQ_MAX_HZ) {
+        return frequency;
+    }
+
+    if (frequency >= CPU_FREQ_MIN_KHZ && frequency <= CPU_FREQ_MAX_KHZ) {
+        return frequency * 1000ULL;
+    }
+
+    return 0;
+}
+
+/**
+ * Finds the highest frequency in one binary DVFS state table.
+ *
+ * @param data CoreFoundation data containing (frequency, voltage) pairs.
+ * @return Peak frequency in Hz, or 0 when the table is empty or malformed.
+ */
+static uint64_t dvfs_peak_frequency(CFDataRef data) {
+    if (!data || CFGetTypeID(data) != CFDataGetTypeID()) return 0;
+
+    CFIndex length = CFDataGetLength(data);
+    const uint8_t *bytes = CFDataGetBytePtr(data);
+
+    if (!bytes || length < (CFIndex)DVFS_ENTRY_BYTES) return 0;
+
+    uint64_t peak = 0;
+
+    for (CFIndex offset = 0;
+         offset + (CFIndex)DVFS_ENTRY_BYTES <= length;
+         offset += (CFIndex)DVFS_ENTRY_BYTES) {
+        uint64_t frequency = dvfs_normalize_frequency(dvfs_read_le32(bytes + offset));
+        if (frequency > peak) peak = frequency;
+    }
+
+    return peak;
+}
+
+/**
+ * Checks whether a PMGR property name belongs to a DVFS frequency table.
+ *
+ * @param key Property dictionary key.
+ * @return true when the key is a CFString starting with "voltage-states".
+ */
+static bool dvfs_is_property_name(CFTypeRef key) {
+    if (!key || CFGetTypeID(key) != CFStringGetTypeID()) return false;
+
+    char name[SMALL_BUFFER] = {0};
+    if (!CFStringGetCString((CFStringRef)key, name, sizeof(name),
+                            kCFStringEncodingUTF8)) {
+        return false;
+    }
+
+    return strncmp(name, DVFS_PROPERTY_PREFIX,
+                   sizeof(DVFS_PROPERTY_PREFIX) - 1) == 0;
+}
+
+/**
+ * Scans all DVFS properties in a PMGR property dictionary.
+ *
+ * @param properties Property dictionary copied from an AppleARMIODevice node.
+ * @return Highest frequency across all voltage-states tables, in Hz.
+ */
+static uint64_t dvfs_peak_from_properties(CFDictionaryRef properties) {
+    if (!properties || CFGetTypeID(properties) != CFDictionaryGetTypeID()) {
+        return 0;
+    }
+
+    CFIndex count = CFDictionaryGetCount(properties);
+    if (count <= 0) return 0;
+
+    const void **keys = malloc((size_t)count * sizeof(*keys));
+    const void **values = malloc((size_t)count * sizeof(*values));
+
+    if (!keys || !values) {
+        free(keys);
+        free(values);
+        return 0;
+    }
+
+    CFDictionaryGetKeysAndValues(properties, keys, values);
+
+    uint64_t peak = 0;
+
+    for (CFIndex i = 0; i < count; i++) {
+        if (!dvfs_is_property_name(keys[i])) continue;
+
+        CFTypeRef value = values[i];
+        if (!value || CFGetTypeID(value) != CFDataGetTypeID()) continue;
+
+        uint64_t frequency = dvfs_peak_frequency((CFDataRef)value);
+        if (frequency > peak) peak = frequency;
+    }
+
+    free(keys);
+    free(values);
+
+    return peak;
+}
+
+/**
+ * Checks whether an IORegistry entry name refers to a PMGR node.
+ *
+ * Newer Apple Silicon generations move the DVFS tables to "pmgr-child" while
+ * leaving "pmgr" as a stub, so both names are accepted.
+ *
+ * @param name IORegistry entry name.
+ * @return true for a PMGR node.
+ */
+static bool is_pmgr_node_name(const char *name) {
+    return name != NULL &&
+           (strcmp(name, PMGR_NODE_NAME) == 0 ||
+            strcmp(name, PMGR_CHILD_NODE_NAME) == 0);
+}
+
+static uint64_t hw_get_arm_cpu_freq(void) {
+    io_iterator_t iterator = get_matching_iterator(PMGR_SERVICE_CLASS);
+    if (iterator == IO_OBJECT_NULL) return 0;
+
+    uint64_t peak = 0;
+    io_service_t service;
+
+    while ((service = IOIteratorNext(iterator))) {
+        char name[MEDIUM_BUFFER] = {0};
+
+        if (IORegistryEntryGetName(service, name) == kIOReturnSuccess &&
+            is_pmgr_node_name(name)) {
+            CFMutableDictionaryRef properties = NULL;
+
+            if (IORegistryEntryCreateCFProperties(service, &properties,
+                                                  kCFAllocatorDefault, 0) == kIOReturnSuccess &&
+                properties) {
+                uint64_t candidate = dvfs_peak_from_properties(properties);
+                if (candidate > peak) peak = candidate;
+
+                CFRelease(properties);
+            }
+        }
+
+        IOObjectRelease(service);
+
+        if (peak > 0) break;
+    }
+
+    IOObjectRelease(iterator);
+
+    return peak;
+}
+
 static void hw_get_cpu_freq(cpu_info_t *node) {
     if (node == NULL) return;
+
+    /*
+     * Prefer the live PMGR DVFS tables when the running SoC exposes them.
+     * This keeps the reported peak P-core clock accurate on new hardware
+     * without requiring a table update for every Apple Silicon revision.
+     */
+    uint64_t peak_hz = hw_get_arm_cpu_freq();
+    if (peak_hz > 0) {
+        snprintf(node->frequency, sizeof(node->frequency),
+                 " @ %.2f GHz", (double)peak_hz / HZ_PER_GHZ);
+        return;
+    }
 
     /**
      * Friendship ended with IOKIT
@@ -270,7 +490,9 @@ static void hw_get_cpu_freq(cpu_info_t *node) {
         {4.51, 2.89, "M4 Max"},
         {4.51, 2.89, "M4 Pro"},
         {4.41, 2.89, "M4"},
-        {4.61, 3.10, "M5"},
+        {4.61, 3.05, "M5 Max"},
+        {4.61, 3.05, "M5 Pro"},
+        {4.61, 3.05, "M5"},
         {0, 0, NULL}
     };
 
