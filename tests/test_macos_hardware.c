@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 
+#if defined(__APPLE__) && defined(__MACH__)
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -132,3 +134,14 @@ int main(void) {
 
     return test_finish("macos_hardware");
 }
+
+#else
+
+#include <stdio.h>
+
+int main(void) {
+    printf("[SKIP] macOS hardware tests skipped on non-Apple host\n");
+    return 0;
+}
+
+#endif
