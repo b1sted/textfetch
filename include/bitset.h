@@ -11,7 +11,7 @@
 #define BITS_PER_BLOCK         32
 
 /* Computes block array size, rounding up for remainders. */
-#define SET_SIZE(MAX_ELEMENTS) ((MAX_ELEMENTS) + (BITS_PER_BLOCK - 1)) / BITS_PER_BLOCK
+#define SET_SIZE(MAX_ELEMENTS) (((MAX_ELEMENTS) + (BITS_PER_BLOCK - 1)) / BITS_PER_BLOCK)
 
 /* Generates a bitmask with a single bit set. */
 #define BIT(n)                 (1U << ((n) % 32))
