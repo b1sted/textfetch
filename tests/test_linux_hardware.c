@@ -3,7 +3,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "test_framework.h"
 #include "test_helpers.h"
@@ -154,6 +158,132 @@ static void test_hardware_lists(void) {
     free_data_list(NULL);
 }
 
+static bool fake_sysfs_write(const char *path, const char *value) {
+    FILE *fp = fopen(path, "w");
+    if (!fp) return false;
+
+    bool written = (fputs(value, fp) >= 0);
+    if (fclose(fp) != 0) written = false;
+
+    return written;
+}
+
+static bool fake_sysfs_add_cpu(const char *cpu_dir, const char *cpu_name,
+                               const char *package_id, const char *core_id,
+                               const char *max_freq) {
+    char path[PATH_BUFFER];
+
+    snprintf(path, sizeof(path), "%s%s", cpu_dir, cpu_name);
+    if (mkdir(path, 0700) != 0) return false;
+
+    snprintf(path, sizeof(path), "%s%s/topology", cpu_dir, cpu_name);
+    if (mkdir(path, 0700) != 0) return false;
+
+    snprintf(path, sizeof(path), "%s%s/topology/physical_package_id",
+             cpu_dir, cpu_name);
+    if (!fake_sysfs_write(path, package_id)) return false;
+
+    snprintf(path, sizeof(path), "%s%s/topology/core_id", cpu_dir, cpu_name);
+    if (!fake_sysfs_write(path, core_id)) return false;
+
+    if (max_freq == NULL) return true;
+
+    snprintf(path, sizeof(path), "%s%s/cpufreq", cpu_dir, cpu_name);
+    if (mkdir(path, 0700) != 0) return false;
+
+    snprintf(path, sizeof(path), "%s%s/cpufreq/cpuinfo_max_freq",
+             cpu_dir, cpu_name);
+    return fake_sysfs_write(path, max_freq);
+}
+
+static void fake_sysfs_remove_cpu(const char *cpu_dir, const char *cpu_name,
+                                  bool has_topology, bool has_freq) {
+    char path[PATH_BUFFER];
+
+    if (has_freq) {
+        snprintf(path, sizeof(path), "%s%s/cpufreq/cpuinfo_max_freq",
+                 cpu_dir, cpu_name);
+        unlink(path);
+
+        snprintf(path, sizeof(path), "%s%s/cpufreq", cpu_dir, cpu_name);
+        rmdir(path);
+    }
+
+    if (has_topology) {
+        snprintf(path, sizeof(path), "%s%s/topology/physical_package_id",
+                 cpu_dir, cpu_name);
+        unlink(path);
+
+        snprintf(path, sizeof(path), "%s%s/topology/core_id",
+                 cpu_dir, cpu_name);
+        unlink(path);
+
+        snprintf(path, sizeof(path), "%s%s/topology", cpu_dir, cpu_name);
+        rmdir(path);
+    }
+
+    snprintf(path, sizeof(path), "%s%s", cpu_dir, cpu_name);
+    rmdir(path);
+}
+
+static void test_sparse_cpu_packages(void) {
+    char template[] = "/tmp/textfetch-cpu-XXXXXX";
+    char *root = mkdtemp(template);
+    TEST_CHECK(root != NULL);
+    if (!root) return;
+
+    char cpu_dir[PATH_BUFFER];
+    snprintf(cpu_dir, sizeof(cpu_dir), "%s/", root);
+
+    TEST_CHECK(fake_sysfs_add_cpu(cpu_dir, "cpu0", "0", "1", "3200000"));
+    TEST_CHECK(fake_sysfs_add_cpu(cpu_dir, "cpu1", "0", "2", "2800000"));
+    TEST_CHECK(fake_sysfs_add_cpu(cpu_dir, "cpu2", "2", "0", NULL));
+    TEST_CHECK(fake_sysfs_add_cpu(cpu_dir, "cpu3", "2", "1", "4000000"));
+
+    /* Offline CPU with no topology directory must be skipped, not defaulted. */
+    char offline_path[PATH_BUFFER + 16];
+    snprintf(offline_path, sizeof(offline_path), "%scpu4", cpu_dir);
+    TEST_CHECK(mkdir(offline_path, 0700) == 0);
+
+    cpu_data_t cpus[MAX_CPU_PACKAGES];
+    uint16_t cpu_map[MAX_CPU_PACKAGES];
+    uint8_t packages = 0;
+
+    memset(cpus, 0, sizeof(cpus));
+    memset(cpu_map, 0xFF, sizeof(cpu_map));
+
+    hw_parse_cpu_topology(cpu_dir, cpus, cpu_map, &packages);
+
+    /* Packages 0 and 2 exist, so package 1 must remain unused. */
+    TEST_INT_EQ(packages, 2);
+    TEST_CHECK(cpus[0].exists);
+    TEST_CHECK(!cpus[1].exists);
+    TEST_CHECK(cpus[2].exists);
+    TEST_CHECK(!cpus[3].exists);
+
+    TEST_INT_EQ(cpu_map[0], 0);
+    TEST_INT_EQ(cpu_map[1], 0xFFFF);
+    TEST_INT_EQ(cpu_map[2], 2);
+
+    TEST_INT_EQ(count_set_bits(&(bitset_t){.bits = cpus[0].core_bits,
+                                           .capacity = MAX_CPU_CORES},
+                               CORES_SET_BLOCKS), 2);
+    TEST_INT_EQ(count_set_bits(&(bitset_t){.bits = cpus[2].core_bits,
+                                           .capacity = MAX_CPU_CORES},
+                               CORES_SET_BLOCKS), 2);
+
+    /* The peak frequency must come from the fastest core in each package. */
+    TEST_CHECK(cpus[0].frequency > 3.19 && cpus[0].frequency < 3.21);
+    TEST_CHECK(cpus[2].frequency > 3.99 && cpus[2].frequency < 4.01);
+
+    fake_sysfs_remove_cpu(cpu_dir, "cpu4", false, false);
+    fake_sysfs_remove_cpu(cpu_dir, "cpu3", true, true);
+    fake_sysfs_remove_cpu(cpu_dir, "cpu2", true, false);
+    fake_sysfs_remove_cpu(cpu_dir, "cpu1", true, true);
+    fake_sysfs_remove_cpu(cpu_dir, "cpu0", true, true);
+    rmdir(root);
+}
+
 static void test_actual_cpu(void) {
     cpu_data_t cpus[MAX_CPU_PACKAGES];
     uint16_t cpu_map[MAX_CPU_PACKAGES];
@@ -207,6 +337,7 @@ int main(void) {
     test_gpu_lookup();
     test_battery_metrics();
     test_hardware_lists();
+    test_sparse_cpu_packages();
     test_actual_cpu();
     test_actual_hardware();
 
