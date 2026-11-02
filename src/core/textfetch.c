@@ -8,6 +8,7 @@
 
 #include "config.h"
 #include "hardware.h"
+#include "sys_utils.h"
 #include "system.h"
 #include "terminal.h"
 #include "ui.h"
@@ -27,19 +28,22 @@ int main(int argc, char *argv[]) {
 
     if (isatty(STDOUT_FILENO) && getenv("NO_COLOR") == NULL) cfg_set_color(true);
 
+    opterr = 0;
+
     int opt;
     while ((opt = getopt_long(argc, argv, "hkmgvV", long_options, NULL)) != -1) {
         switch (opt) {
             case 'h':
+                util_set_output_unit(UNIT_AUTO);
                 break;
             case 'k':
-                cfg_set_kib();
+                util_set_output_unit(UNIT_KIB);
                 break;
             case 'm':
-                cfg_set_mib();
+                util_set_output_unit(UNIT_MIB);
                 break;
             case 'g':
-                cfg_set_gib();
+                util_set_output_unit(UNIT_GIB);
                 break;
             case 'v':
                 cfg_set_verbose();

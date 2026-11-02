@@ -48,6 +48,17 @@
  */
 static bool util_parse_long(const char *path, long *out_val);
 
+/* Output unit forced by the command line; UNIT_AUTO enables scaling. */
+static data_unit_t output_unit = UNIT_AUTO;
+
+data_unit_t util_get_output_unit(void) {
+    return output_unit;
+}
+
+void util_set_output_unit(data_unit_t unit) {
+    output_unit = unit;
+}
+
 char *util_string_in_array(const char *str, const char **array) {
     if (!str || !array) return NULL;
 
@@ -97,6 +108,8 @@ bool util_read_line(const char *path, char *out_buf, const size_t buf_size) {
 }
 
 bool util_read_uint8(const char *path, uint8_t *value) {
+    if (!value) return false;
+
     long raw_value = 0;
     if (!util_parse_long(path, &raw_value)) return false;
 
@@ -107,6 +120,8 @@ bool util_read_uint8(const char *path, uint8_t *value) {
 }
 
 bool util_read_uint16(const char *path, uint16_t *value) {
+    if (!value) return false;
+
     long raw_value = 0;
     if (!util_parse_long(path, &raw_value)) return false;
 
@@ -117,6 +132,8 @@ bool util_read_uint16(const char *path, uint16_t *value) {
 }
 
 bool util_read_uint32(const char *path, uint32_t *value) {
+    if (!value) return false;
+
     long raw_value = 0;
     if (!util_parse_long(path, &raw_value)) return false;
 
@@ -127,6 +144,8 @@ bool util_read_uint32(const char *path, uint32_t *value) {
 }
 
 bool util_read_int16(const char *path, int16_t *value) {
+    if (!value) return false;
+
     long raw_value = 0;
     if (!util_parse_long(path, &raw_value)) return false;
 
@@ -137,6 +156,8 @@ bool util_read_int16(const char *path, int16_t *value) {
 }
 
 bool util_read_int32(const char *path, int32_t *value) {
+    if (!value) return false;
+
     long raw_value = 0;
     if (!util_parse_long(path, &raw_value)) return false;
 
@@ -162,6 +183,8 @@ static bool util_parse_long(const char *path, long *out_val) {
 }
 
 bool util_read_hex(const char *path, uint32_t *value) {
+    if (!value) return false;
+
     char buf[TINY_BUFFER] = {0};
     if (!util_read_line(path, buf, sizeof(buf)) || buf[0] == '\0') return false;
 
@@ -181,6 +204,8 @@ bool util_read_hex(const char *path, uint32_t *value) {
 }
 
 bool util_read_hex16(const char *path, uint16_t *value) {
+    if (!value) return false;
+
     uint32_t val32 = 0;
 
     if (!util_read_hex(path, &val32)) return false;
@@ -201,7 +226,7 @@ bool util_is_numeric_string(const char *str) {
 
     const char *cursor = str;
     while (*cursor) {
-        if (!isdigit(*cursor)) return false;
+        if (!isdigit((unsigned char)*cursor)) return false;
         cursor++;
     }
 
@@ -258,51 +283,40 @@ void util_format_size(double total_size, double used_size, char *out_buf,
         used_size *= divisors[from_unit];
     }
 
-    int8_t forced_unit = -1;
+    data_unit_t forced_unit = util_get_output_unit();
     uint8_t precision = 2;
 
-    if (cfg_get_kib()) {
-        forced_unit = 1;
+    if (forced_unit == UNIT_KIB || forced_unit == UNIT_MIB) {
         precision = 0;
     }
-    else if (cfg_get_mib()) {
-        forced_unit = 2;
-        precision = 0;
-    }
-    else if (cfg_get_gib()) {
-        forced_unit = 3;
-        precision = 2;
-    }
 
-    uint8_t total_unit = 0;
-    uint8_t used_unit = 0;
+    uint8_t unit = UNIT_B;
 
-    const uint8_t usage_pct = (total_size > 1e-9) 
-                              ? (uint8_t)((used_size / total_size) * 100) : 0;
-
-    if (forced_unit != -1) {
-        total_unit = forced_unit;
-        used_unit = forced_unit;
-
-        total_size /= divisors[forced_unit];
-        used_size /= divisors[forced_unit];
+    if (forced_unit != UNIT_AUTO && (uint8_t)forced_unit < num_units) {
+        unit = (uint8_t)forced_unit;
     } else {
-        uint8_t array_border = (sizeof(memory_units) / sizeof(memory_units[0]));
+        double scale = (total_size > used_size) ? total_size : used_size;
 
-        while (total_size >= 1024 && total_unit < array_border - 1) {
-            total_size /= 1024;
-            total_unit++;
+        while (scale >= 1024.0 && unit < num_units - 1) {
+            scale /= 1024.0;
+            unit++;
         }
+    }
 
-        while (used_size >= 1024 && used_unit < array_border - 1) {
-            used_size /= 1024;
-            used_unit++;
-        }
+    total_size /= divisors[unit];
+    used_size /= divisors[unit];
+
+    double usage_pct = 0.0;
+    if (total_size > 1e-9) {
+        usage_pct = (used_size / total_size) * 100.0;
+        if (usage_pct < 0.0) usage_pct = 0.0;
+        if (usage_pct > 100.0) usage_pct = 100.0;
     }
 
     snprintf(out_buf, buf_size, "%.*f %s / %.*f %s (%hhu%%)",
-             precision, used_size,  memory_units[used_unit],
-             precision, total_size, memory_units[total_unit], usage_pct);
+             precision, used_size, memory_units[unit],
+             precision, total_size, memory_units[unit],
+             (uint8_t)usage_pct);
 }
 
 forest *util_parse_ids_file(FILE *fp, size_t capacity) {
