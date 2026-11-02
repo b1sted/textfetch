@@ -185,7 +185,7 @@ static void hw_get_cpu_model(cpu_info_t *node) {
     }
 
     if (node->model[0] == '\0') {
-        snprintf(node->model, model_size, "Unknown");
+        snprintf(node->model, sizeof(node->model), "Unknown");
         return;
     }
 
