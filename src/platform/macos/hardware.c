@@ -442,8 +442,6 @@ static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *node) {
 
     if (node->ram_size == 0) return;
 
-    *flags |= MEM_RAM;
-
     mach_port_t host = mach_host_self();
     vm_statistics64_data_t vm = {0};
     mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
@@ -451,13 +449,17 @@ static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *node) {
 
     if (host_page_size(host, &pg) != KERN_SUCCESS) {
         V_PRINTF("[ERROR] Mach host_page_size() failed\n");
+        mach_port_deallocate(mach_task_self(), host);
         return;
     }
 
     if (host_statistics64(host, HOST_VM_INFO64, (host_info64_t)&vm, &count) != KERN_SUCCESS) {
         V_PRINTF("[ERROR] Mach host_statistics64() failed\n");
+        mach_port_deallocate(mach_task_self(), host);
         return;
     }
+
+    mach_port_deallocate(mach_task_self(), host);
 
     int64_t wired = (int64_t)vm.wire_count * pg;
 
@@ -470,6 +472,8 @@ static void hw_get_ram_info(mem_flags_t *flags, mem_info_t *node) {
     int64_t compressed = (int64_t)vm.compressor_page_count * pg;
     node->ram_used = app + wired + compressed;
 #endif
+
+    *flags |= MEM_RAM;
 }
 
 static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *node) {
