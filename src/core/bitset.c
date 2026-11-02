@@ -47,14 +47,23 @@ void set_remove(bitset_t *set, size_t num) {
 }
 
 uint32_t count_set_bits(bitset_t *set, size_t blocks) {
-    if (!set) {
+    if (!set || !set->bits) {
         return 0;
+    }
+
+    size_t max_blocks = set->capacity / BITS_PER_BLOCK;
+    if (set->capacity % BITS_PER_BLOCK != 0) {
+        max_blocks++;
+    }
+
+    if (blocks > max_blocks) {
+        blocks = max_blocks;
     }
 
     uint32_t total = 0;
 
     for (size_t i = 0; i < blocks; i++) {
-        total += __builtin_popcount(set->bits[i]);
+        total += (uint32_t)__builtin_popcount(set->bits[i]);
     }
 
     return total;
