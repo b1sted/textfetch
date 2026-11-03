@@ -195,36 +195,25 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - name: Start Termux Container
-        run: |
-          docker rm -f termux-build 2>/dev/null || true
-          docker run -d --name termux-build --security-opt seccomp:unconfined \
-            -v "$GITHUB_WORKSPACE:/workspace" \
-            -w /workspace \
-            termux/termux-docker:aarch64 sleep infinity
+      - name: Prepare Workspace Permissions
+        run: chmod -R a+rwX .
 
       - name: Build Textfetch Binary in Termux
         run: |
-          docker exec termux-build bash -c "export DEBIAN_FRONTEND=noninteractive && \
-                   apt update -yq && \
-                   apt upgrade -yq -o Dpkg::Options::='--force-confnew' && \
-                   apt install -yq clang make mesa mesa-dev && \
-                   make"
-
-      - name: Extract Termux Artifact
-        run: |
-          mkdir -p ./bin
-          docker cp termux-build:/workspace/bin/textfetch ./bin/textfetch || true
+          docker run --rm --security-opt seccomp:unconfined \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            termux/termux-docker:aarch64 \
+            /entrypoint.sh bash -c "
+              apt update && apt install -y clang make libglvnd-dev mesa-dev
+              make
+            "
 
       - name: Upload Artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: textfetch-android-termux-arm64
           path: bin/textfetch
-
-      - name: Cleanup Termux Container
-        if: always()
-        run: docker rm -f termux-build || true
 
   release:
     needs: [test, build-linux-amd64, build-linux-arm64, build-linux-luckfox, build-macos-intel, build-macos-arm64, build-android-termux]
