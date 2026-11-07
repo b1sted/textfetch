@@ -11,6 +11,13 @@
  * linker64, sudo, or "sh -c" and reaches the shell that owns the terminal. */
 void term_get_shell(char *out_buf, const size_t buf_size);
 
+/* Starts shell discovery and version capture without waiting for completion.
+ *
+ * Call this before slow system or hardware probes so the shell process can
+ * run in parallel. term_get_shell() collects the result and remains usable
+ * when this function is not called. */
+void term_prepare_shell(void);
+
 /* Fallback method to identify shell via env vars or login configs. */
 void term_fallback_shell(char *out_buf, const size_t buf_size);
 

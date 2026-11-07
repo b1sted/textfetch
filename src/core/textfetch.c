@@ -8,6 +8,7 @@
 
 #include "config.h"
 #include "hardware.h"
+#include "pal/terminal_os.h"
 #include "sys_utils.h"
 #include "system.h"
 #include "terminal.h"
@@ -64,6 +65,9 @@ int main(int argc, char *argv[])
             exit(EXIT_FAILURE);
         }
     }
+
+    /* Start the shell probe before the slower system and hardware scans. */
+    term_prepare_shell();
 
     sys_init();
     sys_print_header();
