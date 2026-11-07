@@ -61,7 +61,7 @@ static void test_color(void)
 static void test_version_string(void)
 {
     TEST_STR_EQ(cfg_version_string, APP_VERSION);
-    TEST_STR_EQ(cfg_version_string, "1.2");
+    TEST_STR_EQ(cfg_version_string, "1.2.1");
 }
 
 int main(void)

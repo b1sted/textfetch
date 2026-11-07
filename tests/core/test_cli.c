@@ -32,20 +32,20 @@ static void test_version(void)
     test_command_t result = run_cli(short_args);
     TEST_INT_EQ(result.status, 0);
     TEST_CHECK(result.output != NULL);
-    TEST_STR_CONTAINS(result.output, "textfetch v1.2");
+    TEST_STR_CONTAINS(result.output, "textfetch v1.2.1");
     TEST_STR_CONTAINS(result.output, "(");
     TEST_CHECK(result.error != NULL && result.error[0] == '\0');
     test_free_command(&result);
 
     result = run_cli(long_args);
     TEST_INT_EQ(result.status, 0);
-    TEST_STR_CONTAINS(result.output, "textfetch v1.2");
+    TEST_STR_CONTAINS(result.output, "textfetch v1.2.1");
     test_free_command(&result);
 
     const char *extra_args[] = {"--version", "ignored", NULL};
     result = run_cli(extra_args);
     TEST_INT_EQ(result.status, 0);
-    TEST_STR_CONTAINS(result.output, "textfetch v1.2");
+    TEST_STR_CONTAINS(result.output, "textfetch v1.2.1");
     test_free_command(&result);
 }
 
