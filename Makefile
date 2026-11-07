@@ -22,7 +22,7 @@ ifeq ($(UNAME_S), Darwin)
     PLATFORM_SUBDIRS += macos
     override CFLAGS  += -D_DARWIN_C_SOURCE
     DEV_CFLAGS       += -gdwarf-4
-    REL_LDFLAGS      := -Wl,-dead_strip,-source_version,1.0
+    REL_LDFLAGS      := -Wl,-dead_strip,-source_version,1.2
     override LDFLAGS += -framework IOKit -framework CoreFoundation
 else ifneq (,$(filter $(UNAME_S),Linux Android))
     PLATFORM_SUBDIRS += linux-common
@@ -30,7 +30,7 @@ else ifneq (,$(filter $(UNAME_S),Linux Android))
     
     ifeq ($(UNAME_O), Android)
         PLATFORM_SUBDIRS += android
-        override LDFLAGS += -lEGL -lGLESv2
+        override LDFLAGS += -ldl
     else
         PLATFORM_SUBDIRS += linux
     endif

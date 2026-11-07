@@ -27,8 +27,13 @@ void hw_print_mem_info(const mem_flags_t flags, const mem_info_t *info)
     if (flags & MEM_SWAP) {
         char swap_info[SMALL_BUFFER] = {0};
 
-        util_format_size((double)info->swap_size, (double)info->swap_used, swap_info,
-                         sizeof(swap_info), UNIT_B);
+        if (info->swap_size == 0) {
+            snprintf(swap_info, sizeof(swap_info), "Unused");
+        } else {
+            util_format_size((double)info->swap_size, (double)info->swap_used, swap_info,
+                             sizeof(swap_info), UNIT_B);
+        }
+
         ui_print_info("Swap", swap_info);
     }
 }
