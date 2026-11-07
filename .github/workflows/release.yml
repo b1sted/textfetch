@@ -205,7 +205,7 @@ jobs:
             -w /workspace \
             termux/termux-docker:aarch64 \
             /entrypoint.sh bash -c "
-              apt update && apt install -y clang make libglvnd libglvnd-dev mesa mesa-dev
+              apt update && apt install -y clang make
               make
             "
 

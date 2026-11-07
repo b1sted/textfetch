@@ -35,11 +35,11 @@ A minimal, fast system information tool with no third-party dependencies. Design
 ## Features
 
 - **CPU**: Topology (physical core count), frequency, and model identification.
-- **GPU**: Vendor and device detection via DRM/sysfs (Linux), IOKit (macOS), and EGL/GLES (Android).
+- **GPU**: Vendor and device detection via DRM/sysfs (Linux), IOKit (macOS), and the system Vulkan driver (Android).
 - **Power**: Battery capacity, charging status, health status, and model (on Linux and macOS).
 - **Memory & Storage**: RAM/Swap usage and mounted filesystems with usage, size, and filesystem type.
 - **Software**: OS/distribution, kernel, uptime, shell, locale, process count, and device model.
-- **Zero bloat**: No third-party dependencies. Written in C99 with POSIX.1-2008 and platform APIs. Android/Termux requires `mesa` and `mesa-dev` for GPU detection.
+- **Zero bloat**: No third-party dependencies. Written in C99 with POSIX.1-2008 and platform APIs. Android/Termux uses the system Vulkan loader already present on the device.
 
 ## Supported Platforms
 
@@ -47,13 +47,13 @@ A minimal, fast system information tool with no third-party dependencies. Design
 
 - **macOS**: Intel (x86_64) on Mac OS X 10.7+ (legacy build) or 10.9+ (modern build), and Apple Silicon (ARM64) on macOS 11.0+.
 - **Linux**: x86_64 and ARM64. CI builds both on Ubuntu; unit tests run on x86_64.
-- **Android**: Termux (`aarch64`). Requires `mesa` and `mesa-dev` for GPU detection.
+- **Android**: Termux (`aarch64`) and other Android ABIs supported by the NDK.
 - **IoT/Embedded**: Builds for the Luckfox Pico Mini; CI produces the binary but does not run tests.
 
 ## Build and run
 
 ### Compilation from source
-Requires a C99 compiler with a POSIX.1-2008 environment, GNU `make`, and the platform-specific APIs used for hardware discovery: Linux `sysfs`/`procfs`, macOS IOKit/CoreFoundation, and Android Bionic system properties. On macOS, install the Xcode Command Line Tools. On Android/Termux, install `mesa` and `mesa-dev`.
+Requires a C99 compiler with a POSIX.1-2008 environment, GNU `make`, and the platform-specific APIs used for hardware discovery: Linux `sysfs`/`procfs`, macOS IOKit/CoreFoundation, and Android Bionic system properties. On macOS, install the Xcode Command Line Tools. On Android/Termux, only `clang` and `make` are needed; GPU detection loads the system Vulkan loader at runtime.
 
 ```bash
 make
