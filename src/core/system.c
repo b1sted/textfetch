@@ -35,7 +35,12 @@ void sys_print_info(void)
     sys_format_uptime(uptime_buf, LINE_BUFFER);
 
     char procs_buf[SMALL_BUFFER] = {0};
-    snprintf(procs_buf, SMALL_BUFFER, "%" PRIu32, sys_data.procs);
+    if (sys_data.threads > 0) {
+        snprintf(procs_buf, SMALL_BUFFER, "%" PRIu32 " (%" PRIu32 " threads)", sys_data.procs,
+                 sys_data.threads);
+    } else {
+        snprintf(procs_buf, SMALL_BUFFER, "%" PRIu32, sys_data.procs);
+    }
 
     ui_print_info("OS", os_buf);
     if (device_buf[0] != '\0') {
