@@ -46,6 +46,19 @@ static void test_process_stat(void)
     TEST_CHECK(!term_read_process_stat(-1, name, sizeof(name), &ppid));
 }
 
+static void test_read_comm(void)
+{
+    char name[TINY_BUFFER] = {0};
+
+    TEST_CHECK(term_read_comm(getpid(), name, sizeof(name)));
+    TEST_CHECK(strlen(name) > 0);
+    TEST_STR_NOT_CONTAINS(name, "\n");
+
+    TEST_CHECK(!term_read_comm(getpid(), name, 0));
+    TEST_CHECK(!term_read_comm(getpid(), NULL, sizeof(name)));
+    TEST_CHECK(!term_read_comm(-1, name, sizeof(name)));
+}
+
 static void test_cmdline(void)
 {
     char name[TINY_BUFFER] = {0};
@@ -109,6 +122,7 @@ int main(void)
 {
     test_shell_names();
     test_process_stat();
+    test_read_comm();
     test_cmdline();
     test_get_shell();
     test_prepare_shell();

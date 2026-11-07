@@ -130,10 +130,14 @@ static bool sys_read_total_threads(uint32_t *out_count)
  * Populates the process and thread counters.
  *
  * A process is a top-level /proc entry, while threads are all kernel tasks and
- * therefore include one thread per process. If the counters are unavailable
- * they stay at zero and the core omits the thread count from the output.
+ * therefore include one thread per process. Android denies access to
+ * /proc/loadavg, so the 16-bit task counter from sysinfo() is used as a
+ * fallback. If the counters are unavailable they stay at zero and the core
+ * omits the thread count from the output.
+ *
+ * @param sysinfo_threads Task total reported by sysinfo(), or zero.
  */
-static void sys_get_task_stats(void)
+static void sys_get_task_stats(const uint32_t sysinfo_threads)
 {
     sys_data.procs = 0;
     sys_data.threads = 0;
@@ -144,6 +148,11 @@ static void sys_get_task_stats(void)
 
     uint32_t total_threads = 0;
     if (!sys_read_total_threads(&total_threads)) {
+        /* /proc/loadavg is restricted on Android; sysinfo() is still usable. */
+        total_threads = sysinfo_threads;
+    }
+
+    if (total_threads == 0) {
         return;
     }
 
@@ -181,5 +190,5 @@ void sys_init(void)
 
     sys_data.uptime = sysinfo_ok ? (uint64_t)si.uptime : 0;
 
-    sys_get_task_stats();
+    sys_get_task_stats(sysinfo_ok ? (uint32_t)si.procs : 0);
 }

@@ -51,6 +51,53 @@ static bool term_is_shell_name(const char *name)
 }
 
 /**
+ * Reads the process name from /proc/<pid>/comm.
+ *
+ * Android restricts some /proc files even for processes that share a UID, but
+ * the comm file has traditionally been readable and is the most portable way
+ * to identify the parent shell.
+ *
+ * @param pid Process to inspect.
+ * @param out_name Destination for the process name.
+ * @param name_size Capacity of @p out_name.
+ * @return true when the file was read and parsed.
+ */
+static bool term_read_comm(const pid_t pid, char *out_name, const size_t name_size)
+{
+    char path[PATH_BUFFER] = {0};
+    char line[TINY_BUFFER] = {0};
+    FILE *fp = NULL;
+    bool ok = false;
+
+    if (pid <= 0 || out_name == NULL || name_size == 0) {
+        return false;
+    }
+
+    out_name[0] = '\0';
+
+    if (snprintf(path, sizeof(path), "/proc/%d/comm", (int)pid) >= (int)sizeof(path)) {
+        return false;
+    }
+
+    fp = fopen(path, "r");
+    if (fp == NULL) {
+        return false;
+    }
+
+    if (fgets(line, sizeof(line), fp) != NULL) {
+        line[strcspn(line, "\n")] = '\0';
+        snprintf(out_name, name_size, "%s", line);
+        ok = (out_name[0] != '\0');
+    }
+
+    if (fclose(fp) != 0) {
+        V_PRINTF("[ERROR] fclose %s failed: %s\n", path, strerror(errno));
+    }
+
+    return ok;
+}
+
+/**
  * Reads the process name and parent PID from /proc/<pid>/stat.
  *
  * @param pid Process to inspect.
@@ -244,7 +291,8 @@ static bool term_read_exe(const pid_t pid, char *out_path, const size_t path_siz
 typedef struct {
     capture_job_t job;
     char shell_name[TINY_BUFFER];
-    bool capture_exe;
+    char exe_path[PATH_BUFFER];
+    bool have_exe;
     bool pending;
 } term_shell_state_t;
 
@@ -253,10 +301,13 @@ static term_shell_state_t shell_state = {0};
 /**
  * Walks the parent process chain and returns the first interactive shell.
  *
+ * If the chain cannot be followed because the process information is
+ * restricted, the nearest shell is returned as a best-effort result.
+ *
  * @param out_pid Destination for the shell PID.
  * @param out_name Destination for the shell name.
  * @param name_size Capacity of @p out_name.
- * @return true when an interactive shell was found.
+ * @return true when a shell was found.
  */
 static bool term_find_shell(pid_t *out_pid, char *out_name, const size_t name_size)
 {
@@ -266,14 +317,15 @@ static bool term_find_shell(pid_t *out_pid, char *out_name, const size_t name_si
 
     pid_t pid = getppid();
 
-    for (size_t depth = 0; depth < ANCESTOR_LIMIT && pid > 1; depth++) {
+    for (size_t depth = 0; depth < ANCESTOR_LIMIT && pid > 0; depth++) {
         char comm_buf[TINY_BUFFER] = {0};
         char cmdline_name[TINY_BUFFER] = {0};
         const char *shell_name = NULL;
         pid_t ppid = 0;
         bool interactive = true;
+        bool have_stat = term_read_process_stat(pid, comm_buf, sizeof(comm_buf), &ppid);
 
-        if (!term_read_process_stat(pid, comm_buf, sizeof(comm_buf), &ppid)) {
+        if (!have_stat && !term_read_comm(pid, comm_buf, sizeof(comm_buf))) {
             break;
         }
 
@@ -298,6 +350,20 @@ static bool term_find_shell(pid_t *out_pid, char *out_name, const size_t name_si
             return true;
         }
 
+        /*
+         * Without the parent PID the chain cannot be followed any further.
+         * Report the nearest shell even if it looks like a wrapper, since it
+         * is still a better answer than the environment fallback.
+         */
+        if (!have_stat) {
+            if (shell_name != NULL) {
+                snprintf(out_name, name_size, "%s", shell_name);
+                *out_pid = pid;
+                return true;
+            }
+            break;
+        }
+
         pid = ppid;
     }
 
@@ -307,8 +373,9 @@ static bool term_find_shell(pid_t *out_pid, char *out_name, const size_t name_si
 /**
  * Produces a display string for the detected shell.
  *
- * The version is obtained from the real executable when possible. If that
- * fails, the shell name alone is used as a stable fallback.
+ * The version is obtained by running the shell with --version, first through
+ * its name and then through the resolved executable. If both fail, the shell
+ * name alone is used as a stable fallback.
  *
  * @param pid PID of the detected shell.
  * @param shell_name Name used to identify the shell.
@@ -325,13 +392,10 @@ static void term_describe_shell(const pid_t pid, const char *shell_name, char *o
         return;
     }
 
-    bool captured = false;
+    bool captured = (capture_line(shell_name, "--version", version_buf, sizeof(version_buf)) == 0);
 
-    if (term_read_exe(pid, exe_path, sizeof(exe_path))) {
+    if (!captured && term_read_exe(pid, exe_path, sizeof(exe_path))) {
         captured = (capture_line(exe_path, "--version", version_buf, sizeof(version_buf)) == 0);
-    }
-    if (!captured) {
-        captured = (capture_line(shell_name, "--version", version_buf, sizeof(version_buf)) == 0);
     }
     if (captured) {
         term_sanitize_name(version_buf);
@@ -348,26 +412,24 @@ void term_prepare_shell(void)
 {
     pid_t pid = 0;
     char shell_name[TINY_BUFFER] = {0};
-    char exe_path[PATH_BUFFER] = {0};
-    bool capture_exe = false;
 
     if (shell_state.pending) {
         return;
     }
 
     if (!term_find_shell(&pid, shell_name, sizeof(shell_name))) {
+        V_PRINTF("[WARNING] shell was not found in the process tree\n");
         return;
     }
 
-    capture_exe = term_read_exe(pid, exe_path, sizeof(exe_path));
-
     capture_job_init(&shell_state.job);
-    if (capture_start(&shell_state.job, capture_exe ? exe_path : shell_name, "--version") != 0) {
+    if (capture_start(&shell_state.job, shell_name, "--version") != 0) {
+        V_PRINTF("[WARNING] failed to start the shell version probe for %s\n", shell_name);
         return;
     }
 
     snprintf(shell_state.shell_name, sizeof(shell_state.shell_name), "%s", shell_name);
-    shell_state.capture_exe = capture_exe;
+    shell_state.have_exe = term_read_exe(pid, shell_state.exe_path, sizeof(shell_state.exe_path));
     shell_state.pending = true;
 }
 
@@ -383,7 +445,7 @@ void term_get_shell(char *out_buf, const size_t buf_size)
         char version_buf[LINE_BUFFER] = {0};
         char retry_buf[LINE_BUFFER] = {0};
         const char *resolved = NULL;
-        bool capture_exe = shell_state.capture_exe;
+        bool have_exe = shell_state.have_exe;
         int result = 0;
 
         shell_state.pending = false;
@@ -396,9 +458,11 @@ void term_get_shell(char *out_buf, const size_t buf_size)
             }
         }
 
-        if (resolved == NULL && capture_exe) {
-            if (capture_line(shell_state.shell_name, "--version", retry_buf, sizeof(retry_buf)) ==
-                0) {
+        if (resolved == NULL) {
+            V_PRINTF("[WARNING] failed to capture the version of %s\n", shell_state.shell_name);
+
+            if (have_exe && capture_line(shell_state.exe_path, "--version", retry_buf,
+                                         sizeof(retry_buf)) == 0) {
                 term_sanitize_name(retry_buf);
                 if (retry_buf[0] != '\0') {
                     resolved = retry_buf;
@@ -408,7 +472,8 @@ void term_get_shell(char *out_buf, const size_t buf_size)
 
         snprintf(out_buf, buf_size, "%s", (resolved != NULL) ? resolved : shell_state.shell_name);
 
-        shell_state.capture_exe = false;
+        shell_state.have_exe = false;
+        shell_state.exe_path[0] = '\0';
         shell_state.shell_name[0] = '\0';
         return;
     }
