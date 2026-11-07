@@ -336,6 +336,94 @@ static void test_sparse_cpu_packages(void)
     rmdir(root);
 }
 
+static void test_online_map_parser(void)
+{
+    char template[] = "/tmp/textfetch-cpu-online-map-XXXXXX";
+    char *root = mkdtemp(template);
+    TEST_CHECK(root != NULL);
+    if (!root) {
+        return;
+    }
+
+    char cpu_dir[PATH_BUFFER];
+    snprintf(cpu_dir, sizeof(cpu_dir), "%s/", root);
+
+    char path[PATH_BUFFER * 2];
+    snprintf(path, sizeof(path), "%sonline", cpu_dir);
+    TEST_CHECK(fake_sysfs_write(path, "0-2,4,8-9\n"));
+
+    cpu_online_map_t map;
+    memset(&map, 0, sizeof(map));
+    hw_cpu_read_online_map(cpu_dir, &map);
+
+    TEST_CHECK(map.valid);
+    TEST_INT_EQ(map.count, 3);
+    TEST_INT_EQ(map.ranges[0].first, 0);
+    TEST_INT_EQ(map.ranges[0].last, 2);
+    TEST_INT_EQ(map.ranges[1].first, 4);
+    TEST_INT_EQ(map.ranges[1].last, 4);
+    TEST_INT_EQ(map.ranges[2].first, 8);
+    TEST_INT_EQ(map.ranges[2].last, 9);
+
+    TEST_CHECK(fake_sysfs_write(path, "0-\n"));
+    hw_cpu_read_online_map(cpu_dir, &map);
+    TEST_CHECK(!map.valid);
+    TEST_INT_EQ(map.count, 0);
+
+    unlink(path);
+    rmdir(root);
+}
+
+static void test_online_map_filters_cpus(void)
+{
+    char template[] = "/tmp/textfetch-cpu-online-filter-XXXXXX";
+    char *root = mkdtemp(template);
+    TEST_CHECK(root != NULL);
+    if (!root) {
+        return;
+    }
+
+    char cpu_dir[PATH_BUFFER];
+    snprintf(cpu_dir, sizeof(cpu_dir), "%s/", root);
+
+    TEST_CHECK(fake_sysfs_add_cpu(cpu_dir, "cpu0", "0", "0", "3000000"));
+    TEST_CHECK(fake_sysfs_add_cpu(cpu_dir, "cpu1", "0", "1", "2000000"));
+    TEST_CHECK(fake_sysfs_add_cpu(cpu_dir, "cpu2", "0", "2", "1000000"));
+
+    char path[PATH_BUFFER * 2];
+    snprintf(path, sizeof(path), "%sonline", cpu_dir);
+    TEST_CHECK(fake_sysfs_write(path, "0,2\n"));
+
+    /* The map must win over a stale per-CPU online attribute. */
+    snprintf(path, sizeof(path), "%scpu1/online", cpu_dir);
+    TEST_CHECK(fake_sysfs_write(path, "1\n"));
+
+    cpu_data_t cpus[MAX_CPU_PACKAGES];
+    uint16_t cpu_map[MAX_CPU_PACKAGES];
+    uint8_t packages = 0;
+
+    memset(cpus, 0, sizeof(cpus));
+    memset(cpu_map, 0xFF, sizeof(cpu_map));
+
+    hw_parse_cpu_topology(cpu_dir, cpus, cpu_map, &packages);
+
+    TEST_INT_EQ(packages, 1);
+    TEST_CHECK(cpus[0].exists);
+    TEST_INT_EQ(set_count_bits(&(bitset_t){.bits = cpus[0].core_bits, .capacity = MAX_CPU_CORES},
+                               CORES_SET_BLOCKS),
+                2);
+    TEST_CHECK(cpus[0].frequency > 2.99 && cpus[0].frequency < 3.01);
+
+    unlink(path);
+    snprintf(path, sizeof(path), "%sonline", cpu_dir);
+    unlink(path);
+
+    fake_sysfs_remove_cpu(cpu_dir, "cpu2", true, true);
+    fake_sysfs_remove_cpu(cpu_dir, "cpu1", true, true);
+    fake_sysfs_remove_cpu(cpu_dir, "cpu0", true, true);
+    rmdir(root);
+}
+
 static void test_uniprocessor_without_topology(void)
 {
     char template[] = "/tmp/textfetch-cpu-uni-XXXXXX";
@@ -565,6 +653,8 @@ int main(void)
     test_battery_metrics();
     test_hardware_lists();
     test_sparse_cpu_packages();
+    test_online_map_parser();
+    test_online_map_filters_cpus();
     test_uniprocessor_without_topology();
     test_current_freq_fallback();
     test_policy_current_freq_fallback();

@@ -57,6 +57,9 @@
 /* Number of blocks needed for the CPU cores bitset. */
 #define CORES_SET_BLOCKS SET_SIZE(MAX_CPU_CORES)
 
+/* Maximum number of ranges kept from the sysfs online CPU map. */
+#define MAX_ONLINE_RANGES 64
+
 /* Estimated capacity for the embedded ARM ID forest. */
 #define ARM_IMPLEMENTERS 25
 
@@ -71,6 +74,19 @@ typedef struct {
     uint32_t core_bits[CORES_SET_BLOCKS];
     bool exists;
 } cpu_data_t;
+
+/* Inclusive range of logical CPU IDs from the sysfs online map. */
+typedef struct {
+    uint32_t first;
+    uint32_t last;
+} cpu_range_t;
+
+/* Parsed /sys/devices/system/cpu/online file. */
+typedef struct {
+    cpu_range_t ranges[MAX_ONLINE_RANGES];
+    size_t count;
+    bool valid;
+} cpu_online_map_t;
 
 /* Generic linked list node for hardware enumeration. */
 typedef struct hw_node {
@@ -121,6 +137,26 @@ static void hw_parse_cpu_topology(const char *cpu_dir, cpu_data_t *cpus, uint16_
                                   uint8_t *packages);
 
 /**
+ * Parses the sysfs online CPU map into memory.
+ *
+ * A single read of /sys/devices/system/cpu/online replaces the per-CPU online
+ * attribute probes. The map is marked invalid when the file is missing or
+ * malformed, in which case callers fall back to the per-CPU attribute.
+ *
+ * @param cpu_dir Base sysfs CPU directory containing the online map.
+ * @param map Destination for the parsed inclusive CPU ranges.
+ */
+static void hw_cpu_read_online_map(const char *cpu_dir, cpu_online_map_t *map);
+
+/**
+ * Checks whether the sysfs cpufreq interface is available.
+ *
+ * @param cpu_dir Base sysfs CPU directory to inspect.
+ * @return true when at least one cpufreq policy directory exists.
+ */
+static bool hw_cpu_has_cpufreq(const char *cpu_dir);
+
+/**
  * Parses hardware properties of a single logical CPU core node.
  *
  * @param cpu_dir Base sysfs CPU directory containing the node.
@@ -128,9 +164,12 @@ static void hw_parse_cpu_topology(const char *cpu_dir, cpu_data_t *cpus, uint16_
  * @param cpus Array of CPU data structures to be updated.
  * @param cpu_map Array mapping logical CPU IDs to physical sockets.
  * @param packages Pointer to the total number of CPU packages found.
+ * @param online_map Parsed online CPU map, or NULL when unavailable.
+ * @param freq_available Whether cpufreq attributes may be probed.
  */
 static void hw_cpu_process_core_node(const char *cpu_dir, const char *node_name, cpu_data_t *cpus,
-                                     uint16_t *cpu_map, uint8_t *packages);
+                                     uint16_t *cpu_map, uint8_t *packages,
+                                     const cpu_online_map_t *online_map, bool freq_available);
 
 /**
  * Probes one CPU and raises the package peak frequency if it is faster.
@@ -157,14 +196,17 @@ static bool hw_cpu_models_complete(const cpu_data_t *cpus);
 /**
  * Checks whether a logical CPU is currently online.
  *
- * A missing online attribute means the CPU cannot be hotplugged and is
- * therefore always online, as is the case for CPU 0 on all Linux kernels.
+ * The parsed online map is authoritative when available. A missing per-CPU
+ * online attribute means the CPU cannot be hotplugged and is therefore always
+ * online, as is the case for CPU 0 on all Linux kernels.
  *
  * @param cpu_dir Base sysfs CPU directory containing the node.
+ * @param online_map Parsed online CPU map, or NULL when unavailable.
  * @param node_name The directory name of the CPU node (e.g., "cpu0").
  * @return true if the CPU is online or its state cannot be determined.
  */
-static bool hw_cpu_is_online(const char *cpu_dir, const char *node_name);
+static bool hw_cpu_is_online(const char *cpu_dir, const cpu_online_map_t *online_map,
+                             const char *node_name);
 
 /**
  * Applies a package 0 fallback when no usable CPU topology was discovered.
@@ -176,9 +218,11 @@ static bool hw_cpu_is_online(const char *cpu_dir, const char *node_name);
  * @param cpus Array of CPU data structures to update.
  * @param cpu_map Array mapping logical CPU IDs to physical sockets.
  * @param packages Pointer to the total number of CPU packages found.
+ * @param freq_available Whether cpufreq attributes may be probed.
  */
 static void hw_cpu_apply_single_core_fallback(const char *cpu_dir, cpu_data_t *cpus,
-                                              uint16_t *cpu_map, uint8_t *packages);
+                                              uint16_t *cpu_map, uint8_t *packages,
+                                              bool freq_available);
 
 /**
  * Parses /proc/cpuinfo to determine the CPU model name using architecture-specific strategies.
@@ -373,6 +417,11 @@ static void hw_parse_cpu_topology(const char *cpu_dir, cpu_data_t *cpus, uint16_
 {
     const char *prefix = "cpu";
     size_t prefix_len = strlen(prefix);
+    cpu_online_map_t online_map = {0};
+    bool freq_available = false;
+
+    hw_cpu_read_online_map(cpu_dir, &online_map);
+    freq_available = hw_cpu_has_cpufreq(cpu_dir);
 
     DIR *dir = opendir(cpu_dir);
     if (!dir) {
@@ -389,17 +438,131 @@ static void hw_parse_cpu_topology(const char *cpu_dir, cpu_data_t *cpus, uint16_
                 continue;
             }
 
-            hw_cpu_process_core_node(cpu_dir, entry->d_name, cpus, cpu_map, packages);
+            hw_cpu_process_core_node(cpu_dir, entry->d_name, cpus, cpu_map, packages, &online_map,
+                                     freq_available);
         }
 
         closedir(dir);
     }
 
-    hw_cpu_apply_single_core_fallback(cpu_dir, cpus, cpu_map, packages);
+    hw_cpu_apply_single_core_fallback(cpu_dir, cpus, cpu_map, packages, freq_available);
 }
 
-static bool hw_cpu_is_online(const char *cpu_dir, const char *node_name)
+static void hw_cpu_read_online_map(const char *cpu_dir, cpu_online_map_t *map)
 {
+    char path[PATH_BUFFER] = {0};
+    char line[PATH_BUFFER] = {0};
+    const char *cursor = NULL;
+    bool ok = true;
+
+    if (cpu_dir == NULL || map == NULL) {
+        return;
+    }
+
+    map->count = 0;
+    map->valid = false;
+
+    if (snprintf(path, sizeof(path), "%sonline", cpu_dir) >= (int)sizeof(path)) {
+        return;
+    }
+
+    if (!util_read_line(path, line, sizeof(line)) || line[0] == '\0') {
+        return;
+    }
+
+    cursor = line;
+    while (ok && *cursor != '\0') {
+        char *end = NULL;
+        uintmax_t first = 0;
+        uintmax_t last = 0;
+
+        errno = 0;
+        first = strtoumax(cursor, &end, 10);
+        if (errno != 0 || end == cursor || first > UINT32_MAX) {
+            ok = false;
+            break;
+        }
+
+        cursor = end;
+        last = first;
+
+        if (*cursor == '-') {
+            errno = 0;
+            last = strtoumax(cursor + 1, &end, 10);
+            if (errno != 0 || end == cursor + 1 || last < first || last > UINT32_MAX) {
+                ok = false;
+                break;
+            }
+            cursor = end;
+        }
+
+        if (map->count >= MAX_ONLINE_RANGES) {
+            ok = false;
+            break;
+        }
+
+        map->ranges[map->count].first = (uint32_t)first;
+        map->ranges[map->count].last = (uint32_t)last;
+        map->count++;
+
+        if (*cursor == ',') {
+            cursor++;
+        } else if (*cursor != '\0') {
+            ok = false;
+        }
+    }
+
+    if (!ok) {
+        map->count = 0;
+    }
+
+    map->valid = ok && map->count > 0;
+}
+
+static bool hw_cpu_has_cpufreq(const char *cpu_dir)
+{
+    char path[PATH_BUFFER] = {0};
+
+    if (cpu_dir == NULL) {
+        return false;
+    }
+
+    if (snprintf(path, sizeof(path), "%scpufreq", cpu_dir) < (int)sizeof(path) &&
+        util_is_file_exist(path)) {
+        return true;
+    }
+
+    if (snprintf(path, sizeof(path), "%scpu0/cpufreq", cpu_dir) < (int)sizeof(path) &&
+        util_is_file_exist(path)) {
+        return true;
+    }
+
+    return false;
+}
+
+static bool hw_cpu_is_online(const char *cpu_dir, const cpu_online_map_t *online_map,
+                             const char *node_name)
+{
+    if (cpu_dir == NULL || node_name == NULL) {
+        return true;
+    }
+
+    if (online_map != NULL && online_map->valid) {
+        char *end = NULL;
+        uintmax_t cpu_index = strtoumax(node_name + 3, &end, 10);
+
+        if (end != node_name + 3) {
+            for (size_t i = 0; i < online_map->count; i++) {
+                if (cpu_index >= online_map->ranges[i].first &&
+                    cpu_index <= online_map->ranges[i].last) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
     char online_path[PATH_BUFFER] = {0};
     snprintf(online_path, sizeof(online_path), "%s%s/online", cpu_dir, node_name);
 
@@ -418,9 +581,10 @@ static bool hw_cpu_is_online(const char *cpu_dir, const char *node_name)
 }
 
 static void hw_cpu_process_core_node(const char *cpu_dir, const char *node_name, cpu_data_t *cpus,
-                                     uint16_t *cpu_map, uint8_t *packages)
+                                     uint16_t *cpu_map, uint8_t *packages,
+                                     const cpu_online_map_t *online_map, bool freq_available)
 {
-    if (!hw_cpu_is_online(cpu_dir, node_name)) {
+    if (!hw_cpu_is_online(cpu_dir, online_map, node_name)) {
         V_PRINTF("[WARNING] Skipping CPU %s: offline\n", node_name);
         return;
     }
@@ -464,11 +628,14 @@ static void hw_cpu_process_core_node(const char *cpu_dir, const char *node_name,
     set_add(&(bitset_t){.bits = cpus[physical_package_id].core_bits, .capacity = MAX_CPU_CORES},
             core_id);
 
-    hw_get_cpu_freq(cpu_dir, cpus, physical_package_id, node_name);
+    if (freq_available) {
+        hw_get_cpu_freq(cpu_dir, cpus, physical_package_id, node_name);
+    }
 }
 
 static void hw_cpu_apply_single_core_fallback(const char *cpu_dir, cpu_data_t *cpus,
-                                              uint16_t *cpu_map, uint8_t *packages)
+                                              uint16_t *cpu_map, uint8_t *packages,
+                                              bool freq_available)
 {
     if (*packages > 0 && cpus[0].exists) {
         return;
@@ -495,7 +662,9 @@ static void hw_cpu_apply_single_core_fallback(const char *cpu_dir, cpu_data_t *c
         *packages = 1;
     }
 
-    hw_get_cpu_freq(cpu_dir, cpus, 0, "cpu0");
+    if (freq_available) {
+        hw_get_cpu_freq(cpu_dir, cpus, 0, "cpu0");
+    }
 }
 
 /**
