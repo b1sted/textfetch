@@ -17,10 +17,22 @@ void term_print_info(void)
     char shell_buf[LINE_BUFFER] = {0};
     term_get_shell(shell_buf, LINE_BUFFER);
 
-    char *locale = setlocale(LC_CTYPE, "");
-    if (!locale) {
-        V_PRINTF("[ERROR] setlocale(LC_CTYPE, \"\") failed\n");
-        locale = "-";
+    const char *locale = getenv("LC_ALL");
+    if (locale == NULL || *locale == '\0') {
+        locale = getenv("LC_CTYPE");
+    }
+    if (locale == NULL || *locale == '\0') {
+        locale = getenv("LANG");
+    }
+    if (locale == NULL || *locale == '\0') {
+        V_PRINTF("[WARN] No locale environment variable is set. "
+                 "Falling back to setlocale(LC_CTYPE).\n");
+
+        locale = setlocale(LC_CTYPE, "");
+        if (locale == NULL || *locale == '\0') {
+            V_PRINTF("[ERROR] setlocale(LC_CTYPE, \"\") failed\n");
+            locale = "-";
+        }
     }
 
     ui_print_info("Shell", shell_buf);
