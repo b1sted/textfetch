@@ -60,6 +60,10 @@
 /* Estimated capacity for the embedded ARM ID forest. */
 #define ARM_IMPLEMENTERS 25
 
+/* cpufreq attributes probed for a core, ordered from best to fallback. */
+static const char *const CPU_FREQ_FILES[] = {"cpuinfo_max_freq", "scaling_max_freq", "bios_limit",
+                                             "scaling_cur_freq", "cpuinfo_cur_freq", NULL};
+
 /* Internal structure to store CPU parsing progress per socket. */
 typedef struct {
     char model[MEDIUM_BUFFER];
@@ -103,7 +107,10 @@ typedef enum {
 } battery_health_flags_t;
 
 /**
- * Recursively parses the sysfs directory to construct the CPU topology.
+ * Parses the sysfs CPU directory in a single pass to construct the CPU topology.
+ *
+ * Every core is read exactly once: online state, package ID, core ID, and
+ * frequency. No nested directory rescans are performed.
  *
  * @param cpu_dir Base sysfs CPU directory to scan.
  * @param cpus Array of CPU data structures to populate.
@@ -126,7 +133,7 @@ static void hw_cpu_process_core_node(const char *cpu_dir, const char *node_name,
                                      uint16_t *cpu_map, uint8_t *packages);
 
 /**
- * Reads the highest available frequency across all cores in a CPU package.
+ * Probes one CPU and raises the package peak frequency if it is faster.
  *
  * @param cpu_dir Base sysfs CPU directory to scan.
  * @param cpus Array of CPU data structures.
@@ -135,6 +142,17 @@ static void hw_cpu_process_core_node(const char *cpu_dir, const char *node_name,
  */
 static void hw_get_cpu_freq(const char *cpu_dir, cpu_data_t *cpus, const int16_t package,
                             const char *cpu_name);
+
+/**
+ * Checks whether every discovered CPU package already has a model name.
+ *
+ * This lets the /proc/cpuinfo parser stop early instead of reading the whole
+ * file on homogeneous systems.
+ *
+ * @param cpus Array of CPU data structures.
+ * @return true if at least one package exists and all of them have a model.
+ */
+static bool hw_cpu_models_complete(const cpu_data_t *cpus);
 
 /**
  * Checks whether a logical CPU is currently online.
@@ -437,8 +455,6 @@ static void hw_cpu_process_core_node(const char *cpu_dir, const char *node_name,
     if (!cpus[physical_package_id].exists) {
         cpus[physical_package_id].exists = true;
         (*packages)++;
-
-        hw_get_cpu_freq(cpu_dir, cpus, physical_package_id, node_name);
     }
 
     if (cpu_map[physical_package_id] == 0xFFFF || current_id < cpu_map[physical_package_id]) {
@@ -447,6 +463,8 @@ static void hw_cpu_process_core_node(const char *cpu_dir, const char *node_name,
 
     set_add(&(bitset_t){.bits = cpus[physical_package_id].core_bits, .capacity = MAX_CPU_CORES},
             core_id);
+
+    hw_get_cpu_freq(cpu_dir, cpus, physical_package_id, node_name);
 }
 
 static void hw_cpu_apply_single_core_fallback(const char *cpu_dir, cpu_data_t *cpus,
@@ -518,54 +536,30 @@ static uint32_t hw_read_cpu_freq_files(const char *cpu_dir, const char *cpu_name
 static void hw_get_cpu_freq(const char *cpu_dir, cpu_data_t *cpus, const int16_t package,
                             const char *cpu_name)
 {
-    static const char *freq_files[] = {"cpuinfo_max_freq", "scaling_max_freq", "bios_limit",
-                                       "scaling_cur_freq", "cpuinfo_cur_freq", NULL};
+    uint32_t freq_khz = hw_read_cpu_freq_files(cpu_dir, cpu_name, CPU_FREQ_FILES);
+    double frequency = (double)freq_khz / KHZ_PER_GHZ;
 
-    uint32_t peak_freq = 0;
+    if (frequency > cpus[package].frequency) {
+        cpus[package].frequency = frequency;
+    }
+}
 
-    DIR *dir = opendir(cpu_dir);
-    if (!dir) {
-        V_PRINTF("[ERROR] Failed to open sysfs CPU directory %s: %s\n", cpu_dir, strerror(errno));
-    } else {
-        struct dirent *entry = NULL;
-        while ((entry = readdir(dir)) != NULL) {
-            if (strncmp(entry->d_name, "cpu", 3) != 0) {
-                continue;
-            }
-            if (!util_is_numeric_string(entry->d_name + 3)) {
-                continue;
-            }
+static bool hw_cpu_models_complete(const cpu_data_t *cpus)
+{
+    bool found = false;
 
-            int16_t cpu_package = -1;
-            char package_path[PATH_BUFFER] = {0};
-            snprintf(package_path, sizeof(package_path), "%s%s/topology/physical_package_id",
-                     cpu_dir, entry->d_name);
-
-            bool has_package = util_read_int16(package_path, &cpu_package);
-            bool same_package =
-                has_package ? (cpu_package == package) : (strcmp(entry->d_name, cpu_name) == 0);
-            if (!same_package) {
-                continue;
-            }
-
-            uint32_t freq_khz = hw_read_cpu_freq_files(cpu_dir, entry->d_name, freq_files);
-            if (freq_khz > peak_freq) {
-                peak_freq = freq_khz;
-            }
+    for (uint8_t i = 0; i < MAX_CPU_PACKAGES; i++) {
+        if (!cpus[i].exists) {
+            continue;
         }
 
-        closedir(dir);
+        found = true;
+        if (cpus[i].model[0] == '\0') {
+            return false;
+        }
     }
 
-    /*
-     * Single-core and uniprocessor systems may expose no topology for the
-     * package, so probe CPU 0 directly as a last resort.
-     */
-    if (peak_freq == 0) {
-        peak_freq = hw_read_cpu_freq_files(cpu_dir, "cpu0", freq_files);
-    }
-
-    cpus[package].frequency = (double)peak_freq / KHZ_PER_GHZ;
+    return found;
 }
 
 static void hw_get_cpu_model(cpu_data_t *cpus, uint16_t *cpu_map)
@@ -575,6 +569,13 @@ static void hw_get_cpu_model(cpu_data_t *cpus, uint16_t *cpu_map)
         V_PRINTF("[ERROR] Failed to open CPU info file: %s\n", strerror(errno));
         return;
     }
+
+    /*
+     * /proc/cpuinfo is synthetic and its default stdio buffer is often only
+     * one kernel page. A larger buffer avoids dozens of tiny read() calls.
+     */
+    static char io_buffer[8192];
+    setvbuf(fp, io_buffer, _IOFBF, sizeof(io_buffer));
 
 #if defined(__i386__) || defined(__x86_64__)
     hw_parse_x86_cpu_model(fp, cpus, cpu_map);
@@ -624,6 +625,10 @@ static void hw_parse_x86_cpu_model(FILE *fp, cpu_data_t *cpus, uint16_t *cpu_map
             }
             snprintf(cpus[socket].model, sizeof(cpus[socket].model), "%s", value);
             hw_sanitize_cpu_name(cpus[socket].model);
+
+            if (hw_cpu_models_complete(cpus)) {
+                break;
+            }
         }
     }
 }
@@ -803,6 +808,10 @@ static void hw_parse_arm_cpu_model(FILE *fp, cpu_data_t *cpus, uint16_t *cpu_map
             snprintf(cpus[socket].model, sizeof(cpus[socket].model), "%s", arm_model);
 
             hw_arm_lookup_name(arm_forest, cpus[socket].model, sizeof(cpus[socket].model));
+
+            if (hw_cpu_models_complete(cpus)) {
+                break;
+            }
         }
     }
 
