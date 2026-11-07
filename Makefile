@@ -1,4 +1,6 @@
 CC          ?= gcc
+# Keep formatting deterministic; CI selects the clang-format-18 binary.
+CLANG_FORMAT ?= clang-format
 override CPPFLAGS += -Iinclude -MMD -MP
 override CFLAGS   += -Wall -Wextra -std=c99 -D_POSIX_C_SOURCE=200809L
 LDFLAGS     += 
@@ -84,10 +86,10 @@ test: $(TARGET)
 	$(MAKE) -C tests test TEXTFETCH_BIN="$(abspath $(TARGET))"
 
 format:
-	clang-format -i $(FORMAT_FILES)
+	$(CLANG_FORMAT) -i $(FORMAT_FILES)
 
 format-check:
-	clang-format --dry-run --Werror $(FORMAT_FILES)
+	$(CLANG_FORMAT) --dry-run --Werror $(FORMAT_FILES)
 
 lint: format-check
 	@command -v clang-tidy >/dev/null 2>&1 || { \
