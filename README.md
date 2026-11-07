@@ -18,6 +18,7 @@
 </p>
 <p align="center">
     <a href="#features">Features</a> •
+    <a href="#output">Output</a> •
     <a href="#battery-health">Battery health</a> •
     <a href="#supported-platforms">Supported Platforms</a> •
     <a href="#build-and-run">Build and run</a> •
@@ -44,9 +45,53 @@ A minimal, fast system information tool with no third-party dependencies. Design
 - **Software**: OS/distribution, kernel, uptime, shell, locale, process count, and device model.
 - **Zero bloat**: No third-party dependencies. Written in C99 with POSIX.1-2008 and platform APIs. Android/Termux uses the system Vulkan loader already present on the device.
 
+## Output
+
+A typical Linux run:
+
+```text
+user@host
+---------
+OS: Arch Linux x86_64
+Device: Example Laptop
+Kernel: 6.12.1-arch1-1
+Uptime: 3 days, 00:28:03
+Processes: 2644
+Shell: bash 5.2.37
+Locale: en_US.UTF-8
+CPU: AMD Ryzen 7 7840H (8C / 16T) @ 3.801 GHz
+GPU: Advanced Micro Devices, Inc. [AMD/ATI] Phoenix1 [0x15BF]
+RAM: 11.48 GiB / 27.09 GiB (42%)
+Swap: 0.14 GiB / 32.00 GiB (0%)
+Disk (/): 136.98 GiB / 240.00 GiB (57%) [btrfs]
+Battery (L21M4PD6): 100% (Full, Health: Good)
+```
+
+| Field | Description |
+| --- | --- |
+| `user@host` | Current username and hostname. |
+| `OS` | Distribution or operating system, version, and machine architecture. |
+| `Device` | System or device model. Omitted when the platform exposes no model name. |
+| `Kernel` | Kernel release string. |
+| `Uptime` | Time elapsed since boot. |
+| `Processes` | Number of processes reported by the kernel. |
+| `Shell` | Parent shell and version. Falls back to `$SHELL` when the parent process cannot be identified or queried. |
+| `Locale` | Active `LC_CTYPE` locale. |
+| `CPU` | Model, physical cores (`C`), logical threads (`T`), and the highest available frequency. Missing topology or frequency details are omitted. |
+| `GPU` | GPU vendor and device name, with the PCI device ID on Linux. Linux names are resolved from `pci.ids`; the vendor falls back to `Generic GPU` when no matching entry is found. |
+| `RAM`, `Swap` | Used / total and percentage used. A system without swap shows `Unused`. |
+| `Disk (mount)` | Used / total, percentage used, and filesystem type. Each physical filesystem is shown once; pseudo, loop, FUSE, and EROFS mounts are skipped on Linux. |
+| `Battery (model)` | Charge percentage, power state, and health label. See [Battery health](#battery-health). |
+
+Fields are omitted when the underlying platform API does not expose the data. Run with `--verbose` to print diagnostics explaining why a value could not be read.
+
+On Linux, install `pciutils` or `hwdata` if the `GPU` line falls back to `Generic GPU`; `textfetch` reads `pci.ids` from the standard system locations.
+
 ## Battery health
 
-The `Battery` line shows the current charge level, charging status, and a health label. Charge and health are different measurements: a battery can be charged to 100% while its health is `Fair` or `Poor`, because health describes how much capacity the battery has left compared with when it was new.
+The `Battery` line shows the current charge level, power state, and a health label. Charge and health are different measurements: a battery can be charged to 100% while its health is `Fair` or `Poor`, because health describes how much capacity the battery has left compared with when it was new.
+
+The power state may be `Charging`, `Discharging`, `Full`, `Not Charging`, or `Unknown`, depending on the platform and battery driver. On Linux it is read directly from `sysfs`; on macOS it is derived from IOKit power-source flags.
 
 On Linux, `textfetch` estimates health from the ratio of the current full-charge capacity (`energy_full` or `charge_full`) to the original design capacity (`energy_full_design` or `charge_full_design`):
 
@@ -58,6 +103,8 @@ On Linux, `textfetch` estimates health from the ratio of the current full-charge
 | `Unknown` | The kernel does not expose the counters needed to estimate health. |
 
 On macOS, the label comes from IOKit's `kIOPSBatteryHealthKey`, so it reflects Apple's own battery health classification.
+
+Linux battery health is an estimate based on the capacity counters exposed by the kernel; firmware or vendor utilities may report a slightly different value.
 
 ## Supported Platforms
 
@@ -108,6 +155,16 @@ Run `./bin/textfetch --help` for the full option list:
 | `--no-color` | Disable color output |
 | `--help` | Display help and exit |
 | `-V`, `--version` | Output version information and exit |
+
+Note that `-h` selects human-readable sizes; use `--help` (there is no short form) to print usage.
+
+### Formatting and color
+
+Sizes use binary units (`KiB`, `MiB`, `GiB`, and so on). By default they scale automatically based on the largest value in each line. `-k`, `-m`, and `-g` force a fixed unit, while `-h` restores automatic scaling.
+
+Color is enabled only when standard output is a terminal. Set `NO_COLOR` to any value or pass `--no-color` to disable ANSI styling. Verbose diagnostics are written to standard error, so `--verbose` does not contaminate piped output.
+
+`textfetch` exits with status `0` on success and `1` when an unknown option is supplied.
 
 ### Testing
 
