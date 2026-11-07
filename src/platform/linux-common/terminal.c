@@ -240,6 +240,70 @@ static bool term_read_exe(const pid_t pid, char *out_path, const size_t path_siz
     return true;
 }
 
+/* Deferred shell discovery used to overlap the version probe with other work. */
+typedef struct {
+    capture_job_t job;
+    char shell_name[TINY_BUFFER];
+    bool capture_exe;
+    bool pending;
+} term_shell_state_t;
+
+static term_shell_state_t shell_state = {0};
+
+/**
+ * Walks the parent process chain and returns the first interactive shell.
+ *
+ * @param out_pid Destination for the shell PID.
+ * @param out_name Destination for the shell name.
+ * @param name_size Capacity of @p out_name.
+ * @return true when an interactive shell was found.
+ */
+static bool term_find_shell(pid_t *out_pid, char *out_name, const size_t name_size)
+{
+    if (out_pid == NULL || out_name == NULL || name_size == 0) {
+        return false;
+    }
+
+    pid_t pid = getppid();
+
+    for (size_t depth = 0; depth < ANCESTOR_LIMIT && pid > 1; depth++) {
+        char comm_buf[TINY_BUFFER] = {0};
+        char cmdline_name[TINY_BUFFER] = {0};
+        const char *shell_name = NULL;
+        pid_t ppid = 0;
+        bool interactive = true;
+
+        if (!term_read_process_stat(pid, comm_buf, sizeof(comm_buf), &ppid)) {
+            break;
+        }
+
+        if (!term_read_cmdline(pid, cmdline_name, sizeof(cmdline_name), &interactive)) {
+            cmdline_name[0] = '\0';
+        }
+
+        if (term_is_shell_name(cmdline_name)) {
+            shell_name = cmdline_name;
+        } else if (term_is_shell_name(comm_buf)) {
+            shell_name = comm_buf;
+        }
+
+        /*
+         * Wrappers such as "sh -c ..." or "sh script.sh" are shells too, but
+         * they are not attached to the terminal the user launched us from.
+         * Keep walking until an interactive shell (or the root) is reached.
+         */
+        if (shell_name != NULL && interactive) {
+            snprintf(out_name, name_size, "%s", shell_name);
+            *out_pid = pid;
+            return true;
+        }
+
+        pid = ppid;
+    }
+
+    return false;
+}
+
 /**
  * Produces a display string for the detected shell.
  *
@@ -280,6 +344,33 @@ static void term_describe_shell(const pid_t pid, const char *shell_name, char *o
     snprintf(out_buf, buf_size, "%s", shell_name);
 }
 
+void term_prepare_shell(void)
+{
+    pid_t pid = 0;
+    char shell_name[TINY_BUFFER] = {0};
+    char exe_path[PATH_BUFFER] = {0};
+    bool capture_exe = false;
+
+    if (shell_state.pending) {
+        return;
+    }
+
+    if (!term_find_shell(&pid, shell_name, sizeof(shell_name))) {
+        return;
+    }
+
+    capture_exe = term_read_exe(pid, exe_path, sizeof(exe_path));
+
+    capture_job_init(&shell_state.job);
+    if (capture_start(&shell_state.job, capture_exe ? exe_path : shell_name, "--version") != 0) {
+        return;
+    }
+
+    snprintf(shell_state.shell_name, sizeof(shell_state.shell_name), "%s", shell_name);
+    shell_state.capture_exe = capture_exe;
+    shell_state.pending = true;
+}
+
 void term_get_shell(char *out_buf, const size_t buf_size)
 {
     if (out_buf == NULL || buf_size == 0) {
@@ -288,39 +379,44 @@ void term_get_shell(char *out_buf, const size_t buf_size)
 
     term_fallback_shell(out_buf, buf_size);
 
-    pid_t pid = getppid();
+    if (shell_state.pending) {
+        char version_buf[LINE_BUFFER] = {0};
+        char retry_buf[LINE_BUFFER] = {0};
+        const char *resolved = NULL;
+        bool capture_exe = shell_state.capture_exe;
+        int result = 0;
 
-    for (size_t depth = 0; depth < ANCESTOR_LIMIT && pid > 1; depth++) {
-        char comm_buf[TINY_BUFFER] = {0};
-        char cmdline_name[TINY_BUFFER] = {0};
-        char *shell_name = NULL;
-        pid_t ppid = 0;
-        bool interactive = true;
+        shell_state.pending = false;
+        result = capture_finish(&shell_state.job, version_buf, sizeof(version_buf));
 
-        if (!term_read_process_stat(pid, comm_buf, sizeof(comm_buf), &ppid)) {
-            break;
+        if (result == 0) {
+            term_sanitize_name(version_buf);
+            if (version_buf[0] != '\0') {
+                resolved = version_buf;
+            }
         }
 
-        if (!term_read_cmdline(pid, cmdline_name, sizeof(cmdline_name), &interactive)) {
-            cmdline_name[0] = '\0';
+        if (resolved == NULL && capture_exe) {
+            if (capture_line(shell_state.shell_name, "--version", retry_buf, sizeof(retry_buf)) ==
+                0) {
+                term_sanitize_name(retry_buf);
+                if (retry_buf[0] != '\0') {
+                    resolved = retry_buf;
+                }
+            }
         }
 
-        if (term_is_shell_name(cmdline_name)) {
-            shell_name = cmdline_name;
-        } else if (term_is_shell_name(comm_buf)) {
-            shell_name = comm_buf;
-        }
+        snprintf(out_buf, buf_size, "%s", (resolved != NULL) ? resolved : shell_state.shell_name);
 
-        /*
-         * Wrappers such as "sh -c ..." or "sh script.sh" are shells too, but
-         * they are not attached to the terminal the user launched us from.
-         * Keep walking until an interactive shell (or the root) is reached.
-         */
-        if (shell_name != NULL && interactive) {
-            term_describe_shell(pid, shell_name, out_buf, buf_size);
-            return;
-        }
+        shell_state.capture_exe = false;
+        shell_state.shell_name[0] = '\0';
+        return;
+    }
 
-        pid = ppid;
+    pid_t pid = 0;
+    char shell_name[TINY_BUFFER] = {0};
+
+    if (term_find_shell(&pid, shell_name, sizeof(shell_name))) {
+        term_describe_shell(pid, shell_name, out_buf, buf_size);
     }
 }

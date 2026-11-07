@@ -77,6 +77,20 @@ static void test_get_shell(void)
     term_get_shell(NULL, sizeof(buffer));
 }
 
+static void test_prepare_shell(void)
+{
+    char buffer[LINE_BUFFER] = {0};
+
+    setenv("SHELL", "/bin/sh", 1);
+
+    term_prepare_shell();
+    term_prepare_shell();
+    term_get_shell(buffer, sizeof(buffer));
+
+    TEST_CHECK(strlen(buffer) > 0);
+    TEST_STR_NOT_CONTAINS(buffer, "\n");
+}
+
 static void test_print_info(void)
 {
     test_capture_t capture = {0};
@@ -97,6 +111,7 @@ int main(void)
     test_process_stat();
     test_cmdline();
     test_get_shell();
+    test_prepare_shell();
     test_print_info();
 
     return test_finish("linux_terminal");
