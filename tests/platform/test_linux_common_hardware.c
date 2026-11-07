@@ -138,6 +138,18 @@ static void test_print_memory(void)
     TEST_STR_EQ(output, "Swap: 0.00 GiB / 2.00 GiB (0%)\n");
     free(output);
 
+    mem.swap_size = 0;
+    mem.swap_used = 0;
+
+    TEST_CHECK(test_capture_begin(&capture));
+    hw_print_mem_info(MEM_SWAP, &mem);
+    output = test_capture_end(&capture);
+    TEST_CHECK(output != NULL);
+    TEST_STR_EQ(output, "Swap: Unused\n");
+    free(output);
+
+    mem.swap_size = 2ULL * 1024ULL * 1024ULL * 1024ULL;
+
     TEST_CHECK(test_capture_begin(&capture));
     hw_print_mem_info((mem_flags_t)(MEM_RAM | MEM_SWAP), &mem);
     output = test_capture_end(&capture);
