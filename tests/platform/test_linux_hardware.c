@@ -322,6 +322,8 @@ static void test_sparse_cpu_packages(void)
     TEST_INT_EQ(set_count_bits(&(bitset_t){.bits = cpus[2].core_bits, .capacity = MAX_CPU_CORES},
                                CORES_SET_BLOCKS),
                 2);
+    TEST_INT_EQ(cpus[0].threads, 2);
+    TEST_INT_EQ(cpus[2].threads, 2);
 
     /* The peak frequency must come from the fastest core in each package. */
     TEST_CHECK(cpus[0].frequency > 3.19 && cpus[0].frequency < 3.21);
@@ -333,6 +335,52 @@ static void test_sparse_cpu_packages(void)
     fake_sysfs_remove_cpu(cpu_dir, "cpu2", true, false);
     fake_sysfs_remove_cpu(cpu_dir, "cpu1", true, true);
     fake_sysfs_remove_cpu(cpu_dir, "cpu0", true, true);
+    rmdir(root);
+}
+
+static void test_smt_cpu_threads(void)
+{
+    char template[] = "/tmp/textfetch-cpu-smt-XXXXXX";
+    char *root = mkdtemp(template);
+    TEST_CHECK(root != NULL);
+    if (!root) {
+        return;
+    }
+
+    char cpu_dir[PATH_BUFFER];
+    snprintf(cpu_dir, sizeof(cpu_dir), "%s/", root);
+
+    /* Two physical cores exposed as four logical SMT threads. */
+    TEST_CHECK(fake_sysfs_add_cpu(cpu_dir, "cpu0", "0", "0", NULL));
+    TEST_CHECK(fake_sysfs_add_cpu(cpu_dir, "cpu1", "0", "0", NULL));
+    TEST_CHECK(fake_sysfs_add_cpu(cpu_dir, "cpu2", "0", "1", NULL));
+    TEST_CHECK(fake_sysfs_add_cpu(cpu_dir, "cpu3", "0", "1", NULL));
+
+    cpu_data_t cpus[MAX_CPU_PACKAGES];
+    uint16_t cpu_map[MAX_CPU_PACKAGES];
+    uint8_t packages = 0;
+
+    memset(cpus, 0, sizeof(cpus));
+    memset(cpu_map, 0xFF, sizeof(cpu_map));
+
+    hw_parse_cpu_topology(cpu_dir, cpus, cpu_map, &packages);
+
+    TEST_INT_EQ(packages, 1);
+    TEST_INT_EQ(set_count_bits(&(bitset_t){.bits = cpus[0].core_bits, .capacity = MAX_CPU_CORES},
+                               CORES_SET_BLOCKS),
+                2);
+    TEST_INT_EQ(cpus[0].threads, 4);
+
+    snprintf(cpus[0].model, sizeof(cpus[0].model), "%s", "SMT CPU");
+
+    char formatted[LINE_BUFFER];
+    TEST_CHECK(hw_format_cpu_package(&cpus[0], formatted, sizeof(formatted)));
+    TEST_STR_EQ(formatted, "SMT CPU (2C / 4T)");
+
+    fake_sysfs_remove_cpu(cpu_dir, "cpu3", true, false);
+    fake_sysfs_remove_cpu(cpu_dir, "cpu2", true, false);
+    fake_sysfs_remove_cpu(cpu_dir, "cpu1", true, false);
+    fake_sysfs_remove_cpu(cpu_dir, "cpu0", true, false);
     rmdir(root);
 }
 
@@ -368,6 +416,7 @@ static void test_uniprocessor_without_topology(void)
     TEST_INT_EQ(set_count_bits(&(bitset_t){.bits = cpus[0].core_bits, .capacity = MAX_CPU_CORES},
                                CORES_SET_BLOCKS),
                 1);
+    TEST_INT_EQ(cpus[0].threads, 1);
 
     /* No cpufreq nodes: the model must survive and print without a suffix. */
     snprintf(cpus[0].model, sizeof(cpus[0].model), "%s", "ARM Cortex-A7");
@@ -378,7 +427,7 @@ static void test_uniprocessor_without_topology(void)
 
     char formatted[LINE_BUFFER];
     TEST_CHECK(hw_format_cpu_package(&cpus[0], formatted, sizeof(formatted)));
-    TEST_STR_EQ(formatted, "ARM Cortex-A7 (1)");
+    TEST_STR_EQ(formatted, "ARM Cortex-A7 (1C / 1T)");
     TEST_CHECK(strstr(formatted, "@") == NULL);
 
     rmdir(cpu0_path);
@@ -419,7 +468,7 @@ static void test_current_freq_fallback(void)
 
     char formatted[LINE_BUFFER];
     TEST_CHECK(hw_format_cpu_package(&cpus[0], formatted, sizeof(formatted)));
-    TEST_STR_EQ(formatted, "ARM Cortex-A7 (1) @ 1.104 GHz");
+    TEST_STR_EQ(formatted, "ARM Cortex-A7 (1C / 1T) @ 1.104 GHz");
 
     fake_sysfs_remove_cpufreq_attr(cpu_dir, "cpu0", "scaling_cur_freq");
     fake_sysfs_remove_cpu(cpu_dir, "cpu0", true, false);
@@ -565,6 +614,7 @@ int main(void)
     test_battery_metrics();
     test_hardware_lists();
     test_sparse_cpu_packages();
+    test_smt_cpu_threads();
     test_uniprocessor_without_topology();
     test_current_freq_fallback();
     test_policy_current_freq_fallback();

@@ -34,7 +34,7 @@ A minimal, fast system information tool with no third-party dependencies. Design
 
 ## Features
 
-- **CPU**: Topology (physical core count), frequency, and model identification.
+- **CPU**: Topology (physical core and logical thread counts), frequency, and model identification.
 - **GPU**: Vendor and device detection via DRM/sysfs (Linux), IOKit (macOS), and the system Vulkan driver (Android).
 - **Power**: Battery capacity, charging status, health status, and model (on Linux and macOS).
 - **Memory & Storage**: RAM/Swap usage and mounted filesystems with usage, size, and filesystem type.

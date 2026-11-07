@@ -69,6 +69,7 @@ typedef struct {
     char model[MEDIUM_BUFFER];
     double frequency;
     uint32_t core_bits[CORES_SET_BLOCKS];
+    uint32_t threads;
     bool exists;
 } cpu_data_t;
 
@@ -324,11 +325,11 @@ static bool hw_format_cpu_package(cpu_data_t *cpu, char *out_buf, const size_t b
                                     CORES_SET_BLOCKS);
 
     if (cpu->frequency > 0.0) {
-        snprintf(out_buf, buf_size, "%.*s (%" PRIu32 ") @ %.03f GHz", (int)sizeof(cpu->model),
-                 cpu->model, cores, cpu->frequency);
+        snprintf(out_buf, buf_size, "%.*s (%" PRIu32 "C / %" PRIu32 "T) @ %.03f GHz",
+                 (int)sizeof(cpu->model), cpu->model, cores, cpu->threads, cpu->frequency);
     } else {
-        snprintf(out_buf, buf_size, "%.*s (%" PRIu32 ")", (int)sizeof(cpu->model), cpu->model,
-                 cores);
+        snprintf(out_buf, buf_size, "%.*s (%" PRIu32 "C / %" PRIu32 "T)", (int)sizeof(cpu->model),
+                 cpu->model, cores, cpu->threads);
     }
 
     return true;
@@ -463,6 +464,7 @@ static void hw_cpu_process_core_node(const char *cpu_dir, const char *node_name,
 
     set_add(&(bitset_t){.bits = cpus[physical_package_id].core_bits, .capacity = MAX_CPU_CORES},
             core_id);
+    cpus[physical_package_id].threads++;
 
     hw_get_cpu_freq(cpu_dir, cpus, physical_package_id, node_name);
 }
@@ -487,6 +489,7 @@ static void hw_cpu_apply_single_core_fallback(const char *cpu_dir, cpu_data_t *c
     }
 
     set_add(&(bitset_t){.bits = cpus[0].core_bits, .capacity = MAX_CPU_CORES}, 0);
+    cpus[0].threads = 1;
 
     if (cpu_map[0] == 0xFFFF) {
         cpu_map[0] = 0;
