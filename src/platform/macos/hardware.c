@@ -246,15 +246,28 @@ static void hw_get_cpu_model(cpu_info_t *cpu)
 
 static void hw_get_cpu_cores(cpu_info_t *cpu)
 {
-    uint64_t common_cores = 0;
-    size_t common_size = sizeof(common_cores);
+    uint64_t physical_cores = 0;
+    size_t physical_size = sizeof(physical_cores);
 
-    if (sysctlbyname("hw.physicalcpu", &common_cores, &common_size, NULL, 0) != 0) {
+    if (sysctlbyname("hw.physicalcpu", &physical_cores, &physical_size, NULL, 0) != 0) {
         V_PRINTF("[ERROR] sysctlbyname(hw.physicalcpu) failed: %s\n", strerror(errno));
     }
 
+    uint64_t logical_cores = 0;
+    size_t logical_size = sizeof(logical_cores);
+
+    if (sysctlbyname("hw.logicalcpu", &logical_cores, &logical_size, NULL, 0) != 0) {
+        V_PRINTF("[ERROR] sysctlbyname(hw.logicalcpu) failed: %s\n", strerror(errno));
+    }
+
     size_t core_size = sizeof(cpu->cores);
-    snprintf(cpu->cores, core_size, " (%" PRIu64 ")", common_cores);
+
+    if (physical_cores != logical_cores) {
+        snprintf(cpu->cores, core_size, " (%" PRIu64 "C / %" PRIu64 "T)", physical_cores,
+                 logical_cores);
+    } else {
+        snprintf(cpu->cores, core_size, " (%" PRIu64 ")", physical_cores);
+    }
 
 #if TARGET_CPU_ARM64
     uint64_t p_cores = 0;
