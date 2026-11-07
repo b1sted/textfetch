@@ -144,6 +144,20 @@ static void hw_get_gpu_accelerator(char *out_buf, const size_t buf_size);
  */
 static void hw_get_gpu_pci(char *out_buf, const size_t buf_size);
 
+#if TARGET_CPU_ARM64
+/**
+ * Derives the integrated GPU name from the Apple Silicon SoC brand string.
+ *
+ * Apple Silicon GPUs are part of the SoC, and virtualized macOS exposes only an
+ * AppleParavirtGPU node without a "model" property. Falls back to the SoC name
+ * in both cases, stripping the " (Virtual)" suffix used by virtual machines.
+ *
+ * @param out_buf Buffer to format the GPU name into.
+ * @param buf_size Size of the buffer.
+ */
+static void hw_get_gpu_soc_name(char *out_buf, const size_t buf_size);
+#endif
+
 /**
  * Evaluates the current RAM capacity and usage using Mach host statistics.
  *
@@ -277,16 +291,34 @@ static void hw_get_cpu_cores(cpu_info_t *cpu)
         V_PRINTF("[ERROR] sysctlbyname(hw.perflevel0.physicalcpu) failed: %s\n", strerror(errno));
     }
 
+    /*
+     * Virtualized Apple Silicon exposes a single performance level, so probing
+     * perflevel1 unconditionally logs a spurious ENOENT. Use the published
+     * level count to decide whether efficiency cores exist.
+     */
+    uint32_t perflevels = 0;
+    size_t perflevels_size = sizeof(perflevels);
+
+    if (sysctlbyname("hw.nperflevels", &perflevels, &perflevels_size, NULL, 0) != 0) {
+        perflevels = 2;
+    }
+
     uint64_t e_cores = 0;
     size_t e_size = sizeof(e_cores);
 
-    if (sysctlbyname("hw.perflevel1.physicalcpu", &e_cores, &e_size, NULL, 0) != 0) {
+    if (perflevels > 1 &&
+        sysctlbyname("hw.perflevel1.physicalcpu", &e_cores, &e_size, NULL, 0) != 0) {
         V_PRINTF("[ERROR] sysctlbyname(hw.perflevel1.physicalcpu) failed: %s\n", strerror(errno));
     }
 
     size_t current_len = strlen(cpu->cores) - 1;
-    snprintf(cpu->cores + current_len, core_size - current_len,
-             "-core: %" PRIu64 "P + %" PRIu64 "E)", p_cores, e_cores);
+    if (e_cores > 0) {
+        snprintf(cpu->cores + current_len, core_size - current_len,
+                 "-core: %" PRIu64 "P + %" PRIu64 "E)", p_cores, e_cores);
+    } else {
+        snprintf(cpu->cores + current_len, core_size - current_len, "-core: %" PRIu64 "P)",
+                 p_cores);
+    }
 #endif
 }
 
@@ -637,10 +669,43 @@ void hw_get_gpu_info(void)
         hw_get_gpu_pci(gpu_buf, gpu_size);
     }
 
+#if TARGET_CPU_ARM64
+    if (gpu_buf[0] == '\0') {
+        hw_get_gpu_soc_name(gpu_buf, gpu_size);
+    }
+#endif
+
     if (gpu_buf[0] != '\0') {
         ui_print_info("GPU", gpu_buf);
     }
 }
+
+#if TARGET_CPU_ARM64
+static void hw_get_gpu_soc_name(char *out_buf, const size_t buf_size)
+{
+    char model[MEDIUM_BUFFER] = {0};
+    size_t model_size = sizeof(model);
+
+    if (sysctlbyname("machdep.cpu.brand_string", model, &model_size, NULL, 0) != 0) {
+        V_PRINTF("[ERROR] sysctlbyname(machdep.cpu.brand_string) failed: %s\n", strerror(errno));
+        return;
+    }
+
+    /* Virtualized macOS appends " (Virtual)" to the SoC name. */
+    char *suffix = strstr(model, " (");
+    if (suffix) {
+        *suffix = '\0';
+    }
+
+    /* Apple brand strings sometimes carry trailing whitespace. */
+    size_t len = strlen(model);
+    while (len > 0 && isspace((unsigned char)model[len - 1])) {
+        model[--len] = '\0';
+    }
+
+    snprintf(out_buf, buf_size, "%s", model);
+}
+#endif
 
 static void hw_get_gpu_accelerator(char *out_buf, const size_t buf_size)
 {
@@ -797,10 +862,11 @@ static void hw_get_swap_info(mem_flags_t *flags, mem_info_t *mem)
         return;
     }
 
-    if (xsw.xsu_total == 0) {
-        return;
-    }
-
+    /*
+     * macOS creates swap files on demand, so a successfully queried but empty
+     * swap area is a normal state. Report it as MEM_SWAP so the printer can
+     * display "Swap: Unused" instead of omitting the line entirely.
+     */
     *flags |= MEM_SWAP;
 
     mem->swap_size = xsw.xsu_total;

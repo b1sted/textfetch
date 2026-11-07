@@ -233,7 +233,11 @@ void sys_get_model_name(char *out_buf, const size_t buf_size)
                     V_PRINTF("[WARNING] %s: '_LOCALIZABLE_' dictionary missing for %s\n", __func__,
                              out_buf);
                 }
-            } else {
+            } else if (strncmp(out_buf, "Virtual", sizeof("Virtual") - 1) != 0) {
+                /*
+                 * Virtual Macs are intentionally absent from the physical model
+                 * database, so only warn for unrecognized real hardware.
+                 */
                 V_PRINTF("[WARNING] %s: Model ID %s not found in attributes database\n", __func__,
                          out_buf);
             }
