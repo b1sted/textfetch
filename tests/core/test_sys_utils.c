@@ -446,7 +446,6 @@ static void test_format_size(void)
 static tree_forest_t *parse_ids_from_content(const char *content, size_t capacity)
 {
     char *path = NULL;
-    FILE *fp = NULL;
     tree_forest_t *ids = NULL;
 
     path = test_write_temp_file(content);
@@ -454,18 +453,9 @@ static tree_forest_t *parse_ids_from_content(const char *content, size_t capacit
         goto cleanup;
     }
 
-    fp = fopen(path, "r");
-    if (!fp) {
-        goto cleanup;
-    }
-
-    ids = util_parse_ids_file(fp, capacity);
-    fp = NULL;
+    ids = util_parse_ids_file(path, capacity);
 
 cleanup:
-    if (fp) {
-        fclose(fp);
-    }
     if (path) {
         unlink(path);
         free(path);
@@ -536,7 +526,130 @@ static void test_parse_ids_file(void)
         tree_destroy_forest(ids);
     }
 
+    ids = parse_ids_from_content("10de  NVIDIA\n"
+                                 "\t1c82  Device\n"
+                                 "\t\tdead  Subsystem Entry\n"
+                                 "C 00  Unclassified device\n"
+                                 "\t00  Non-VGA unclassified device\n"
+                                 "\t\t00  VGA compatible unclassified device\n",
+                                 1);
+    TEST_CHECK(ids != NULL);
+    if (ids) {
+        TEST_INT_EQ(ids->count, 1);
+        TEST_CHECK(tree_find(ids->roots[0], 0x1c82) != NULL);
+        TEST_CHECK(tree_find(ids->roots[0], 0xdead) == NULL);
+        TEST_CHECK(tree_find_root(ids, 0x000c) == NULL);
+        tree_destroy_forest(ids);
+    }
+
+    char long_name[400];
+    char long_content[512];
+    memset(long_name, 'A', sizeof(long_name) - 1);
+    long_name[sizeof(long_name) - 1] = '\0';
+    snprintf(long_content, sizeof(long_content), "10de  NVIDIA\n\t1c82  %s\n", long_name);
+
+    ids = parse_ids_from_content(long_content, 1);
+    TEST_CHECK(ids != NULL);
+    if (ids) {
+        const tree_node_t *device = tree_find(ids->roots[0], 0x1c82);
+        TEST_CHECK(device != NULL);
+        if (device) {
+            TEST_CHECK(strlen(device->name) == sizeof(long_name) - 1);
+        }
+        tree_destroy_forest(ids);
+    }
+
+    const char buffer_content[] = "10de  NVIDIA\n\t1c82  Device Without Newline";
+    ids = util_parse_ids_buffer(buffer_content, strlen(buffer_content), 1);
+    TEST_CHECK(ids != NULL);
+    if (ids) {
+        const tree_node_t *device = tree_find(ids->roots[0], 0x1c82);
+        TEST_CHECK(device != NULL);
+        if (device) {
+            TEST_STR_EQ(device->name, "Device Without Newline");
+        }
+        tree_destroy_forest(ids);
+    }
+
+    ids = util_parse_ids_buffer(NULL, 0, 1);
+    TEST_CHECK(ids != NULL);
+    if (ids) {
+        TEST_INT_EQ(ids->count, 0);
+        tree_destroy_forest(ids);
+    }
+
+    const char filtered_content[] = "1002  AMD\n"
+                                    "\t73ff  Navi 23\n"
+                                    "\t1234  Other AMD GPU\n"
+                                    "10de  NVIDIA\n"
+                                    "\t1c82  GeForce GTX 1050 Ti\n"
+                                    "\t0de1  GeForce GT 630\n"
+                                    "8086  Intel\n"
+                                    "\t1234  Intel GPU\n";
+    const util_ids_query_t queries[] = {{0x10de, 0x1c82}, {0x1002, 0x73ff}};
+
+    ids = util_parse_ids_buffer_filtered(filtered_content, strlen(filtered_content), 2, queries, 2);
+    TEST_CHECK(ids != NULL);
+    if (ids) {
+        TEST_INT_EQ(ids->count, 2);
+
+        tree_node_t *nvidia = tree_find_root(ids, 0x10de);
+        tree_node_t *amd = tree_find_root(ids, 0x1002);
+        TEST_CHECK(nvidia != NULL);
+        TEST_CHECK(amd != NULL);
+        if (nvidia && amd) {
+            TEST_CHECK(tree_find(nvidia, 0x1c82) != NULL);
+            TEST_CHECK(tree_find(nvidia, 0x0de1) == NULL);
+            TEST_CHECK(tree_find(amd, 0x73ff) != NULL);
+            TEST_CHECK(tree_find(amd, 0x1234) == NULL);
+        }
+        TEST_CHECK(tree_find_root(ids, 0x8086) == NULL);
+        tree_destroy_forest(ids);
+    }
+
+    const util_ids_query_t missing_device[] = {{0x10de, 0xffff}};
+    ids = util_parse_ids_buffer_filtered(filtered_content, strlen(filtered_content), 1,
+                                         missing_device, 1);
+    TEST_CHECK(ids != NULL);
+    if (ids) {
+        TEST_INT_EQ(ids->count, 1);
+        TEST_CHECK(tree_find(ids->roots[0], 0xffff) == NULL);
+        tree_destroy_forest(ids);
+    }
+
+    const util_ids_query_t missing_vendor[] = {{0x9999, 0x0001}};
+    ids = util_parse_ids_buffer_filtered(filtered_content, strlen(filtered_content), 1,
+                                         missing_vendor, 1);
+    TEST_CHECK(ids != NULL);
+    if (ids) {
+        TEST_INT_EQ(ids->count, 0);
+        tree_destroy_forest(ids);
+    }
+
+    char *filtered_path = test_write_temp_file(filtered_content);
+    TEST_CHECK(filtered_path != NULL);
+    if (filtered_path) {
+        ids = util_parse_ids_file_filtered(filtered_path, 2, queries, 2);
+        TEST_CHECK(ids != NULL);
+        if (ids) {
+            TEST_INT_EQ(ids->count, 2);
+            TEST_CHECK(tree_find_root(ids, 0x10de) != NULL);
+            TEST_CHECK(tree_find_root(ids, 0x1002) != NULL);
+            tree_destroy_forest(ids);
+        }
+        unlink(filtered_path);
+        free(filtered_path);
+    }
+
     TEST_CHECK(util_parse_ids_file(NULL, 4) == NULL);
+    TEST_CHECK(util_parse_ids_buffer(NULL, 4, 4) == NULL);
+    TEST_CHECK(util_parse_ids_file_filtered(NULL, 4, queries, 2) == NULL);
+    TEST_CHECK(util_parse_ids_file_filtered("missing", 4, NULL, 2) == NULL);
+    TEST_CHECK(util_parse_ids_file_filtered("missing", 4, queries, 0) == NULL);
+    TEST_CHECK(util_parse_ids_buffer_filtered(filtered_content, strlen(filtered_content), 4, NULL,
+                                              1) == NULL);
+    TEST_CHECK(util_parse_ids_buffer_filtered(filtered_content, strlen(filtered_content), 4,
+                                              queries, 0) == NULL);
     TEST_CHECK(parse_ids_from_content("10de  NVIDIA\n", 0) == NULL);
 }
 

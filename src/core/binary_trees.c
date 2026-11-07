@@ -15,9 +15,18 @@
 
 tree_node_t *tree_create_node(uint16_t id, const char *name)
 {
+    if (!name) {
+        return NULL;
+    }
+
+    return tree_create_node_n(id, name, strlen(name));
+}
+
+tree_node_t *tree_create_node_n(uint16_t id, const char *name, size_t name_len)
+{
     tree_node_t *new_node = NULL;
 
-    if (!name) {
+    if (!name || name_len == SIZE_MAX) {
         goto cleanup;
     }
 
@@ -27,14 +36,20 @@ tree_node_t *tree_create_node(uint16_t id, const char *name)
         goto cleanup;
     }
 
-    new_node->name = strdup(name);
+    new_node->name = malloc(name_len + 1);
     if (!new_node->name) {
         V_PRINTF("[ERROR] Unable to allocate memory: %s\n", strerror(errno));
         goto cleanup;
     }
 
+    if (name_len > 0) {
+        memcpy(new_node->name, name, name_len);
+    }
+    new_node->name[name_len] = '\0';
+
     new_node->id = id;
     new_node->first_child = NULL;
+    new_node->last_child = NULL;
     new_node->next_sibling = NULL;
 
     return new_node;
@@ -83,27 +98,32 @@ cleanup:
 
 void tree_add_child(tree_node_t *parent, uint16_t id, const char *name)
 {
+    if (!parent || !name) {
+        return;
+    }
+
+    tree_add_child_n(parent, id, name, strlen(name));
+}
+
+void tree_add_child_n(tree_node_t *parent, uint16_t id, const char *name, size_t name_len)
+{
     if (!parent) {
         return;
     }
 
-    tree_node_t *new_node = tree_create_node(id, name);
+    tree_node_t *new_node = tree_create_node_n(id, name, name_len);
     if (!new_node) {
-        V_PRINTF("[ERROR] Failed to add child node (id: %" PRIu16 ", name: %s)\n", id, name);
+        V_PRINTF("[ERROR] Failed to add child node (id: %" PRIu16 ")\n", id);
         return;
     }
 
-    if (parent->first_child == NULL) {
-        parent->first_child = new_node;
+    if (parent->last_child) {
+        parent->last_child->next_sibling = new_node;
     } else {
-        tree_node_t *temp = parent->first_child;
-
-        while (temp->next_sibling != NULL) {
-            temp = temp->next_sibling;
-        }
-
-        temp->next_sibling = new_node;
+        parent->first_child = new_node;
     }
+
+    parent->last_child = new_node;
 }
 
 void tree_add_to_forest(tree_forest_t *f, tree_node_t *root)

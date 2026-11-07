@@ -35,6 +35,17 @@ static void test_create_node(void)
     TEST_CHECK(empty != NULL);
     TEST_STR_EQ(empty->name, "");
     tree_free(empty);
+
+    tree_node_t *span = tree_create_node_n(8, "spanned-name", 7);
+    TEST_CHECK(span != NULL);
+    if (span) {
+        TEST_INT_EQ(span->id, 8);
+        TEST_STR_EQ(span->name, "spanned");
+        TEST_CHECK(span->last_child == NULL);
+        tree_free(span);
+    }
+
+    TEST_CHECK(tree_create_node_n(1, NULL, 0) == NULL);
 }
 
 static void test_create_forest(void)
@@ -83,6 +94,7 @@ static void test_add_child(void)
     tree_add_child(root, 10, "first");
     tree_add_child(root, 11, "second");
     tree_add_child(root, 12, "third");
+    tree_add_child_n(root, 13, "spanned-child", 7);
 
     TEST_CHECK(root->first_child != NULL);
     TEST_INT_EQ(root->first_child->id, 10);
@@ -91,11 +103,15 @@ static void test_add_child(void)
     TEST_INT_EQ(root->first_child->next_sibling->id, 11);
     TEST_CHECK(root->first_child->next_sibling->next_sibling != NULL);
     TEST_INT_EQ(root->first_child->next_sibling->next_sibling->id, 12);
-    TEST_CHECK(root->first_child->next_sibling->next_sibling->next_sibling == NULL);
+    TEST_CHECK(root->first_child->next_sibling->next_sibling->next_sibling != NULL);
+    TEST_INT_EQ(root->first_child->next_sibling->next_sibling->next_sibling->id, 13);
+    TEST_STR_EQ(root->last_child->name, "spanned");
+    TEST_CHECK(root->last_child->next_sibling == NULL);
 
     tree_add_child(NULL, 20, "orphan");
-    tree_add_child(root, 13, NULL);
-    TEST_CHECK(root->first_child->next_sibling->next_sibling->next_sibling == NULL);
+    tree_add_child(root, 14, NULL);
+    tree_add_child_n(root, 15, NULL, 0);
+    TEST_CHECK(root->last_child->id == 13);
 
     tree_free(root);
 }

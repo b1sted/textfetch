@@ -16,6 +16,7 @@ typedef struct tree_node_t {
     uint16_t id;
     char *name;
     struct tree_node_t *first_child;
+    struct tree_node_t *last_child;
     struct tree_node_t *next_sibling;
 } tree_node_t;
 
@@ -36,6 +37,19 @@ typedef struct {
 tree_node_t *tree_create_node(uint16_t id, const char *name);
 
 /**
+ * Creates a new tree node from a bounded name span.
+ *
+ * This avoids requiring a temporary NUL-terminated copy when parsing databases
+ * such as pci.ids, where names are stored as slices of a memory-mapped file.
+ *
+ * @param id The unique identifier for the node.
+ * @param name The name bytes to copy.
+ * @param name_len Number of bytes in @p name.
+ * @return A pointer to the new node, or NULL if memory allocation fails.
+ */
+tree_node_t *tree_create_node_n(uint16_t id, const char *name, size_t name_len);
+
+/**
  * Allocates and initializes a new forest structure.
  *
  * @param initial_capacity The starting size of the forest's roots array.
@@ -51,6 +65,16 @@ tree_forest_t *tree_create_forest(size_t initial_capacity);
  * @param name The name of the new child node.
  */
 void tree_add_child(tree_node_t *parent, uint16_t id, const char *name);
+
+/**
+ * Adds a child node created from a bounded name span.
+ *
+ * @param parent Pointer to the parent node.
+ * @param id The identifier for the new child node.
+ * @param name The name bytes to copy.
+ * @param name_len Number of bytes in @p name.
+ */
+void tree_add_child_n(tree_node_t *parent, uint16_t id, const char *name, size_t name_len);
 
 /**
  * Adds an existing tree (represented by its root) to the forest.

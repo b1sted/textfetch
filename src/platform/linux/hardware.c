@@ -57,9 +57,8 @@
 /* Number of blocks needed for the CPU cores bitset. */
 #define CORES_SET_BLOCKS SET_SIZE(MAX_CPU_CORES)
 
-/* Estimated capacities for hardware ID forests to optimize tree allocation. */
+/* Estimated capacity for the embedded ARM ID forest. */
 #define ARM_IMPLEMENTERS 25
-#define PCI_IMPLEMENTERS 3000
 
 /* Internal structure to store CPU parsing progress per socket. */
 typedef struct {
@@ -745,13 +744,8 @@ static void hw_sanitize_cpu_name(char *out_buf)
 #if defined(__arm__) || defined(__aarch64__)
 static void hw_parse_arm_cpu_model(FILE *fp, cpu_data_t *cpus, uint16_t *cpu_map)
 {
-    /* fmemopen only reads the buffer when opened in "r" mode. */
-    FILE *fp_ids = fmemopen((void *)arm_ids, arm_ids_len, "r");
-    if (!fp_ids) {
-        V_PRINTF("[ERROR] Failed to open arm.ids file: %s\n", strerror(errno));
-    }
-
-    tree_forest_t *arm_forest = util_parse_ids_file(fp_ids, ARM_IMPLEMENTERS);
+    tree_forest_t *arm_forest =
+        util_parse_ids_buffer((const char *)arm_ids, arm_ids_len, ARM_IMPLEMENTERS);
     if (arm_forest == NULL) {
         V_PRINTF("[WARNING] Failed to build an ARM forest. Using raw values\n");
     }
@@ -851,10 +845,12 @@ void hw_get_gpu_info(void)
 {
     gpu_node_t *gpu_list = NULL;
     tree_forest_t *pci_forest = NULL;
-    FILE *fp = NULL;
+    util_ids_query_t queries[MAX_GPUS] = {0};
+    size_t query_count = 0;
     char info_buf[GPU_BUFFER] = {0};
 
     const char *paths[] = PCI_IDS_PATHS;
+    const char *pci_path = NULL;
 
     gpu_list = hw_get_all_gpus();
     if (gpu_list == NULL) {
@@ -864,19 +860,24 @@ void hw_get_gpu_info(void)
         goto cleanup;
     }
 
+    for (gpu_node_t *curr = gpu_list; curr != NULL && query_count < MAX_GPUS; curr = curr->next) {
+        queries[query_count].vendor_id = curr->impl_id;
+        queries[query_count].device_id = curr->part_id;
+        query_count++;
+    }
+
     for (size_t i = 0; paths[i] != NULL; i++) {
-        fp = fopen(paths[i], "rb");
-        if (fp) {
+        if (util_is_file_exist(paths[i])) {
+            pci_path = paths[i];
             break;
         }
     }
 
-    if (!fp) {
-        V_PRINTF("[ERROR] Failed to open pci.ids file: %s\n", strerror(errno));
+    if (!pci_path) {
+        V_PRINTF("[ERROR] Failed to find pci.ids file\n");
     }
 
-    pci_forest = util_parse_ids_file(fp, PCI_IMPLEMENTERS);
-    fp = NULL;
+    pci_forest = util_parse_ids_file_filtered(pci_path, MAX_GPUS, queries, query_count);
 
     if (pci_forest == NULL) {
         V_PRINTF("[WARNING] Failed to build a PCI forest. Using raw values\n");
@@ -894,9 +895,6 @@ cleanup:
     }
     if (gpu_list) {
         free_gpu_list(gpu_list);
-    }
-    if (fp) {
-        fclose(fp);
     }
 }
 
