@@ -13,6 +13,9 @@
 #include <inttypes.h>
 
 #include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "binary_trees.h"
@@ -410,19 +413,205 @@ void util_format_size(double total_size, double used_size, char *out_buf, const 
              memory_units[unit], precision, total_size, memory_units[unit], (uint8_t)usage_pct);
 }
 
-tree_forest_t *util_parse_ids_file(FILE *fp, size_t capacity)
+/**
+ * Returns the hexadecimal value of a single character.
+ *
+ * @param c Character to convert.
+ * @return A value in the range [0, 15], or -1 when @p c is not a hex digit.
+ */
+static int util_hex_digit_value(char c)
+{
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
+/**
+ * Parses a hexadecimal identifier from a bounded line span.
+ *
+ * The parser stops after four hex digits (the widest identifier used by
+ * pci.ids and arm.ids) and rejects tokens that continue with another hex digit.
+ *
+ * @param cursor Pointer to the current position; advanced past the token.
+ * @param end Pointer one byte past the line.
+ * @param out_id Receives the parsed identifier.
+ * @return true when a valid identifier was parsed, false otherwise.
+ */
+static bool util_parse_ids_hex(const char **cursor, const char *end, uint16_t *out_id)
+{
+    const char *p = NULL;
+    uint32_t value = 0;
+    size_t digits = 0;
+
+    if (!cursor || !*cursor || !end || !out_id) {
+        return false;
+    }
+
+    p = *cursor;
+    while (p < end && digits < 4) {
+        int digit = util_hex_digit_value(*p);
+        if (digit < 0) {
+            break;
+        }
+        value = (value << 4) | (uint32_t)digit;
+        p++;
+        digits++;
+    }
+
+    if (digits == 0 || (p < end && util_hex_digit_value(*p) >= 0)) {
+        return false;
+    }
+
+    *cursor = p;
+    *out_id = (uint16_t)value;
+    return true;
+}
+
+/**
+ * Extracts a trimmed name span after an identifier token.
+ *
+ * Leading whitespace is skipped and trailing whitespace (including CR from
+ * CRLF files) is removed. The returned span is not NUL-terminated.
+ *
+ * @param cursor Start of the remainder of the line.
+ * @param end Pointer one byte past the line.
+ * @param out_len Receives the number of bytes in the name.
+ * @return Pointer to the first name byte.
+ */
+static const char *util_parse_ids_name(const char *cursor, const char *end, size_t *out_len)
+{
+    const char *name_end = NULL;
+
+    if (!cursor || !end || !out_len) {
+        if (out_len) {
+            *out_len = 0;
+        }
+        return cursor;
+    }
+
+    while (cursor < end && isspace((unsigned char)*cursor)) {
+        cursor++;
+    }
+
+    name_end = end;
+    while (name_end > cursor && isspace((unsigned char)name_end[-1])) {
+        name_end--;
+    }
+
+    *out_len = (size_t)(name_end - cursor);
+    return cursor;
+}
+
+/**
+ * Checks whether a vendor line is relevant to at least one unresolved query.
+ *
+ * @param queries Query array, or NULL for a full parse.
+ * @param query_count Number of queries.
+ * @param found Per-query resolution flags.
+ * @param vendor_id Vendor identifier from the current line.
+ * @return true when the line must be stored.
+ */
+static bool util_ids_vendor_is_wanted(const util_ids_query_t *queries, size_t query_count,
+                                      const bool *found, uint16_t vendor_id)
+{
+    if (!queries) {
+        return true;
+    }
+
+    if (!found) {
+        return false;
+    }
+
+    for (size_t i = 0; i < query_count; i++) {
+        if (!found[i] && queries[i].vendor_id == vendor_id) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Checks whether a device line resolves a pending query.
+ *
+ * All duplicate queries that match the line are marked as resolved.
+ *
+ * @param queries Query array, or NULL for a full parse.
+ * @param query_count Number of queries.
+ * @param found Per-query resolution flags.
+ * @param vendor_id Vendor identifier of the current device.
+ * @param device_id Device identifier from the current line.
+ * @param remaining Number of unresolved queries; decremented on a match.
+ * @return true when the line must be stored.
+ */
+static bool util_ids_device_is_wanted(const util_ids_query_t *queries, size_t query_count,
+                                      bool *found, uint16_t vendor_id, uint16_t device_id,
+                                      size_t *remaining)
+{
+    bool wanted = false;
+
+    if (!queries) {
+        return true;
+    }
+
+    if (!found || !remaining) {
+        return false;
+    }
+
+    for (size_t i = 0; i < query_count; i++) {
+        if (!found[i] && queries[i].vendor_id == vendor_id && queries[i].device_id == device_id) {
+            found[i] = true;
+            wanted = true;
+            if (*remaining > 0) {
+                (*remaining)--;
+            }
+        }
+    }
+
+    return wanted;
+}
+
+/**
+ * Parses an IDs database span, optionally filtering for specific queries.
+ *
+ * @param data Database contents, or NULL when @p size is 0.
+ * @param size Number of bytes in @p data.
+ * @param capacity Expected number of root vendors.
+ * @param queries Query array, or NULL for a full parse.
+ * @param query_count Number of queries.
+ * @return The parsed forest, or NULL on failure.
+ */
+static tree_forest_t *util_parse_ids_span(const char *data, size_t size, size_t capacity,
+                                          const util_ids_query_t *queries, size_t query_count)
 {
     tree_forest_t *ids_forest = NULL;
     tree_forest_t *result = NULL;
-    char line[LINE_BUFFER] = {0};
     tree_node_t *branch = NULL;
+    bool *found = NULL;
+    const char *cursor = NULL;
+    const char *end = NULL;
+    size_t remaining = query_count;
 
-    if (!fp) {
+    if (capacity == 0 || (!data && size > 0) || (!queries && query_count > 0) ||
+        (queries && query_count == 0)) {
         goto cleanup;
     }
 
-    if (capacity == 0) {
-        goto cleanup;
+    if (queries) {
+        if (query_count > SIZE_MAX / sizeof(*found)) {
+            goto cleanup;
+        }
+        found = calloc(query_count, sizeof(*found));
+        if (!found) {
+            goto cleanup;
+        }
     }
 
     ids_forest = tree_create_forest(capacity);
@@ -430,35 +619,67 @@ tree_forest_t *util_parse_ids_file(FILE *fp, size_t capacity)
         goto cleanup;
     }
 
-    while (fgets(line, sizeof(line), fp)) {
-        if (line[0] == '#' || line[0] == '\n' || line[1] == '\t') {
+    if (size > 0) {
+        cursor = data;
+        end = data + size;
+    }
+
+    while (cursor && cursor < end) {
+        const char *line = cursor;
+        const char *line_end = memchr(line, '\n', (size_t)(end - line));
+        size_t indent = 0;
+
+        if (line_end) {
+            cursor = line_end + 1;
+        } else {
+            line_end = end;
+            cursor = end;
+        }
+
+        if (line == line_end || line[0] == '#') {
             continue;
         }
 
-        if (isalnum((unsigned char)line[0])) {
-            char *vendor_name = NULL;
-            uint16_t vendor_id = (uint16_t)strtoul(line, &vendor_name, 16);
+        /* "C <class>" starts the device-class tail, not another vendor. */
+        if (line[0] == 'C' && line + 1 < line_end && isspace((unsigned char)line[1])) {
+            break;
+        }
 
-            line[strcspn(line, "\r\n")] = '\0';
+        while (line + indent < line_end && line[indent] == '\t') {
+            indent++;
+        }
 
-            while (isspace((unsigned char)*vendor_name)) {
-                vendor_name++;
+        /* Subsystem and prog-if entries are two or more tabs deep. */
+        if (indent > 1) {
+            continue;
+        }
+
+        const char *token = line + indent;
+        uint16_t id = 0;
+
+        if (!util_parse_ids_hex(&token, line_end, &id)) {
+            continue;
+        }
+
+        size_t name_len = 0;
+        const char *name = util_parse_ids_name(token, line_end, &name_len);
+
+        if (indent == 0) {
+            if (util_ids_vendor_is_wanted(queries, query_count, found, id)) {
+                branch = tree_create_node_n(id, name, name_len);
+                if (branch) {
+                    tree_add_to_forest(ids_forest, branch);
+                }
+            } else {
+                branch = NULL;
             }
+        } else if (branch && util_ids_device_is_wanted(queries, query_count, found, branch->id, id,
+                                                       &remaining)) {
+            tree_add_child_n(branch, id, name, name_len);
+        }
 
-            branch = tree_create_node(vendor_id, vendor_name);
-            tree_add_to_forest(ids_forest, branch);
-        } else if (line[0] == '\t') {
-            char *device_name = NULL;
-            uint16_t device_id = (uint16_t)strtoul(line, &device_name, 16);
-
-            line[strcspn(line, "\r\n")] = '\0';
-
-            while (isspace((unsigned char)*device_name)) {
-                device_name++;
-            }
-
-            device_name[strcspn(device_name, "\n")] = '\0';
-            tree_add_child(branch, device_id, device_name);
+        if (queries && remaining == 0) {
+            break;
         }
     }
 
@@ -466,11 +687,96 @@ tree_forest_t *util_parse_ids_file(FILE *fp, size_t capacity)
     ids_forest = NULL;
 
 cleanup:
-    if (fp) {
-        fclose(fp);
-    }
-    if (ids_forest) {
-        tree_destroy_forest(ids_forest);
-    }
+    tree_destroy_forest(ids_forest);
+    free(found);
     return result;
+}
+
+tree_forest_t *util_parse_ids_buffer(const char *data, size_t size, size_t capacity)
+{
+    return util_parse_ids_span(data, size, capacity, NULL, 0);
+}
+
+tree_forest_t *util_parse_ids_buffer_filtered(const char *data, size_t size, size_t capacity,
+                                              const util_ids_query_t *queries, size_t query_count)
+{
+    if (!queries || query_count == 0) {
+        return NULL;
+    }
+
+    return util_parse_ids_span(data, size, capacity, queries, query_count);
+}
+
+/**
+ * Memory-maps an IDs file and parses it with an optional query filter.
+ *
+ * @param path Path to the IDs database file.
+ * @param capacity Expected number of root vendors.
+ * @param queries Query array, or NULL for a full parse.
+ * @param query_count Number of queries.
+ * @return The parsed forest, or NULL on failure.
+ */
+static tree_forest_t *util_parse_ids_path(const char *path, size_t capacity,
+                                          const util_ids_query_t *queries, size_t query_count)
+{
+    tree_forest_t *ids_forest = NULL;
+    struct stat file_stat = {0};
+    void *mapped = MAP_FAILED;
+    size_t length = 0;
+    int fd = -1;
+
+    if (!path || capacity == 0) {
+        goto cleanup;
+    }
+
+    fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        goto cleanup;
+    }
+
+    if (fstat(fd, &file_stat) != 0 || !S_ISREG(file_stat.st_mode) || file_stat.st_size < 0) {
+        goto cleanup;
+    }
+
+    if ((uintmax_t)file_stat.st_size > (uintmax_t)SIZE_MAX) {
+        goto cleanup;
+    }
+
+    length = (size_t)file_stat.st_size;
+
+    if (length == 0) {
+        ids_forest = util_parse_ids_span(NULL, 0, capacity, queries, query_count);
+        goto cleanup;
+    }
+
+    mapped = mmap(NULL, length, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (mapped == MAP_FAILED) {
+        goto cleanup;
+    }
+
+    ids_forest = util_parse_ids_span((const char *)mapped, length, capacity, queries, query_count);
+
+cleanup:
+    if (mapped != MAP_FAILED) {
+        munmap(mapped, length);
+    }
+    if (fd >= 0) {
+        close(fd);
+    }
+    return ids_forest;
+}
+
+tree_forest_t *util_parse_ids_file(const char *path, size_t capacity)
+{
+    return util_parse_ids_path(path, capacity, NULL, 0);
+}
+
+tree_forest_t *util_parse_ids_file_filtered(const char *path, size_t capacity,
+                                            const util_ids_query_t *queries, size_t query_count)
+{
+    if (!queries || query_count == 0) {
+        return NULL;
+    }
+
+    return util_parse_ids_path(path, capacity, queries, query_count);
 }

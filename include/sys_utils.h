@@ -184,12 +184,70 @@ void util_format_size(double total_size, double used_size, char *out_buf, const 
                       data_unit_t from_unit);
 
 /**
+ * A single vendor/device lookup request for a filtered IDs parse.
+ */
+typedef struct {
+    uint16_t vendor_id;
+    uint16_t device_id;
+} util_ids_query_t;
+
+/**
  * Parses a hardware ID database file into a binary tree forest.
  *
- * @param fp Pointer to the open IDs file (e.g., pci.ids).
+ * The file is memory-mapped and parsed in place, so no per-line copies are
+ * made and arbitrarily long lines are supported. Names are copied into the
+ * returned nodes before the mapping is released.
+ *
+ * @param path Path to the IDs database file (e.g., pci.ids).
  * @param capacity The expected number of top-level nodes (vendors).
  * @return A tree containing the parsed hardware mappings, or NULL on failure.
  */
-tree_forest_t *util_parse_ids_file(FILE *fp, size_t capacity);
+tree_forest_t *util_parse_ids_file(const char *path, size_t capacity);
+
+/**
+ * Parses only the requested vendor/device pairs from a memory-mapped IDs file.
+ *
+ * Parsing stops as soon as every query has been resolved, so callers that need
+ * a few GPUs do not pay for building the complete pci.ids tree. The returned
+ * forest contains the matching vendors and devices; unrelated devices are not
+ * stored.
+ *
+ * @param path Path to the IDs database file (e.g., pci.ids).
+ * @param capacity The expected number of top-level nodes (vendors).
+ * @param queries Array of vendor/device pairs to resolve.
+ * @param query_count Number of entries in @p queries; must be greater than 0.
+ * @return A tree containing the matching mappings, or NULL on failure.
+ */
+tree_forest_t *util_parse_ids_file_filtered(const char *path, size_t capacity,
+                                            const util_ids_query_t *queries, size_t query_count);
+
+/**
+ * Parses a hardware ID database from an in-memory buffer.
+ *
+ * This is used for embedded databases (e.g., arm.ids) that are not backed by a
+ * file. The buffer is read-only and does not need to be NUL-terminated.
+ *
+ * @param data Pointer to the database contents.
+ * @param size Number of bytes in @p data.
+ * @param capacity The expected number of top-level nodes (vendors).
+ * @return A tree containing the parsed hardware mappings, or NULL on failure.
+ */
+tree_forest_t *util_parse_ids_buffer(const char *data, size_t size, size_t capacity);
+
+/**
+ * Parses only the requested vendor/device pairs from an in-memory IDs buffer.
+ *
+ * Behaves like util_parse_ids_file_filtered() and stops once all queries are
+ * resolved.
+ *
+ * @param data Pointer to the database contents.
+ * @param size Number of bytes in @p data.
+ * @param capacity The expected number of top-level nodes (vendors).
+ * @param queries Array of vendor/device pairs to resolve.
+ * @param query_count Number of entries in @p queries; must be greater than 0.
+ * @return A tree containing the matching mappings, or NULL on failure.
+ */
+tree_forest_t *util_parse_ids_buffer_filtered(const char *data, size_t size, size_t capacity,
+                                              const util_ids_query_t *queries, size_t query_count);
 
 #endif /* SYS_UTILS_H */
