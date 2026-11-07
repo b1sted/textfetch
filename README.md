@@ -18,6 +18,7 @@
 </p>
 <p align="center">
     <a href="#features">Features</a> •
+    <a href="#battery-health">Battery health</a> •
     <a href="#supported-platforms">Supported Platforms</a> •
     <a href="#build-and-run">Build and run</a> •
     <a href="#license">License</a>
@@ -29,6 +30,8 @@ A minimal, fast system information tool with no third-party dependencies. Design
 <br>
 <p align="center">
   <img src=".github/assets/demo.png" alt="textfetch demo" width="600"/>
+  <br>
+  <em>textfetch v1.2.1 on macOS</em>
 </p>
 <br>
 
@@ -40,6 +43,21 @@ A minimal, fast system information tool with no third-party dependencies. Design
 - **Memory & Storage**: RAM/Swap usage and mounted filesystems with usage, size, and filesystem type.
 - **Software**: OS/distribution, kernel, uptime, shell, locale, process count, and device model.
 - **Zero bloat**: No third-party dependencies. Written in C99 with POSIX.1-2008 and platform APIs. Android/Termux uses the system Vulkan loader already present on the device.
+
+## Battery health
+
+The `Battery` line shows the current charge level, charging status, and a health label. Charge and health are different measurements: a battery can be charged to 100% while its health is `Fair` or `Poor`, because health describes how much capacity the battery has left compared with when it was new.
+
+On Linux, `textfetch` estimates health from the ratio of the current full-charge capacity (`energy_full` or `charge_full`) to the original design capacity (`energy_full_design` or `charge_full_design`):
+
+| Health | Meaning |
+| --- | --- |
+| `Good` | The battery still holds at least 80% of its design capacity. |
+| `Fair` | The battery holds between 60% and 79% of its design capacity. |
+| `Poor` | The battery holds less than 60% of its design capacity. |
+| `Unknown` | The kernel does not expose the counters needed to estimate health. |
+
+On macOS, the label comes from IOKit's `kIOPSBatteryHealthKey`, so it reflects Apple's own battery health classification.
 
 ## Supported Platforms
 
