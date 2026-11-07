@@ -19,7 +19,7 @@
 #define PROP_VALUE_MAX 92
 #endif
 
-/* Core system data (OS identity, kernel, uptime, and process count). */
+/* Core system data (OS identity, kernel, uptime, and task counts). */
 typedef struct {
     /* System info (via uname) */
     char sysname[SYSINFO_BUFFER_SIZE];  /* OS name */
@@ -28,8 +28,9 @@ typedef struct {
     char machine[SYSINFO_BUFFER_SIZE];  /* Hardware arch */
 
     /* Dynamic stats (sysinfo on Linux, sysctl on macOS) */
-    uint64_t uptime; /* Seconds since boot */
-    uint32_t procs;  /* Process count */
+    uint64_t uptime;  /* Seconds since boot */
+    uint32_t procs;   /* Process count */
+    uint32_t threads; /* Total thread count, including process leaders */
 } sys_internal_data_t;
 
 /* Global system data instance accessible across platform modules. */

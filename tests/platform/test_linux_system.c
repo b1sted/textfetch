@@ -26,6 +26,8 @@ static void test_system_init(void)
     TEST_CHECK(strlen(sys_data.machine) > 0);
     TEST_CHECK(sys_data.uptime > 0);
     TEST_CHECK(sys_data.procs > 0);
+    TEST_CHECK(sys_data.threads > 0);
+    TEST_CHECK(sys_data.threads >= sys_data.procs);
 }
 
 static void test_get_distro(void)

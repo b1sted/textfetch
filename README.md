@@ -38,8 +38,10 @@ A minimal, fast system information tool with no third-party dependencies. Design
 - **GPU**: Vendor and device detection via DRM/sysfs (Linux), IOKit (macOS), and the system Vulkan driver (Android).
 - **Power**: Battery capacity, charging status, health status, and model (on Linux and macOS).
 - **Memory & Storage**: RAM/Swap usage and mounted filesystems with usage, size, and filesystem type.
-- **Software**: OS/distribution, kernel, uptime, shell, locale, process count, and device model.
+- **Software**: OS/distribution, kernel, uptime, shell, locale, process and thread counts, and device model.
 - **Zero bloat**: No third-party dependencies. Written in C99 with POSIX.1-2008 and platform APIs. Android/Termux uses the system Vulkan loader already present on the device.
+
+The `Processes` line includes the total number of threads in parentheses, so it is normally greater than or equal to the process count. If the two samples are inconsistent or the thread counter is unavailable, only the process count is shown. On Linux the thread total comes from the kernel task counter in `/proc/loadavg`; on macOS it is the sum of the thread counts reported for each process, with inaccessible processes contributing one thread as a lower bound.
 
 ## Supported Platforms
 

@@ -16,6 +16,7 @@
 #include <time.h>
 
 #include <fcntl.h>
+#include <libproc.h>
 #include <unistd.h>
 
 #include <sys/mman.h>
@@ -365,7 +366,26 @@ static void sys_get_procs_count(void)
         goto cleanup;
     }
 
-    sys_data.procs = (uint32_t)(len / sizeof(struct kinfo_proc));
+    size_t procs_count = len / sizeof(struct kinfo_proc);
+    sys_data.procs = (uint32_t)procs_count;
+
+    sys_data.threads = 0;
+    for (size_t i = 0; i < procs_count; i++) {
+        pid_t pid = procs[i].kp_proc.p_pid;
+        if (pid < 0) {
+            continue;
+        }
+
+        struct proc_taskinfo taskinfo = {0};
+        int info_size = proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &taskinfo, sizeof(taskinfo));
+        if (info_size == (int)sizeof(taskinfo)) {
+            sys_data.threads += (uint32_t)taskinfo.pti_threadnum;
+        } else {
+            /* Unprivileged callers cannot inspect every task; count the
+             * process's own main thread as a lower bound. */
+            sys_data.threads++;
+        }
+    }
 
 cleanup:
     free(procs);
