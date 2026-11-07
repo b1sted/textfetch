@@ -145,7 +145,9 @@ $(TEST_BINDIR)/test_linux_terminal: $(PLATFORM_TEST_DIR)/test_linux_terminal.c \
 		../src/platform/linux-common/capture.c \
 		../src/core/ui.c ../src/core/config.c
 	@mkdir -p $(TEST_BINDIR)
-	$(CC) $(TEST_CPPFLAGS) $(TEST_CFLAGS) $^ -o $@ $(TEST_LDFLAGS)
+	$(CC) $(TEST_CPPFLAGS) $(TEST_CFLAGS) \
+		$(filter-out ../src/platform/linux-common/terminal.c,$^) \
+		-o $@ $(TEST_LDFLAGS)
 
 $(TEST_BINDIR)/test_linux_hardware: $(PLATFORM_TEST_DIR)/test_linux_hardware.c \
 		$(CORE_BASE)

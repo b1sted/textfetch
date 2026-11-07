@@ -5,7 +5,10 @@
 
 #include <stddef.h>
 
-/* Discovers and formats the name of the user's active shell. */
+/* Discovers and formats the name of the user's active shell.
+ *
+ * Walks up the parent process chain to skip launchers and wrappers such as
+ * linker64, sudo, or "sh -c" and reaches the shell that owns the terminal. */
 void term_get_shell(char *out_buf, const size_t buf_size);
 
 /* Fallback method to identify shell via env vars or login configs. */
