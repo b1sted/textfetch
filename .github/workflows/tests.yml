@@ -37,7 +37,7 @@ jobs:
 
   lint:
     name: Static analysis
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -45,7 +45,7 @@ jobs:
       - name: Install linters
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-tidy cppcheck
+          sudo apt-get install -y clang-format-18 clang-tidy cppcheck
 
       - name: Run linters
-        run: make lint
+        run: make lint CLANG_FORMAT=clang-format-18
