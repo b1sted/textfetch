@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 
+#define _POSIX_C_SOURCE 200809L
+
 #include "pal/terminal_os.h"
 
 #include <stdio.h>
@@ -9,6 +11,67 @@
 #include "../support/test_helpers.h"
 #include "defs.h"
 #include "terminal.h"
+
+/* Include the translation unit to exercise its static helpers directly. */
+// NOLINTNEXTLINE(bugprone-suspicious-include)
+#include "../../src/platform/linux-common/terminal.c"
+
+static void test_shell_names(void)
+{
+    TEST_CHECK(term_is_shell_name("sh"));
+    TEST_CHECK(term_is_shell_name("bash"));
+    TEST_CHECK(term_is_shell_name("zsh"));
+    TEST_CHECK(term_is_shell_name("fish"));
+    TEST_CHECK(term_is_shell_name("BASH"));
+
+    TEST_CHECK(!term_is_shell_name(""));
+    TEST_CHECK(!term_is_shell_name(NULL));
+    TEST_CHECK(!term_is_shell_name("linker64"));
+    TEST_CHECK(!term_is_shell_name("tmux"));
+    TEST_CHECK(!term_is_shell_name("sudo"));
+}
+
+static void test_process_stat(void)
+{
+    char name[TINY_BUFFER] = {0};
+    pid_t ppid = 0;
+
+    TEST_CHECK(term_read_process_stat(getpid(), name, sizeof(name), &ppid));
+    TEST_CHECK(strlen(name) > 0);
+    TEST_INT_EQ(ppid, getppid());
+
+    TEST_CHECK(!term_read_process_stat(getpid(), name, 0, &ppid));
+    TEST_CHECK(!term_read_process_stat(getpid(), NULL, sizeof(name), &ppid));
+    TEST_CHECK(!term_read_process_stat(getpid(), name, sizeof(name), NULL));
+    TEST_CHECK(!term_read_process_stat(-1, name, sizeof(name), &ppid));
+}
+
+static void test_read_comm(void)
+{
+    char name[TINY_BUFFER] = {0};
+
+    TEST_CHECK(term_read_comm(getpid(), name, sizeof(name)));
+    TEST_CHECK(strlen(name) > 0);
+    TEST_STR_NOT_CONTAINS(name, "\n");
+
+    TEST_CHECK(!term_read_comm(getpid(), name, 0));
+    TEST_CHECK(!term_read_comm(getpid(), NULL, sizeof(name)));
+    TEST_CHECK(!term_read_comm(-1, name, sizeof(name)));
+}
+
+static void test_cmdline(void)
+{
+    char name[TINY_BUFFER] = {0};
+    bool interactive = false;
+
+    TEST_CHECK(term_read_cmdline(getpid(), name, sizeof(name), &interactive));
+    TEST_CHECK(strlen(name) > 0);
+
+    TEST_CHECK(!term_read_cmdline(getpid(), name, 0, &interactive));
+    TEST_CHECK(!term_read_cmdline(getpid(), NULL, sizeof(name), &interactive));
+    TEST_CHECK(!term_read_cmdline(getpid(), name, sizeof(name), NULL));
+    TEST_CHECK(!term_read_cmdline(-1, name, sizeof(name), &interactive));
+}
 
 static void test_get_shell(void)
 {
@@ -27,6 +90,20 @@ static void test_get_shell(void)
     term_get_shell(NULL, sizeof(buffer));
 }
 
+static void test_prepare_shell(void)
+{
+    char buffer[LINE_BUFFER] = {0};
+
+    setenv("SHELL", "/bin/sh", 1);
+
+    term_prepare_shell();
+    term_prepare_shell();
+    term_get_shell(buffer, sizeof(buffer));
+
+    TEST_CHECK(strlen(buffer) > 0);
+    TEST_STR_NOT_CONTAINS(buffer, "\n");
+}
+
 static void test_print_info(void)
 {
     test_capture_t capture = {0};
@@ -43,7 +120,12 @@ static void test_print_info(void)
 
 int main(void)
 {
+    test_shell_names();
+    test_process_stat();
+    test_read_comm();
+    test_cmdline();
     test_get_shell();
+    test_prepare_shell();
     test_print_info();
 
     return test_finish("linux_terminal");

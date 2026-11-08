@@ -99,6 +99,32 @@ static void test_capture_failures(void)
     TEST_STR_EQ(buffer, "X");
 }
 
+static void test_async_capture(void)
+{
+    capture_job_t job;
+    char buffer[64] = {0};
+
+    capture_job_init(&job);
+    TEST_INT_EQ(capture_start(&job, "printf", "first\\nsecond\\n"), 0);
+    TEST_INT_EQ(capture_start(&job, "echo", "again"), -1);
+    TEST_INT_EQ(capture_finish(&job, buffer, sizeof(buffer)), 0);
+    TEST_STR_EQ(buffer, "first");
+
+    capture_job_init(&job);
+    memset(buffer, 0, sizeof(buffer));
+    TEST_INT_EQ(capture_start(&job, "echo", "hello"), 0);
+    TEST_INT_EQ(capture_finish(&job, buffer, sizeof(buffer)), 0);
+    TEST_STR_EQ(buffer, "hello");
+
+    capture_job_init(&job);
+    TEST_INT_EQ(capture_finish(&job, buffer, sizeof(buffer)), -1);
+    TEST_INT_EQ(capture_finish(&job, NULL, sizeof(buffer)), -1);
+
+    capture_job_init(NULL);
+    TEST_INT_EQ(capture_start(NULL, "echo", "hello"), -1);
+    TEST_INT_EQ(capture_finish(NULL, buffer, sizeof(buffer)), -1);
+}
+
 static void test_fork_failure_closes_pipe(void)
 {
     struct rlimit original = {0};
@@ -138,6 +164,7 @@ int main(void)
     test_truncation();
     test_empty_output();
     test_capture_failures();
+    test_async_capture();
     test_fork_failure_closes_pipe();
 
     return test_finish("capture");

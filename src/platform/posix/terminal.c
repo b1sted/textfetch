@@ -3,24 +3,109 @@
 #include "pal/terminal_os.h"
 
 #include <locale.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef __APPLE__
+#include <CoreFoundation/CoreFoundation.h>
+#endif
 
 #include "defs.h"
 #include "sys_utils.h"
 #include "terminal.h"
 #include "ui.h"
 
+#ifdef __APPLE__
+/**
+ * Reads the current macOS locale through CoreFoundation.
+ *
+ * CoreFoundation may report identifiers such as "en_US" without an encoding
+ * and with an Apple-specific region modifier, for example
+ * "en_US@rg=ruzzzz". Drop the modifier and append UTF-8 when the identifier
+ * does not already carry an encoding, producing the POSIX
+ * language[_territory][.codeset] form. This is the fallback for sessions
+ * started from the graphical environment, where the shell locale variables
+ * are usually absent and setlocale() returns "C".
+ *
+ * @param out_buf Destination for the formatted locale name.
+ * @param buf_size Capacity of @p out_buf.
+ * @return true when the locale was obtained.
+ */
+static bool term_read_system_locale(char *out_buf, const size_t buf_size)
+{
+    CFLocaleRef locale = NULL;
+    CFStringRef identifier = NULL;
+    char raw[LINE_BUFFER] = {0};
+    char *modifier = NULL;
+    bool ok = false;
+
+    if (out_buf == NULL || buf_size == 0) {
+        return false;
+    }
+
+    out_buf[0] = '\0';
+
+    locale = CFLocaleCopyCurrent();
+    if (locale == NULL) {
+        return false;
+    }
+
+    identifier = CFLocaleGetIdentifier(locale);
+    if (identifier != NULL &&
+        CFStringGetCString(identifier, raw, (CFIndex)sizeof(raw), kCFStringEncodingUTF8)) {
+        modifier = strchr(raw, '@');
+        if (modifier != NULL) {
+            *modifier = '\0';
+        }
+
+        if (strcmp(raw, "C") == 0 || strcmp(raw, "POSIX") == 0 || strchr(raw, '.') != NULL) {
+            snprintf(out_buf, buf_size, "%s", raw);
+        } else {
+            snprintf(out_buf, buf_size, "%s.UTF-8", raw);
+        }
+        ok = (out_buf[0] != '\0');
+    }
+
+    CFRelease(locale);
+
+    return ok;
+}
+#endif
+
 void term_print_info(void)
 {
     char shell_buf[LINE_BUFFER] = {0};
+    const char *locale = NULL;
+
+#ifdef __APPLE__
+    char locale_buf[LINE_BUFFER] = {0};
+#endif
+
     term_get_shell(shell_buf, LINE_BUFFER);
 
-    char *locale = setlocale(LC_CTYPE, "");
-    if (!locale) {
-        V_PRINTF("[ERROR] setlocale(LC_CTYPE, \"\") failed\n");
-        locale = "-";
+    locale = getenv("LC_ALL");
+    if (locale == NULL || *locale == '\0') {
+        locale = getenv("LC_CTYPE");
+    }
+    if (locale == NULL || *locale == '\0') {
+        locale = getenv("LANG");
+    }
+
+#ifdef __APPLE__
+    if ((locale == NULL || *locale == '\0') &&
+        term_read_system_locale(locale_buf, sizeof(locale_buf))) {
+        locale = locale_buf;
+    }
+#endif
+
+    if (locale == NULL || *locale == '\0') {
+        locale = setlocale(LC_CTYPE, "");
+        if (locale == NULL || *locale == '\0') {
+            V_PRINTF("[ERROR] setlocale(LC_CTYPE, \"\") failed\n");
+            locale = "-";
+        }
     }
 
     ui_print_info("Shell", shell_buf);

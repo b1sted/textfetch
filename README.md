@@ -32,7 +32,7 @@ A minimal, fast system information tool with no third-party dependencies. Design
 <p align="center">
   <img src=".github/assets/demo.png" alt="textfetch demo" width="600"/>
   <br>
-  <em>textfetch v1.2.1 on macOS</em>
+  <em>textfetch v1.2.2 on macOS</em>
 </p>
 <br>
 
@@ -42,7 +42,7 @@ A minimal, fast system information tool with no third-party dependencies. Design
 - **GPU**: Vendor and device detection via DRM/sysfs (Linux), IOKit (macOS), and the system Vulkan driver (Android).
 - **Power**: Battery capacity, charging status, health status, and model (on Linux and macOS).
 - **Memory & Storage**: RAM/Swap usage and mounted filesystems with usage, size, and filesystem type.
-- **Software**: OS/distribution, kernel, uptime, shell, locale, process count, and device model.
+- **Software**: OS/distribution, kernel, uptime, shell, locale, process and thread counts, and device model.
 - **Zero bloat**: No third-party dependencies. Written in C99 with POSIX.1-2008 and platform APIs. Android/Termux uses the system Vulkan loader already present on the device.
 
 ## Output
@@ -56,7 +56,7 @@ OS: Arch Linux x86_64
 Device: Example Laptop
 Kernel: 6.12.1-arch1-1
 Uptime: 3 days, 00:28:03
-Processes: 2644
+Processes: 2644 (7890 threads)
 Shell: bash 5.2.37
 Locale: en_US.UTF-8
 CPU: AMD Ryzen 7 7840H (8C / 16T) @ 3.801 GHz
@@ -74,14 +74,16 @@ Battery (L21M4PD6): 100% (Full, Health: Good)
 | `Device` | System or device model. Omitted when the platform exposes no model name. |
 | `Kernel` | Kernel release string. |
 | `Uptime` | Time elapsed since boot. |
-| `Processes` | Number of processes reported by the kernel. |
-| `Shell` | Parent shell and version. Falls back to `$SHELL` when the parent process cannot be identified or queried. |
-| `Locale` | Active `LC_CTYPE` locale. |
+| `Processes` | Process count and total thread count reported by the kernel; the thread count is omitted when unavailable. |
+| `Shell` | Active interactive shell and version, resolved through the ancestor process chain. Falls back to `$SHELL` when no shell can be identified or queried. |
+| `Locale` | Active locale, preferring `LC_ALL`, `LC_CTYPE`, and `LANG`; on macOS CoreFoundation provides the graphical-session fallback. |
 | `CPU` | Model, physical cores (`C`), logical threads (`T`), and the highest available frequency. Missing topology or frequency details are omitted. |
 | `GPU` | GPU vendor and device name, with the PCI device ID on Linux. Linux names are resolved from `pci.ids`; the vendor falls back to `Generic GPU` when no matching entry is found. |
 | `RAM`, `Swap` | Used / total and percentage used. A system without swap shows `Unused`. |
 | `Disk (mount)` | Used / total, percentage used, and filesystem type. Each physical filesystem is shown once; pseudo, loop, FUSE, and EROFS mounts are skipped on Linux. |
 | `Battery (model)` | Charge percentage, power state, and health label. See [Battery health](#battery-health). |
+
+The `Processes` line includes the total number of threads in parentheses, so it is normally greater than or equal to the process count. If the two samples are inconsistent or the thread counter is unavailable, only the process count is shown. On Linux the thread total comes from the kernel task counter in `/proc/loadavg`; when that file is restricted (as on Android), the `sysinfo()` task counter is used instead. On macOS it is the sum of the thread counts reported for each process, with inaccessible processes contributing one thread as a lower bound.
 
 Fields are omitted when the underlying platform API does not expose the data. Run with `--verbose` to print diagnostics explaining why a value could not be read.
 

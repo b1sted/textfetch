@@ -46,6 +46,8 @@ else
 TEST_NAMES += test_macos_hardware
 # Expose BSD/POSIX extensions such as _SC_NPROCESSORS_CONF on Darwin.
 TEST_CFLAGS += -D_DARWIN_C_SOURCE
+# The terminal test exercises the CoreFoundation locale fallback.
+TERMINAL_TEST_LDFLAGS := -framework CoreFoundation
 ASAN_OPTIONS := abort_on_error=1
 endif
 
@@ -114,7 +116,7 @@ $(TEST_BINDIR)/test_terminal: $(CORE_TEST_DIR)/test_terminal.c \
 		../src/platform/posix/terminal.c ../src/core/ui.c \
 		../src/core/config.c
 	@mkdir -p $(TEST_BINDIR)
-	$(CC) $(TEST_CPPFLAGS) $(TEST_CFLAGS) $^ -o $@ $(TEST_LDFLAGS)
+	$(CC) $(TEST_CPPFLAGS) $(TEST_CFLAGS) $^ -o $@ $(TEST_LDFLAGS) $(TERMINAL_TEST_LDFLAGS)
 
 $(TEST_BINDIR)/test_capture: $(PLATFORM_TEST_DIR)/test_capture.c \
 		../src/platform/linux-common/capture.c ../src/core/config.c
@@ -145,7 +147,9 @@ $(TEST_BINDIR)/test_linux_terminal: $(PLATFORM_TEST_DIR)/test_linux_terminal.c \
 		../src/platform/linux-common/capture.c \
 		../src/core/ui.c ../src/core/config.c
 	@mkdir -p $(TEST_BINDIR)
-	$(CC) $(TEST_CPPFLAGS) $(TEST_CFLAGS) $^ -o $@ $(TEST_LDFLAGS)
+	$(CC) $(TEST_CPPFLAGS) $(TEST_CFLAGS) \
+		$(filter-out ../src/platform/linux-common/terminal.c,$^) \
+		-o $@ $(TEST_LDFLAGS)
 
 $(TEST_BINDIR)/test_linux_hardware: $(PLATFORM_TEST_DIR)/test_linux_hardware.c \
 		$(CORE_BASE)
