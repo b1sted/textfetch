@@ -99,6 +99,8 @@ static void test_sanitize_name(void)
 static void test_print_info(void)
 {
     test_capture_t capture = {0};
+
+    setenv("LC_ALL", "ru_RU.UTF-8", 1);
     TEST_CHECK(test_capture_begin(&capture));
 
     term_print_info();
@@ -106,8 +108,10 @@ static void test_print_info(void)
     char *output = test_capture_end(&capture);
     TEST_CHECK(output != NULL);
     TEST_STR_CONTAINS(output, "Shell: bash 5.2.15\n");
-    TEST_STR_CONTAINS(output, "Locale: ");
+    TEST_STR_CONTAINS(output, "Locale: ru_RU.UTF-8\n");
     free(output);
+
+    unsetenv("LC_ALL");
 }
 
 int main(void)
