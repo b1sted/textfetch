@@ -21,7 +21,7 @@
 #endif
 #endif
 
-#define APP_VERSION "1.2"
+#define APP_VERSION "1.2.2"
 
 /* Global constant containing the compiled application version string. */
 extern const char cfg_version_string[];
