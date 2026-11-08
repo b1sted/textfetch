@@ -21,10 +21,13 @@
 /**
  * Reads the current macOS locale through CoreFoundation.
  *
- * CoreFoundation reports identifiers such as "en_US" without an encoding, so
- * UTF-8 is appended when the identifier does not already carry one. This is
- * the fallback for sessions started from the graphical environment, where the
- * shell locale variables are usually absent and setlocale() returns "C".
+ * CoreFoundation may report identifiers such as "en_US" without an encoding
+ * and with an Apple-specific region modifier, for example
+ * "en_US@rg=ruzzzz". Drop the modifier and append UTF-8 when the identifier
+ * does not already carry an encoding, producing the POSIX
+ * language[_territory][.codeset] form. This is the fallback for sessions
+ * started from the graphical environment, where the shell locale variables
+ * are usually absent and setlocale() returns "C".
  *
  * @param out_buf Destination for the formatted locale name.
  * @param buf_size Capacity of @p out_buf.
@@ -35,6 +38,7 @@ static bool term_read_system_locale(char *out_buf, const size_t buf_size)
     CFLocaleRef locale = NULL;
     CFStringRef identifier = NULL;
     char raw[LINE_BUFFER] = {0};
+    char *modifier = NULL;
     bool ok = false;
 
     if (out_buf == NULL || buf_size == 0) {
@@ -51,6 +55,11 @@ static bool term_read_system_locale(char *out_buf, const size_t buf_size)
     identifier = CFLocaleGetIdentifier(locale);
     if (identifier != NULL &&
         CFStringGetCString(identifier, raw, (CFIndex)sizeof(raw), kCFStringEncodingUTF8)) {
+        modifier = strchr(raw, '@');
+        if (modifier != NULL) {
+            *modifier = '\0';
+        }
+
         if (strcmp(raw, "C") == 0 || strcmp(raw, "POSIX") == 0 || strchr(raw, '.') != NULL) {
             snprintf(out_buf, buf_size, "%s", raw);
         } else {
