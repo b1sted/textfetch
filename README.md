@@ -184,7 +184,19 @@ make lint
 
 `make lint` checks formatting first, then runs both static analyzers. Both `make test` and `make lint` are executed by the `Tests and Linters` GitHub Actions workflow.
 
-Additional developer targets include `make dev`, `make leaks`, `make format`, `make format-check`, and `make clean`.
+### ARM CPU ID database
+
+ARM implementers and part numbers are stored in `data/arm.ids` and compiled into `include/arm_ids.h`. Edit only the database, then regenerate and verify the header:
+
+```bash
+make arm-ids
+make validate-ids
+make arm-ids-check
+```
+
+`make validate-ids` checks the database format, ordering, and duplicates. `make arm-ids-check` fails when the checked-in header does not match the database. The `ARM IDs` workflow runs both checks for pull requests and periodically imports missing parts from the Linux kernel's `arch/arm64/include/asm/cputype.h`, opening a pull request against `dev`.
+
+Additional developer targets include `make dev`, `make leaks`, `make arm-ids`, `make arm-ids-check`, `make validate-ids`, `make format`, `make format-check`, and `make clean`.
 
 ### Pre-built binaries
 Pre-compiled tarballs for macOS (Intel legacy 10.7+, Intel modern 10.9+, and Apple Silicon), Linux (x86_64 and ARM64), the Luckfox Pico Mini, and Android/Termux (ARM64) are available in the [Releases](https://github.com/b1sted/textfetch/releases) section.

@@ -23,6 +23,9 @@ obj/
 *~
 *.bak
 
+# --- Generated ARM ID scratch files ---
+.arm_ids.*.h
+
 # --- Debugging and system files ---
 .gdb_history
 /core

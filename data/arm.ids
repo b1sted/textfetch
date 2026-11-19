@@ -1,6 +1,7 @@
 # List of ARM implementer and part IDs
 # Optimized for clean program output: "Vendor + Part Name"
-# Version: 2026.02
+# Version: 2026.11
+# Kernel source: arch/arm64/include/asm/cputype.h
 
 41  ARM
 	810	ARM810
@@ -34,6 +35,7 @@
 	c24	Cortex-M4
 	c27	Cortex-M7
 	c60	Cortex-M0+
+	d00	Foundation
 	d01	Cortex-A32
 	d02	Cortex-A34
 	d03	Cortex-A53
@@ -48,6 +50,7 @@
 	d0c	Neoverse-N1
 	d0d	Cortex-A77
 	d0e	Cortex-A76AE
+	d0f	AEM-V8
 	d13	Cortex-R52
 	d14	Cortex-R82AE
 	d15	Cortex-R82
@@ -125,6 +128,7 @@
 48  HiSilicon
 	d01	TaiShan-v110 (Kunpeng 920)
 	d02	TaiShan-v120 (Kirin 9000S / Kunpeng 930)
+	d06	HIP12
 	d40	Cortex-A76
 	d41	Cortex-A77
 
@@ -137,6 +141,7 @@
 	003	Denver 2 (Tegra X2)
 	004	Carmel (Tegra Xavier)
 	010	Olympus
+	011	Rigel
 
 50  APM
 	000	X-Gene
@@ -147,6 +152,7 @@
 	02d	Scorpion (Snapdragon S2/S3)
 	04d	Krait (Snapdragon S4 Pro / 600)
 	06f	Krait (Snapdragon 800 / 801)
+	200	Kryo
 	201	Kryo (Snapdragon 820 / 821)
 	205	Kryo (Snapdragon 835, Silver/E-core)
 	211	Kryo (Snapdragon 835, Gold/P-core)
