@@ -74,7 +74,11 @@ DEPS          := $(OBJS_REL:.o=.d) $(OBJS_DEV:.o=.d) $(OBJS_LEAKS:.o=.d)
 
 FORMAT_FILES := $(shell find src include tests -name '*.[ch]')
 
-.PHONY: all dev leaks test lint format format-check clean install uninstall
+.PHONY: all dev leaks test lint format format-check clean install uninstall \
+	arm-ids arm-ids-check validate-ids
+
+ARM_IDS_SRC := data/arm.ids
+ARM_IDS_HDR := include/arm_ids.h
 
 all: $(TARGET)
 
@@ -90,6 +94,15 @@ format:
 
 format-check:
 	$(CLANG_FORMAT) --dry-run --Werror $(FORMAT_FILES)
+
+arm-ids:
+	bash scripts/generate_arm_ids.sh
+
+arm-ids-check:
+	bash scripts/generate_arm_ids.sh --check
+
+validate-ids:
+	bash scripts/validate_arm_ids.sh
 
 lint: format-check
 	@command -v clang-tidy >/dev/null 2>&1 || { \
