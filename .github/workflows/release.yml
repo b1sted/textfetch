@@ -16,38 +16,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  arm-ids:
+    name: ARM IDs
+    uses: ./.github/workflows/arm-ids.yml
+
   test:
-    name: Test, leak, lint & ARM IDs
-    runs-on: ubuntu-24.04
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-
-      - name: Install tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            clang-format-18 clang-tidy cppcheck
-          sudo apt-get install -y --no-install-recommends xxd \
-            || sudo apt-get install -y --no-install-recommends vim-common
-
-      - name: Validate ARM ID database
-        run: make validate-ids
-
-      - name: Check generated ARM ID header
-        run: make arm-ids-check CLANG_FORMAT=clang-format-18
-
-      - name: Run test suite
-        run: make test
-
-      - name: Check for memory leaks
-        run: |
-          make leaks
-          ./bin/textfetch-leaks
-
-      - name: Run linters
-        run: make lint CLANG_FORMAT=clang-format-18
+    name: Tests, leak & lint
+    needs: arm-ids
+    uses: ./.github/workflows/tests.yml
 
   build-linux-amd64:
     name: Build (linux-amd64)
