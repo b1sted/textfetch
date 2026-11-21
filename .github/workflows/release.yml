@@ -239,19 +239,21 @@ jobs:
               make CC=clang VERSION="$VERSION"
               ./bin/textfetch -V
               ARCH="$(dpkg --print-architecture)"
-              PKG="textfetch_${VERSION}_${ARCH}.deb"
+              PKG="textfetch-termux_${VERSION}_${ARCH}.deb"
               PKGROOT="pkgroot"
               mkdir -p "$PKGROOT/DEBIAN" "$PKGROOT/data/data/com.termux/files/usr/bin"
               cp bin/textfetch "$PKGROOT/data/data/com.termux/files/usr/bin/textfetch"
               chmod 0755 "$PKGROOT/data/data/com.termux/files/usr/bin/textfetch"
               printf "%s\n" \
-                "Package: textfetch" \
+                "Package: textfetch-termux" \
                 "Version: $VERSION" \
                 "Architecture: $ARCH" \
                 "Maintainer: Nikita Mandrykin <pkg@basted.dev>" \
                 "Homepage: https://github.com/b1sted/textfetch" \
                 "Section: utils" \
                 "Priority: optional" \
+                "Conflicts: textfetch" \
+                "Replaces: textfetch" \
                 "Description: A minimal, fast system information tool for UNIX systems with no third-party dependencies." \
                 > "$PKGROOT/DEBIAN/control"
               dpkg-deb --root-owner-group --build "$PKGROOT" "$PKG"
