@@ -2,7 +2,7 @@ CC          ?= gcc
 # Keep formatting deterministic; CI selects the clang-format-18 binary.
 CLANG_FORMAT ?= clang-format
 # `include/config.h` is the single source of truth for the default version.
-VERSION     ?= $(shell sed -n 's/^#define APP_VERSION "\([^"]*\)"/\1/p' include/config.h)
+VERSION     ?= $(shell sed -n 's/.*APP_VERSION "\([^"]*\)".*/\1/p' include/config.h)
 VERSION_NUMBER := $(patsubst v%,%,$(VERSION))
 ifeq ($(strip $(VERSION_NUMBER)),)
 $(error Could not read APP_VERSION from include/config.h; pass VERSION explicitly)
