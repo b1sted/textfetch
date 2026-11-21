@@ -21,7 +21,12 @@
 #endif
 #endif
 
+/* Canonical version string. The Makefile reads this value for local builds and
+ * accepts VERSION=... as an override; the guard keeps the header usable when
+ * the compiler has already been given -DAPP_VERSION. */
+#ifndef APP_VERSION
 #define APP_VERSION "1.2.2"
+#endif
 
 /* Global constant containing the compiled application version string. */
 extern const char cfg_version_string[];

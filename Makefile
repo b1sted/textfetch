@@ -1,7 +1,13 @@
 CC          ?= gcc
 # Keep formatting deterministic; CI selects the clang-format-18 binary.
 CLANG_FORMAT ?= clang-format
-override CPPFLAGS += -Iinclude -MMD -MP
+# `include/config.h` is the single source of truth for the default version.
+VERSION     ?= $(shell sed -n 's/^#define APP_VERSION "\([^"]*\)"/\1/p' include/config.h)
+VERSION_NUMBER := $(patsubst v%,%,$(VERSION))
+ifeq ($(strip $(VERSION_NUMBER)),)
+$(error Could not read APP_VERSION from include/config.h; pass VERSION explicitly)
+endif
+override CPPFLAGS += -Iinclude -MMD -MP -DAPP_VERSION=\"$(VERSION_NUMBER)\"
 override CFLAGS   += -Wall -Wextra -std=c99 -D_POSIX_C_SOURCE=200809L
 LDFLAGS     += 
 
@@ -24,7 +30,12 @@ ifeq ($(UNAME_S), Darwin)
     PLATFORM_SUBDIRS += macos
     override CFLAGS  += -D_DARWIN_C_SOURCE
     DEV_CFLAGS       += -gdwarf-4
-    REL_LDFLAGS      := -Wl,-dead_strip,-source_version,1.2.2
+    VERSION_SOURCE   := $(shell printf '%s\n' '$(VERSION_NUMBER)' | \
+        sed -nE 's/^([0-9]+(\.[0-9]+)*).*/\1/p')
+    ifeq ($(strip $(VERSION_SOURCE)),)
+        VERSION_SOURCE := 0.0.0
+    endif
+    REL_LDFLAGS      := -Wl,-dead_strip,-source_version,$(VERSION_SOURCE)
     override LDFLAGS += -framework IOKit -framework CoreFoundation
 else ifneq (,$(filter $(UNAME_S),Linux Android))
     PLATFORM_SUBDIRS += linux-common
@@ -46,6 +57,7 @@ SRCDIR        := src
 TARGET        := $(BUILD_BINDIR)/textfetch
 TARGET_DEV    := $(BUILD_BINDIR)/textfetch-dev
 TARGET_LEAKS  := $(BUILD_BINDIR)/textfetch-leaks
+VERSION_STAMP := $(OBJDIR)/.version
 
 CORE_SRCS     := $(wildcard $(SRCDIR)/core/*.c)
 PLATFORM_SRCS := $(foreach dir,$(PLATFORM_SUBDIRS),$(wildcard $(SRCDIR)/platform/$(dir)/*.c))
@@ -75,7 +87,7 @@ DEPS          := $(OBJS_REL:.o=.d) $(OBJS_DEV:.o=.d) $(OBJS_LEAKS:.o=.d)
 FORMAT_FILES := $(shell find src include tests -name '*.[ch]')
 
 .PHONY: all dev leaks test lint format format-check clean install uninstall \
-	arm-ids arm-ids-check validate-ids
+	arm-ids arm-ids-check validate-ids FORCE
 
 ARM_IDS_SRC := data/arm.ids
 ARM_IDS_HDR := include/arm_ids.h
@@ -139,15 +151,22 @@ $(TARGET_DEV): $(OBJS_DEV) | $(BUILD_BINDIR)
 $(TARGET_LEAKS): $(OBJS_LEAKS) | $(BUILD_BINDIR)
 	$(CC) $(CFLAGS) $(LEAKS_CFLAGS) $^ -o $@ $(LDFLAGS) $(LEAKS_LDFLAGS)
 
-$(OBJDIR)/release/%.o: $(SRCDIR)/%.c
+$(VERSION_STAMP): FORCE
+	@mkdir -p $(dir $@)
+	@printf '%s\n' '$(VERSION_NUMBER)' | cmp -s - $@ || \
+		printf '%s\n' '$(VERSION_NUMBER)' > $@
+
+FORCE:
+
+$(OBJDIR)/release/%.o: $(SRCDIR)/%.c $(VERSION_STAMP)
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(REL_CFLAGS) -c $< -o $@
 
-$(OBJDIR)/dev/%.o: $(SRCDIR)/%.c
+$(OBJDIR)/dev/%.o: $(SRCDIR)/%.c $(VERSION_STAMP)
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(DEV_CFLAGS) -c $< -o $@
 
-$(OBJDIR)/leaks/%.o: $(SRCDIR)/%.c
+$(OBJDIR)/leaks/%.o: $(SRCDIR)/%.c $(VERSION_STAMP)
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LEAKS_CFLAGS) -c $< -o $@
 
