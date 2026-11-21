@@ -148,10 +148,10 @@ sudo pacman -U ./textfetch-1.2.3-*.pkg.tar.zst
 
 ### Android (Termux)
 
-The release ships native Termux `.deb` packages for `aarch64`, `armv7`, and `x86_64`:
+The release ships native Termux `.deb` packages named `textfetch-termux` for `aarch64`, `armv7`, and `x86_64`:
 
 ```bash
-pkg install ./textfetch_1.2.3_*.deb
+pkg install ./textfetch-termux_1.2.3_*.deb
 ```
 
 ### Prebuilt binaries (`.tar.gz`)
