@@ -25,7 +25,7 @@
  * accepts VERSION=... as an override; the guard keeps the header usable when
  * the compiler has already been given -DAPP_VERSION. */
 #ifndef APP_VERSION
-#define APP_VERSION "1.2.2"
+#define APP_VERSION "1.2.3"
 #endif
 
 /* Global constant containing the compiled application version string. */
