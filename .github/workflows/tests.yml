@@ -7,6 +7,7 @@ on:
       - dev
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -34,6 +35,18 @@ jobs:
 
       - name: Run tests
         run: make CC=${{ matrix.cc }} test
+
+  leaks:
+    name: Memory leaks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Check for memory leaks
+        run: |
+          make leaks
+          ./bin/textfetch-leaks
 
   lint:
     name: Static analysis
