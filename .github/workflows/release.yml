@@ -55,17 +55,27 @@ jobs:
   build-linux-arm64:
     name: Build (linux-arm64)
     needs: test
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - name: Build release binary
-        run: make VERSION="${GITHUB_REF_NAME#v}"
+      - name: Install cross toolchain and QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-aarch64-linux-gnu libc6-dev-arm64-cross qemu-user
 
-      - name: Smoke test
-        run: ./bin/textfetch -V
+      - name: Build release binary
+        run: >-
+          make CC=aarch64-linux-gnu-gcc
+          VERSION="${GITHUB_REF_NAME#v}"
+
+      - name: Smoke test under QEMU
+        run: >-
+          QEMU_LD_PREFIX=/usr/aarch64-linux-gnu
+          qemu-aarch64 ./bin/textfetch -V
 
       - name: Stage artifact
         run: |
