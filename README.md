@@ -260,7 +260,7 @@ Static analysis and formatting checks are available through `clang-format`, `cla
 make lint
 ```
 
-`make lint` checks formatting first, then runs both static analyzers. Both `make test` and `make lint` are executed by the `Tests and Linters` GitHub Actions workflow.
+`make lint` checks formatting first, then runs both static analyzers. The `Tests and Linters` GitHub Actions workflow runs `make test`, `make leaks`, and `make lint`.
 
 ### ARM CPU ID database
 
@@ -272,7 +272,7 @@ make validate-ids
 make arm-ids-check
 ```
 
-`make validate-ids` checks the database format, ordering, and duplicates. `make arm-ids-check` fails when the checked-in header does not match the database. The `ARM IDs` workflow runs both checks for pull requests and periodically imports missing parts from the Linux kernel's `arch/arm64/include/asm/cputype.h`, opening a pull request against `dev`.
+`make validate-ids` checks the database format, ordering, and duplicates. `make arm-ids-check` fails when the checked-in header does not match the database. The `ARM IDs` workflow runs both checks for pull requests, while the `Refresh ARM IDs` workflow periodically imports missing parts from the Linux kernel's `arch/arm64/include/asm/cputype.h`, opening a pull request against `dev`.
 
 Additional developer targets include `make dev`, `make leaks`, `make arm-ids`, `make arm-ids-check`, `make validate-ids`, `make format`, `make format-check`, and `make clean`.
 
