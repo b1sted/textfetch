@@ -20,9 +20,8 @@ on:
       - 'scripts/validate_arm_ids.sh'
       - 'scripts/update_arm_ids.sh'
       - '.github/workflows/arm-ids.yml'
-  schedule:
-    - cron: '0 6 1 * *'
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -30,7 +29,6 @@ permissions:
 jobs:
   validate:
     name: Validate ARM IDs
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-24.04
 
     steps:
@@ -49,72 +47,3 @@ jobs:
       - name: Check generated header
         run: make arm-ids-check CLANG_FORMAT=clang-format-18
 
-  update:
-    name: Refresh from the Linux kernel
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-      pull-requests: write
-
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          ref: dev
-          fetch-depth: 0
-
-      - name: Install tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang-format-18
-          sudo apt-get install -y --no-install-recommends xxd \
-            || sudo apt-get install -y --no-install-recommends vim-common
-
-      - name: Import new IDs
-        run: bash scripts/update_arm_ids.sh --report "$RUNNER_TEMP/arm-ids-added.txt"
-
-      - name: Regenerate header
-        run: make arm-ids CLANG_FORMAT=clang-format-18
-
-      - name: Detect changes
-        id: changes
-        run: |
-          if git diff --quiet -- data/arm.ids include/arm_ids.h; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Create pull request
-        if: steps.changes.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          branch="chore/arm-ids-refresh"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -B "$branch"
-          git add data/arm.ids include/arm_ids.h
-          git commit -m "chore(data): refresh ARM CPU IDs from the Linux kernel"
-          git push --force origin "$branch"
-
-          {
-            echo "Automated refresh from the Linux kernel (\`arch/arm64/include/asm/cputype.h\`)."
-            echo
-            echo "Added parts:"
-            echo
-            echo '```'
-            sed 's/\t/ /g' "$RUNNER_TEMP/arm-ids-added.txt"
-            echo '```'
-          } > "$RUNNER_TEMP/pr-body.md"
-
-          if gh pr view "$branch" --json number >/dev/null 2>&1; then
-            gh pr comment "$branch" --body-file "$RUNNER_TEMP/pr-body.md"
-          else
-            gh pr create \
-              --base dev \
-              --head "$branch" \
-              --title "chore(data): refresh ARM CPU IDs from the Linux kernel" \
-              --body-file "$RUNNER_TEMP/pr-body.md"
-          fi

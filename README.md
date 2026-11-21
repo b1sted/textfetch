@@ -12,6 +12,9 @@
     <a href="https://github.com/b1sted/textfetch/releases/latest">
         <img src="https://img.shields.io/github/v/release/b1sted/textfetch?style=flat-square&label=Release" alt="Release Version">
     </a>
+    <a href="https://github.com/b1sted/homebrew-tap">
+        <img src="https://img.shields.io/badge/Homebrew-b1sted%2Ftap-FBB040?style=flat-square&logo=homebrew&logoColor=white" alt="Homebrew Tap">
+    </a>
     <a href="#license">
         <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="License" />
     </a>
@@ -21,6 +24,7 @@
     <a href="#output">Output</a> •
     <a href="#battery-health">Battery health</a> •
     <a href="#supported-platforms">Supported Platforms</a> •
+    <a href="#installation">Installation</a> •
     <a href="#build-and-run">Build and run</a> •
     <a href="#license">License</a>
 </p>
@@ -32,7 +36,7 @@ A minimal, fast system information tool with no third-party dependencies. Design
 <p align="center">
   <img src=".github/assets/demo.png" alt="textfetch demo" width="600"/>
   <br>
-  <em>textfetch v1.2.2 on macOS</em>
+  <em>textfetch v1.2.3 on macOS</em>
 </p>
 <br>
 
@@ -113,9 +117,74 @@ Linux battery health is an estimate based on the capacity counters exposed by th
 `textfetch` natively supports the following architectures and operating systems out-of-the-box:
 
 - **macOS**: Intel (x86_64) on Mac OS X 10.7+ (legacy build) or 10.9+ (modern build), and Apple Silicon (ARM64) on macOS 11.0+.
-- **Linux**: x86_64 and ARM64. CI builds both on Ubuntu; unit tests run on x86_64.
-- **Android**: Termux (`aarch64`) and other Android ABIs supported by the NDK.
+- **Linux**: x86_64, ARM64, ARMv7, and RISC-V 64. CI builds all four; unit tests run on x86_64.
+- **Android**: Termux (`aarch64`, `armv7`, and `x86_64`) and other Android ABIs supported by the NDK.
 - **IoT/Embedded**: Builds for the Luckfox Pico Mini; CI produces the binary but does not run tests.
+
+## Installation
+
+### Homebrew (macOS & Linux)
+
+```bash
+brew install b1sted/tap/textfetch
+```
+
+The tap tracks the latest stable release and builds it from source for the current platform.
+
+### Linux packages
+
+Native packages for `amd64`, `arm64`, `armv7`, and `riscv64` are attached to every [GitHub Release](https://github.com/b1sted/textfetch/releases). Download the package for your distribution and install it locally:
+
+```bash
+# Debian / Ubuntu
+sudo apt install ./textfetch_1.2.3_*.deb
+
+# Fedora / RHEL / openSUSE
+sudo dnf install ./textfetch-1.2.3.*.rpm
+
+# Arch Linux
+sudo pacman -U ./textfetch-1.2.3-*.pkg.tar.zst
+```
+
+### Android (Termux)
+
+The release ships native Termux `.deb` packages for `aarch64`, `armv7`, and `x86_64`:
+
+```bash
+pkg install ./textfetch_1.2.3_*.deb
+```
+
+### Prebuilt binaries (`.tar.gz`)
+
+Standalone archives are published for Linux (`amd64`, `arm64`, `armv7`, `riscv64`, and Luckfox ARM), Android/Termux (`aarch64`, `armv7`, and `x86_64`), and macOS (`arm64`, Intel modern, and Intel legacy). Download the archive for your platform, unpack it, and move `textfetch` onto your `PATH`:
+
+```bash
+tar -xzf textfetch-linux-amd64.tar.gz
+sudo install -m 0755 textfetch /usr/local/bin/textfetch
+```
+
+> [!NOTE]
+> macOS marks binaries downloaded through a browser as quarantined. Remove the attribute before the first run:
+>
+> ```bash
+> xattr -d com.apple.quarantine ./textfetch
+> ```
+
+### Verification
+
+Every release publishes checksums, a GPG signature, and build provenance. Verify the downloaded files with any of the following methods:
+
+```bash
+# SHA256 checksums
+sha256sum -c SHA256SUMS.txt --ignore-missing
+
+# GPG signature
+curl -fsSL https://github.com/b1sted.gpg | gpg --import && \
+  gpg --verify SHA256SUMS.txt.asc SHA256SUMS.txt
+
+# GitHub build attestation
+gh attestation verify textfetch-linux-amd64.tar.gz --repo b1sted/textfetch
+```
 
 ## Build and run
 
@@ -126,7 +195,7 @@ Requires a C99 compiler with a POSIX.1-2008 environment, GNU `make`, and the pla
 make
 ```
 
-### Installation
+### Install from source
 
 ```bash
 sudo make install
@@ -160,6 +229,15 @@ Run `./bin/textfetch --help` for the full option list:
 
 Note that `-h` selects human-readable sizes; use `--help` (there is no short form) to print usage.
 
+`-V` prints the build version and machine architecture:
+
+```bash
+./bin/textfetch -V
+# textfetch v1.2.3 (x86_64)
+```
+
+Override the version at build time with `make VERSION=<version>`; release builds derive it from the Git tag.
+
 ### Formatting and color
 
 Sizes use binary units (`KiB`, `MiB`, `GiB`, and so on). By default they scale automatically based on the largest value in each line. `-k`, `-m`, and `-g` force a fixed unit, while `-h` restores automatic scaling.
@@ -182,7 +260,7 @@ Static analysis and formatting checks are available through `clang-format`, `cla
 make lint
 ```
 
-`make lint` checks formatting first, then runs both static analyzers. Both `make test` and `make lint` are executed by the `Tests and Linters` GitHub Actions workflow.
+`make lint` checks formatting first, then runs both static analyzers. The `Tests and Linters` GitHub Actions workflow runs `make test`, `make leaks`, and `make lint`.
 
 ### ARM CPU ID database
 
@@ -194,12 +272,9 @@ make validate-ids
 make arm-ids-check
 ```
 
-`make validate-ids` checks the database format, ordering, and duplicates. `make arm-ids-check` fails when the checked-in header does not match the database. The `ARM IDs` workflow runs both checks for pull requests and periodically imports missing parts from the Linux kernel's `arch/arm64/include/asm/cputype.h`, opening a pull request against `dev`.
+`make validate-ids` checks the database format, ordering, and duplicates. `make arm-ids-check` fails when the checked-in header does not match the database. The `ARM IDs` workflow runs both checks for pull requests, while the `Refresh ARM IDs` workflow periodically imports missing parts from the Linux kernel's `arch/arm64/include/asm/cputype.h`, opening a pull request against `dev`.
 
 Additional developer targets include `make dev`, `make leaks`, `make arm-ids`, `make arm-ids-check`, `make validate-ids`, `make format`, `make format-check`, and `make clean`.
-
-### Pre-built binaries
-Pre-compiled tarballs for macOS (Intel legacy 10.7+, Intel modern 10.9+, and Apple Silicon), Linux (x86_64 and ARM64), the Luckfox Pico Mini, and Android/Termux (ARM64) are available in the [Releases](https://github.com/b1sted/textfetch/releases) section.
 
 ## License
 
