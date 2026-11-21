@@ -265,6 +265,7 @@ jobs:
                 "Description: A minimal, fast system information tool for UNIX systems with no third-party dependencies." \
                 > "$PKGROOT/DEBIAN/control"
               dpkg-deb --root-owner-group --build "$PKGROOT" "$PKG"
+              test "$(dpkg-deb -f "$PKG" Package)" = "textfetch"
               dpkg -i "$PKG"
               textfetch -V
               mkdir -p artifact
@@ -567,5 +568,5 @@ jobs:
           curl -fsSL -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.PACKAGES_DISPATCH_TOKEN }}" \
-            https://api.github.com/repos/b1sted/packages.basted.dev/dispatches \
+            https://api.github.com/repos/b1sted/packages/dispatches \
             -d '{"event_type":"new-release"}'
